@@ -1,12 +1,24 @@
+# Emulator + its bundled roms/software (huge, not ours)
+tools/ZEsarUX_windows-13.0/
+
+# Build artifacts
 obj/
-__pycache__/
-*.rel
-*.ihx
-*.bin
-*.map
-*.noi
-*.lst
-*.asm
 *.dsk
-*.cdt
-*.log
+*.bin
+*.ihx
+*.lk
+*.noi
+*.sym
+*.map
+
+# Scratch captures / debug images
+tools/*.bmp
+tools/*.png
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Python
+__pycache__/
+*.pyc

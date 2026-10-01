@@ -1,0 +1,12 @@
+obj/
+__pycache__/
+*.rel
+*.ihx
+*.bin
+*.map
+*.noi
+*.lst
+*.asm
+*.dsk
+*.cdt
+*.log

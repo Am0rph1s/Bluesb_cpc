@@ -14,6 +14,23 @@ obj/
 # Scratch captures / debug images
 tools/*.bmp
 tools/*.png
+*.bmp
+autosnap-*.bmp
+
+# Emulator scratch
+scratch/
+tools/pcs.txt
+tools/vice_dump.txt
+
+# Raw disk/tape/emulator dumps (regenerable / no nostres)
+assets/*.d64
+assets/*.t64
+assets/*.vsf
+
+# Extracted C64 rip data (regenerable amb tools/d64.py + c1541)
+assets/c64rip/
+assets/bb_rip/
+assets/vice_rip/
 
 # Windows
 Thumbs.db

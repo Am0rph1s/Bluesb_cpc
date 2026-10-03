@@ -1,0 +1,61 @@
+Main Menu
+Smart load
+Snapshot
+Machine
+Audio
+Display
+Storage
+Debug
+Network
+Settings
+Search menu
+Procrastinate
+Help
+ESC Close menu
+F10 Exit ZEsarUX
+
+Main Menu-> Audio
+Audio Chip Registers
+Audio Chip Piano
+Audio Chip Sheet
+Audio Chip Info
+Wave Piano
+Waveform
+AY Player
+--- External Audio Source ---
+[ ] Enable External Audio Source
+AY Mixer
+Audio Chip to .mid
+ESC Close
+
+Main Menu-> Debug
+Reset
+Generate NMI
+Debug CPU
+Machine Info
+CPC
+Hexadecimal Editor
+View Sprites
+Visual memory
+Load binary block
+Save binary block
+Ascii Table
+Basic
+Find
+Poke
+ESC Close
+
+Main Menu-> Debug Menu-> Debug CPC
+Video Info
+[ ] Debug borders
+ESC Close
+
+Main Menu-> Display
+Save Screen
+Quicksave Screen
+View Screen
+Video Output
+View Colour Palettes
+Text Adventure Tools
+ESC Close
+

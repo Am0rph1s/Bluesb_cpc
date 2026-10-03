@@ -22,10 +22,11 @@
 
 ;; ============================================================
 ;; cpct_disableFirmware
+;; RMR 0x8C = Mode 0 + ROMs desactivades (sense canviar de mode).
 ;; ============================================================
 _cpct_disableFirmware::
     di
-    ld      bc, #0x7F8D
+    ld      bc, #0x7F8C
     out     (c), c
     ei
     ret
@@ -43,25 +44,28 @@ _cpct_setVideoMode::
 
 ;; ============================================================
 ;; cpct_setBorder(u8 hw_color)
-;; hw_color in A
+;; hw_color in L (sdcccall1)
+;; Protocol GA (firmware): out ink(16) -> out 0x40|color
 ;; ============================================================
 _cpct_setBorder::
-    and     #0x1F
+    ld      bc, #0x7F00
+    ld      a, #0x10            ;; ink 16 = border
+    out     (c), a
+    ld      a, l
     or      #0x40
-    ld      bc, #0x7F10
-    out     (c), c
     out     (c), a
     ret
 
 ;; ============================================================
 ;; cpct_setPALColour(u8 pen, u8 hw_color)
 ;; pen in A, hw_color in L
+;; Protocol GA (firmware): out ink -> out 0x40|color
 ;; ============================================================
 _cpct_setPALColour::
     ld      bc, #0x7F00
-    out     (c), a
-    ld      a, #0x40
-    or      l
+    out     (c), a              ;; seleccionar ink (pen cru)
+    ld      a, l
+    or      #0x40               ;; 0x40|color
     out     (c), a
     ret
 

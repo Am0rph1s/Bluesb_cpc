@@ -1,0 +1,81 @@
+ULA Data Bus value: FFH
+
+PD765 status:
+Motor: Off
+Last    command: READ_DATA
+Main status register: 80H
+(RQM                            )
+Pending interrupt: Yes
+Current Track: 15
+Last Sector Read: 2
+Last Sector ID Read: (CHRN) 0FH 00H C2H 02H
+Read Bytes/sec: 0
+Write Bytes/sec: 0
+
+
+CRTC Registers:
+00:  3F
+01:  28
+02:  2E
+03:  06
+04:  26
+05:  00
+06:  19
+07:  1E
+08:  00
+09:  07
+0A:  00
+0B:  00
+0C:  31
+0D:  02
+0E:  C0
+0F:  00
+10:  00
+11:  00
+12:  00
+13:  00
+14:  00
+15:  00
+16:  00
+17:  00
+18:  00
+19:  00
+1A:  00
+1B:  00
+1C:  00
+1D:  00
+1E:  00
+1F:  00
+
+PPI Port A:  00
+PPI Port B:  00
+PPI Port C:  00
+PPI Control:  82
+
+Gate Registers:
+00:  10
+01:  54
+02:  8C
+03:  C0
+
+Port DF: FFH
+
+AY-3-8912 chip 0:
+
+Selected register: 0
+00:  BC
+01:  03
+02:  9F
+03:  00
+04:  77
+05:  00
+06:  00
+07:  38
+08:  0F
+09:  0F
+0A:  0F
+0B:  0F
+0C:  00
+0D:  00
+0E:  FF
+0F:  FF

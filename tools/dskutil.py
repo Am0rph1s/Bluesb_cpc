@@ -81,9 +81,24 @@ class DskPatcher:
         hdr = self.data[:256]
         self.num_tracks = hdr[0x30]
         self.num_sides = hdr[0x31]
-        self.track_size = hdr[0x32] + hdr[0x33] * 256
+        self.extended = hdr[:12] == b'EXTENDED CPC'
+        if self.extended:
+            # Taula de mides per pista a 0x34 (num_tracks*num_sides bytes, *256)
+            self.track_size = 0
+            n = self.num_tracks * self.num_sides
+            self.sizes = [hdr[0x34 + i] * 256 for i in range(n)]
+            self.offsets = []
+            off = 256
+            for s in self.sizes:
+                self.offsets.append(off)
+                off += s
+        else:
+            self.track_size = hdr[0x32] + hdr[0x33] * 256
+            self.sizes = [self.track_size] * (self.num_tracks * self.num_sides)
 
     def _track_offset(self, track, side=0):
+        if self.extended:
+            return self.offsets[track * self.num_sides + side]
         return 256 + (track * self.num_sides + side) * self.track_size
 
     def read_sector(self, track, sector_id):

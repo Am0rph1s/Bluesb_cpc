@@ -33,6 +33,50 @@ class Zrcp:
                 t = t.split(marker)[0]
         return t.strip("\r\n ")
 
+    # ------------------------------------------------------------
+    # Interaccio amb el CPC (ZEsarUX utils.h enum util_teclas)
+    # ------------------------------------------------------------
+    # Llancament del joc a Locomotive BASIC. Problemes coneguts:
+    #  - ascii_to_keyboard_port de ZEsarUX no mapeja '"' (ASCII 34):
+    #    cal enviar-lo com Shift(133) + '2'(50).
+    #  - send-keys-string no envia el Retorn: cal send-keys-event 129.
+    KEY_ENTER = 129
+    KEY_SPACE = 128
+    KEY_SHIFT = 133
+    KEY_LEFT  = 142
+    KEY_RIGHT = 143
+    KEY_UP    = 145
+    KEY_DOWN  = 144
+    KEY_FIRE  = 168
+
+    def send_string(self, s, delay=60):
+        return self.cmd("send-keys-string %d %s" % (delay, s), wait=0.1)
+
+    def send_event(self, key, event):
+        return self.cmd("send-keys-event %d %d" % (key, event), wait=0.02)
+
+    def press_key(self, key, duration=0.12):
+        self.send_event(key, 1)
+        time.sleep(duration)
+        self.send_event(key, 0)
+
+    def type_cpc_quotes(self):
+        # '"' = Shift + '2'
+        self.send_event(self.KEY_SHIFT, 1)
+        self.press_key(50, 0.05)          # '2'
+        self.send_event(self.KEY_SHIFT, 0)
+
+    def cpc_run(self, program="bluesb"):
+        self.send_string("run")
+        self.type_cpc_quotes()
+        self.send_string(program.lower())
+        self.type_cpc_quotes()
+        self.press_key(self.KEY_ENTER)
+
+    def cpc_cat(self):
+        self.send_string("cat")
+        self.press_key(self.KEY_ENTER)
+
     def read_mem(self, addr, length):
         # read-memory <addr> <len> -> hex pla (sense espais ni adreces)
         out = self.cmd("read-memory %d %d" % (addr, length), wait=0.3)

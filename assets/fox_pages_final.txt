@@ -1,0 +1,23 @@
+Segment 1
+Long name: RAM 0
+Short name: RAM0
+Start: 0H
+End: 3FFFH
+
+Segment 2
+Long name: RAM 1
+Short name: RAM1
+Start: 4000H
+End: 7FFFH
+
+Segment 3
+Long name: RAM 2
+Short name: RAM2
+Start: 8000H
+End: BFFFH
+
+Segment 4
+Long name: RAM 3
+Short name: RAM3
+Start: C000H
+End: FFFFH

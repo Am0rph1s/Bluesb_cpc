@@ -22,7 +22,7 @@ SDASZ80 = r"C:\Program Files\SDCC\bin\sdasz80.exe"
 CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "200000",
              "--disable-warning", "110"]
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0xA000", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0xA400", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 
@@ -31,16 +31,13 @@ ASM_SOURCES = [
     "engine/assets_fdc.s",
     "engine/audio.s",
     "engine/zx0_decompress.s",
-    "engine/crtc.s",
+    "engine/video.s",
     "engine/isr.s",
-    "engine/render.s",
-    "engine/sprite.s",
-    "engine/level.s",
 ]
 C_SOURCES = [
     "engine/fdc.c",
-    "src/scroll.c",
-    "src/sprite_update.c",
+    "src/render.c",
+    "src/sprite.c",
     "src/main.c",
 ]
 
@@ -49,10 +46,12 @@ DSKNAME8 = "BLUESB"
 
 # Fitxers de dades al DSK (es carregaran per FDC raw). Ordre = ordre al disc.
 DATA_FILES = [
+    # TITLE: el títol encara és Mode 1 (16 KB). Quan fem el títol Mode 0 el canviarem.
     ("TITLE", "BIN", os.path.join(PROJ, "assets", "bbdata", "TITLE.BIN")),
-    ("TILES", "BIN", os.path.join(PROJ, "assets", "bbdata", "TILESET.BIN")),
-    ("MAP",   "BIN", os.path.join(PROJ, "assets", "bbdata", "MAP.BIN")),
-    ("TRIG",  "BIN", os.path.join(PROJ, "assets", "bbdata", "TRIG.BIN")),
+    # Mode 0: tileset 8x16 (64 B/tile, 256 tiles = 16 KB), mapa 128x72.
+    ("TILES", "BIN", os.path.join(PROJ, "assets", "bbdata", "TILESET0.BIN")),
+    ("MAP",   "BIN", os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN")),
+    ("TRIG",  "BIN", os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN")),
 ]
 
 
@@ -114,14 +113,7 @@ def compile_and_link(force):
         rel = os.path.join(obj, os.path.splitext(os.path.basename(src))[0] + ".rel")
         hdr = os.path.join(PROJ, "src", "disk_tables.h")
         if force or newer(rel, [src, hdr]):
-            cflags = CFLAGS
-            # scroll.c has several nested, indexed loops. SDCC 4.5 can spend
-            # minutes exploring 200k allocator alternatives here; bound only
-            # this translation unit so normal incremental builds stay quick.
-            if rel_src == "src/scroll.c":
-                cflags = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "5000",
-                          "--disable-warning", "110"]
-            run([SDCC] + INCLUDES + cflags + ["-c", src, "-o", rel])
+            run([SDCC] + INCLUDES + CFLAGS + ["-c", src, "-o", rel])
         objs.append(rel)
     ihx = os.path.join(obj, PROGNAME + ".ihx")
     run([SDCC] + LINKARGS + objs + ["-o", ihx])

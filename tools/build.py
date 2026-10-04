@@ -33,11 +33,11 @@ ASM_SOURCES = [
     "engine/zx0_decompress.s",
     "engine/video.s",
     "engine/isr.s",
+    "engine/sprite.s",
 ]
 C_SOURCES = [
     "engine/fdc.c",
     "src/render.c",
-    "src/sprite.c",
     "src/main.c",
 ]
 

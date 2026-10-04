@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
 """
-compose_m0.py - Munta sprites de Jake/Elwood a partir de PECES (cap + cames/cos)
-de les fulles C64 i els converteix a Mode 0 amb mascara, amb la taula
-d'animacions del joc.
+compose_m0.py - Munta sprites de Jake a partir de les peces C64 (1.bmp).
+Model C64: cap (00..04) + cames (01..05), BODY_OFF=13, CHAR_H=34.
 
-Model (C64): un personatge = 1 sprite de CAP + 1 sprite de CAMES, apilats en
-vertical. Un cap serveix per a varies cames. Nedar/arrossegar-se = 2 meitats
-en horitzontal (TODO).
-
-Taula d'animacions (indexs de la fulla jake_00..63):
-  idle   : cap 00 + cames 01
-  walk   : cap 00 + cames 01,02,03
-  jump   : cap 04 + peus 05
-  crouch : TODO (15,16,17)
-Sortida: binari Mode 0 [mask,img] + preview.
+Frames unics:
+  0: idle / walk1 (cap 00 + cames 01)
+  1: walk2        (cap 00 + cames 02)
+  2: walk3        (cap 00 + cames 03)
+  3: jump         (cap 04 + peus 05)
 """
 import argparse
 import os
@@ -21,11 +15,11 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CW, CH = 24, 21
-BG = (255, 251, 240)
+BG_COLORS = {(255, 251, 240), (255, 0, 255)}
 BODY_OFF = 13          # on es col·loca l'sprite de cames respecte el cap
-CHAR_H = BODY_OFF + CH  # alcada del personatge muntat
+CHAR_H = 30            # alcada real del personatge muntat (sense les 4 linies buides de sota)
 
-C64_COLORS = {(0, 0, 0): 0, (192, 192, 192): 15, (0, 0, 128): 1}
+C64_COLORS = {(0, 0, 0): 0, (192, 192, 192): 15, (0, 0, 128): 4}
 
 
 def load_sheet(path):
@@ -40,18 +34,19 @@ def compose(sheet, head_i, body_i, off=BODY_OFF, h=CHAR_H):
     """Munta head_i (a dalt) + body_i (a off) -> llista de files de colors."""
     head = sheet[head_i]
     body = sheet[body_i]
-    out = [[BG] * CW for _ in range(h)]
+    out = [[None] * CW for _ in range(h)]
     for y in range(CH):
-        for x in range(CW):
-            c = head[y][x]
-            if c != BG:
-                out[y][x] = c
+        if y < h:
+            for x in range(CW):
+                c = head[y][x]
+                if c not in BG_COLORS:
+                    out[y][x] = c
     for y in range(CH):
         Y = off + y
         if Y < h:
             for x in range(CW):
                 c = body[y][x]
-                if c != BG:
+                if c not in BG_COLORS:
                     out[Y][x] = c
     return out
 
@@ -65,7 +60,7 @@ def to_m0(rows):
             mask = 0
             for k in range(2):
                 col = rows[y][xb * 2 + k]
-                if col == BG:
+                if col is None or col in BG_COLORS:
                     continue
                 pen = C64_COLORS.get(col, 1) & 0x0F
                 if k == 0:
@@ -78,19 +73,20 @@ def to_m0(rows):
     return data
 
 
-ANIMS = [
-    ('idle', [(0, 1)]),
-    ('walk', [(0, 1), (0, 2), (0, 3)]),
-    ('jump', [(4, 5)]),
+UNIQUE_FRAMES = [
+    ('idle_walk1', 0, 1),
+    ('walk2', 0, 2),
+    ('walk3', 0, 3),
+    ('jump', 4, 5),
 ]
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('bmp')
+    ap.add_argument('bmp', nargs='?', default=r'assets\jake_elwood sprites\1.bmp')
     ap.add_argument('--prefix', default='jake')
     ap.add_argument('--frames-dir', default='assets/jake_elwood_sprites')
-    ap.add_argument('--preview', default=None)
+    ap.add_argument('--preview', default='tools/jake_composed_preview.png')
     args = ap.parse_args()
 
     sheet = load_sheet(args.bmp)
@@ -100,12 +96,11 @@ def main():
     index = []
     from PIL import Image
     preview_rows = []
-    for name, frames in ANIMS:
-        for (hi, bi) in frames:
-            rows = compose(sheet, hi, bi)
-            blob += to_m0(rows)
-            index.append((name, hi, bi))
-            preview_rows.append(rows)
+    for name, hi, bi in UNIQUE_FRAMES:
+        rows = compose(sheet, hi, bi)
+        blob += to_m0(rows)
+        index.append((name, hi, bi))
+        preview_rows.append(rows)
     out = os.path.join(args.frames_dir, '%s_composed_m0.bin' % args.prefix)
     open(out, 'wb').write(blob)
     print("binari:", out, len(blob), "bytes", "(%d frames x %d)" % (len(index), len(blob) // len(index)))
@@ -126,7 +121,7 @@ def main():
             for y in range(CHAR_H):
                 for x in range(CW):
                     c = rows[y][x]
-                    if c == BG:
+                    if c is None or c in BG_COLORS:
                         continue
                     for yy in range(S):
                         for xx in range(S):

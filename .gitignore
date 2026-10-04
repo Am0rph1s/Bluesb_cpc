@@ -1,5 +1,6 @@
 # Emulator + its bundled roms/software (huge, not ours)
 tools/ZEsarUX_windows-13.0/
+tools/blues_dos/
 
 # Build artifacts
 obj/
@@ -14,8 +15,13 @@ obj/
 # Scratch captures / debug images
 tools/*.bmp
 tools/*.png
+tools/*.gif
 *.bmp
+*.png
+*.gif
 autosnap-*.bmp
+bench.py
+test_*.py
 
 # Emulator scratch
 scratch/

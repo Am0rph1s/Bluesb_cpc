@@ -26,7 +26,7 @@ TRANSPARENT = (255, 251, 240)
 C64_COLORS = {
     (0, 0, 0): 0,          # negre  -> pen 0 (negre)   [vestit]
     (192, 192, 192): 15,   # gris   -> pen 15 (blanc)  [camisa]
-    (0, 0, 128): 1,        # blau   -> pen 1 (blau EGA)
+    (0, 0, 128): 4,        # blau   -> pen 4 (blau)
 }
 
 

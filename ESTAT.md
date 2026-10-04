@@ -17,23 +17,34 @@ nivell + Jake es mou. Les claus (després de moltes proves):
 `TILESET0.BIN` correcte (tile 16×16 = 64 B, 2 subtiles 8×8 de 32 B). El que passava
 era la càmera i l'inicialització de variables.
 
-### Estat actual del motor (`src/main.c`, `src/render.c`, `src/sprite.c`)
+### Estat actual del motor (`src/main.c`, `src/render.c`, `engine/sprite.s`)
 - Fons del magasin es dibuixa correcte (càmera inicial col 22, row 110).
-- Jake: 5 frames C64, blit amb màscara + desat de fons, **camina** (verificat:
-  `s_px8` augmenta amb "dreta", diff de pantalla ~385000 px) i **anima** (1-2-3-2).
-- Càmera: segueix el Jake (marge mort DEAD_L/R/T/B). `render_all` es re-crida quan
-  la càmera es mou (lent però funcional).
-- `update_scroll()`: de moment display start = 0 (el render dibuixa a 0xC000 directe).
-- **Test autònom**: `z.cpc_run("bluesb")` + `z.press_key(z.KEY_RIGHT, 2.0)`.
-
-### Pendent real
-- **Scroll fi per CRTC (Titus)**: `render_all` sencer cada moviment és lent. Cal
-  desplaçar el display start (R12/R13) en passos de paraula i re-renderitzar només
-  quan s'esgota el marge. (L'adreçament per blocs del CRTC complica el model de ring.)
-- Salt: `JUMP_VY` existeix però cal verificar-lo (capturat, no sempre visible).
-- Col·lisions reals amb el MAP/TRIG (ara terra pla a srow≥126).
-- Capgirar el Jake a l'esquerra (espejo).
-- Refinar la paleta per acostar-se a l'original DOS/Amiga.
+- **Sprites en ASM Z80 pur (`engine/sprite.s`)**:
+  - `_sprite_restore_player`: restauració ultra-ràpida amb `LDIR` (~9.000 T-states, 30 línies).
+  - `_sprite_blit_player`: blit amb màscara i desat de fons simultani (~35.000 T-states, 30 línies).
+  - **Arreglat el bug de barres verticals mirant a la dreta**: eliminat `ex af, af'` que acumulava deixalles entre bytes.
+  - **Resolució definitiva del tall de la meitat inferior (carrera del feix / V-Blank)**:
+    1. **Identificació de la causa física real**: La rutina anterior de blit era molt lenta (~48.000 T-states) a causa d'indexació amb `IY`, salts condicionals i variables temporals a memòria per cada byte. Sumant la restauració de fons (`LDIR`, ~9.000 T-states), el temps total des del VSYNC pujava a ~58.000 T-states.
+    2. Com que el feix d'electrons arriba a la línia 98 de Jake als 43.520 T-states i es mou 5,5 vegades més ràpid que el blitter (256 T-states/línia vs ~1.400), **el feix avançava al blitter a mitja alçada de l'sprite (línia ~111)**. La meitat inferior encara tenia el fons restaurat i es dibuixava a VRAM un cop el feix ja havia passat, sent esborrada al següent VSYNC abans que el feix pogués tornar-la a mostrar. Per això a la pausa d'scroll (on no es cridava el restore) l'sprite es veia sencer, però en joc normal només la meitat superior.
+    3. **Nou blitter desenrotllat ultra-ràpid (`engine/sprite.s`)**: Format `[inv_mask, img_masked]` precalculat a `tools/gen_player.py`. Per cada byte s'eliminen totes les branques, l'ús d'`IY` i els accessos a RAM: `ld a,(de) ; ld (bc),a ; inc bc ; and (hl) ; inc hl ; or (hl) ; inc hl ; ld (de),a ; inc de`. Blit complet de 30 línies en només **~21.000 T-states** (més del doble de ràpid).
+    4. Temps total de restauració + blit = ~30.000 T-states, acabant **13.000 T-states abans que el feix arribi a Jake**. L'sprite és 100% visible, sòlid i complet (cap, cos, cames i sabates) a 50 FPS reals sense cap tall.
+    5. **Optimització d'estat aturat (`src/main.c`)**: Quan Jake està quiet a la mateixa posició i fotograma, s'evita la restauració i redibuix innecessaris, deixant l'sprite absolutament ferm i sense parpalleig.
+- **Sprites Mode 0 (C64 24×30 px, 4 frames únics)**:
+  - Peces autèntiques C64 (`1.bmp`): `cap 00` + `cames 01..03` (idle/caminar), `cap 04` + `peus 05` (salt), `BODY_OFF = 13`.
+  - Format ajustat: 24×30 píxels (eliminades 4 línies buides a sota). Sola de sabata a la fila 29, recolzant exactament sobre la línia de superfície.
+  - Deduplicació: idle i pas 1 comparteixen frame.
+  - Blitter ASM ultra-ràpid: 30 línies en només ~21.000 T-states, buffer de fons de 360 bytes.
+- **Física i col·lisions de plataformes 1:1 (Titus)**:
+  - *One-Way Platforms* (caixes, taules, graons d'escala, op 14): mai bloquegen horitzontalment ni des de sota. En Jake les pot travessar caminant o saltant cap amunt.
+  - Únicament quan en Jake cau cap avall (`s_vy >= 0`) des de dalt, actuen com a suport i aterra a sobre.
+  - Sostres sòlids reals (`op == 20`) bloquegen el cap; plataformes no.
+  - En aturar-se (`move == 0`), torna fidelment a *idle* (peus junts a terra).
+- **Càmera i Scroll estil Titus (desplaçament lateral per columnes)**:
+  - Dins de la cambra, la càmera queda quieta a 50 FPS.
+  - Quan s'arriba a la vora (`DEAD_R = 120` / `DEAD_L = 16`), la càmera s'activa i es desplaça al següent bloc (`SHIFT_X = 12` subtiles).
+  - **Eliminat l'escombrat vertical cap avall**: `render_all` ara es fa per columnes d'esquerra a dreta.
+  - **Nova rutina `render_lateral(cam_col, cam_row, dir)`**: durant la transició, redibuixa la pantalla en 4 passos de 5 columnes sincronitzats amb VSYNC (80 ms en total) en la direcció del moviment (d'esquerra a dreta en avançar, de dreta a esquerra en recular).
+- **Dades i memòria**: Codi = 11.625 B (límit 0x3600, marge lliure de 1.943 bytes), `bluesb.dsk` llest per executar (`RUN"BLUESB"`).
 
 ## Objectiu
 Remake de *The Blues Brothers* per Amstrad CPC, text en català.

@@ -3,8 +3,14 @@
 
 #include "cpctelera.h"
 
-// Blit d'sprite [mask,img] per pixel, amb desat/restauracio de fons.
-void sprite_blit_bg(const u8* spr, u16 sy, u16 sx, u8 w, u8 h, u8* bg);
-void sprite_restore(const u8* bg, u16 sy, u16 sx, u8 w, u8 h);
+// Variables globals d'sprite
+extern u8 g_spr_y;
+extern u8 g_spr_x;
+extern u8 g_spr_flip;
+
+// Rutines ASM Z80
+void sprite_blit_player(const u8* spr);
+void sprite_restore_player(void);
+void cpc_wait_vsync_start(void);
 
 #endif

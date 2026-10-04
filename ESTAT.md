@@ -39,12 +39,22 @@ era la càmera i l'inicialització de variables.
   - Únicament quan en Jake cau cap avall (`s_vy >= 0`) des de dalt, actuen com a suport i aterra a sobre.
   - Sostres sòlids reals (`op == 20`) bloquegen el cap; plataformes no.
   - En aturar-se (`move == 0`), torna fidelment a *idle* (peus junts a terra).
-- **Càmera i Scroll estil Titus (desplaçament lateral per columnes)**:
-  - Dins de la cambra, la càmera queda quieta a 50 FPS.
-  - Quan s'arriba a la vora (`DEAD_R = 120` / `DEAD_L = 16`), la càmera s'activa i es desplaça al següent bloc (`SHIFT_X = 12` subtiles).
-  - **Eliminat l'escombrat vertical cap avall**: `render_all` ara es fa per columnes d'esquerra a dreta.
-  - **Nova rutina `render_lateral(cam_col, cam_row, dir)`**: durant la transició, redibuixa la pantalla en 4 passos de 5 columnes sincronitzats amb VSYNC (80 ms en total) en la direcció del moviment (d'esquerra a dreta en avançar, de dreta a esquerra en recular).
-- **Dades i memòria**: Codi = 11.625 B (límit 0x3600, marge lliure de 1.943 bytes), `bluesb.dsk` llest per executar (`RUN"BLUESB"`).
+- **Càmera i Scroll Continu 2D (estil C64 / Amiga)**:
+  - *Deadzone* central 2D: en Jake es mou lliurement a la zona central de la pantalla (`DEAD_L = 48`, `DEAD_R = 88` en horitzontal; `DEAD_T = 32`, `DEAD_B = 116` en vertical) sense moviment de càmera (50 FPS sòlids).
+  - **Seguiment horitzontal continu (pas d'1 subtile = 8 px)**:
+    - En creuar la dreta (`sx > 88`): la càmera avança 1 subtile (`g_cam_col++`).
+    - En creuar l'esquerra (`sx < 48`): la càmera recula 1 subtile (`g_cam_col--`).
+    - `_scroll_shift_left_4` i `_scroll_shift_right_4` a [`engine/sprite.s`](file:///C:/Projects/bluesb_cpc/engine/sprite.s): desplacen 4 bytes en ASM amb `LDIR`/`LDDR`.
+    - Streaming incremental de la columna de vora amb `render_column(cam_col, cam_row, 19/0)`.
+  - **Seguiment vertical continu (pas d'1 subtile = 8 scanlines)**:
+    - En caure o baixar (`sy > 116`): la càmera avança 1 subtile cap avall (`g_cam_row++`).
+    - En saltar o pujar escales (`sy < 32`): la càmera recula 1 subtile cap amunt (`g_cam_row--`).
+    - `_scroll_shift_up_8`: desplaça les 19 files cap amunt amb 8 blocs `LDIR` de 1520 bytes (un per cada línia de trama intercalada RA=0..7).
+    - `_scroll_shift_down_8`: desplaça les 19 files cap avall amb 8 blocs `LDDR` de 1520 bytes.
+    - Streaming incremental de la fila nova amb `render_row(cam_col, cam_row, 19/0)`.
+  - **Ordre net de renderitzat**: primer es restaura el fons d'en Jake, després es desplaça la pantalla en ASM i es bliteja la fila/columna d'entrada, i finalment es desa el nou fons i es dibuixa en Jake a la nova posició `dsx, dsy`.
+  - Sense parpalleig, sense trencaments gràfics ni salts sobtats de mig bloc.
+- **Dades i memòria**: Codi = 11.950 B (límit 0x3600, marge lliure de **1.618 bytes**), `bluesb.dsk` llest per executar (`RUN"BLUESB"`).
 
 ## Objectiu
 Remake de *The Blues Brothers* per Amstrad CPC, text en català.

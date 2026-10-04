@@ -12,9 +12,14 @@
 
     .globl _sprite_blit_player
     .globl _sprite_restore_player
+    .globl _scroll_shift_left_4
+    .globl _scroll_shift_right_4
+    .globl _scroll_shift_up_8
+    .globl _scroll_shift_down_8
     .globl _g_spr_y
     .globl _g_spr_x
     .globl _g_spr_flip
+    .globl _g_vram_base_hi
     .globl _scr_addr_table
 
     ;; ============================================================
@@ -25,15 +30,19 @@
 _g_spr_y::          .db 0
 _g_spr_x::          .db 0
 _g_spr_flip::       .db 0
+_g_vram_base_hi::   .db 0xC0
 
-_s_old_y:           .db 0
-_s_old_x:           .db 0
+_s_old_y_c0:        .db 0
+_s_old_x_c0:        .db 0
+_s_old_y_80:        .db 0
+_s_old_x_80:        .db 0
 s_cur_y:            .db 0
 s_line_cnt:         .db 0
 s_spr_ptr:          .dw 0
 s_bg_read_ptr:      .dw 0
 
-_s_player_bg:       .ds 360     ;; 12 bytes * 30 linies = 360 bytes
+_s_player_bg_c0:    .ds 360     ;; 12 bytes * 30 linies = 360 bytes (pàgina 0xC000)
+_s_player_bg_80:    .ds 360     ;; 12 bytes * 30 linies = 360 bytes (pàgina 0x8000)
 
 
     ;; ============================================================
@@ -43,19 +52,28 @@ _s_player_bg:       .ds 360     ;; 12 bytes * 30 linies = 360 bytes
 
 ;; ============================================================
 ;; void sprite_restore_player(void)
-;;   Restaura el fons darrera del personatge usant LDIR
+;;   Restaura el fons darrera del personatge al buffer actiu usant LDIR
 ;; ============================================================
 _sprite_restore_player::
-    ld      a, (_s_old_y)
+    ld      a, (_g_vram_base_hi)
+    cp      #0x80
+    jr      z, 9$
+    ld      a, (_s_old_y_c0)
     ld      (s_cur_y), a
-    ld      hl, #_s_player_bg
+    ld      hl, #_s_player_bg_c0
     ld      (s_bg_read_ptr), hl
-
+    jr      8$
+9$:
+    ld      a, (_s_old_y_80)
+    ld      (s_cur_y), a
+    ld      hl, #_s_player_bg_80
+    ld      (s_bg_read_ptr), hl
+8$:
     ld      b, #30              ;; 30 linies
 rst_line_loop:
     push    bc
 
-    ;; Adreca VRAM linia: DE = _scr_addr_table[s_cur_y] + _s_old_x
+    ;; Adreca VRAM linia: DE = _scr_addr_table[s_cur_y] + old_x
     ld      a, (s_cur_y)
     ld      l, a
     ld      h, #0
@@ -66,12 +84,24 @@ rst_line_loop:
     inc     hl
     ld      d, (hl)             ;; DE = base scanline VRAM
 
-    ld      a, (_s_old_x)
+    ld      a, (_g_vram_base_hi)
+    cp      #0x80
+    jr      z, 3$
+    ld      a, (_s_old_x_c0)
+    jr      4$
+3$:
+    ld      a, (_s_old_x_80)
+4$:
     add     a, e
     ld      e, a
     jr      nc, 1$
     inc     d
 1$:                             ;; DE = adreca VRAM desti
+    ld      a, (_g_vram_base_hi)
+    cp      #0x80
+    jr      nz, 2$
+    res     6, d                ;; Si base és 0x8000, 0xC0..0xF8 -> 0x80..0xB8
+2$:
     ld      hl, (s_bg_read_ptr) ;; HL = buffer fons font
 
     ld      bc, #12
@@ -84,6 +114,120 @@ rst_line_loop:
 
     pop     bc
     djnz    rst_line_loop
+    ret
+
+
+;; ============================================================
+;; void scroll_shift_left_4(void)
+;;   Desplaça les 160 línies de joc 4 bytes (8 px en Mode 0) cap a l'esquerra.
+;; ============================================================
+_scroll_shift_left_4::
+    ld      hl, #_scr_addr_table
+    ld      a, #160
+1$:
+    push    af
+    ld      e, (hl)
+    inc     hl
+    ld      d, (hl)
+    inc     hl                  ;; DE = inici línia VRAM (destí)
+    ld      a, (_g_vram_base_hi)
+    cp      #0x80
+    jr      nz, 2$
+    res     6, d
+2$:
+    push    hl
+    ld      hl, #4
+    add     hl, de              ;; HL = DE + 4 (font)
+    ld      bc, #76             ;; 19 columnes * 4 bytes = 76 bytes
+    ldir
+    pop     hl
+    pop     af
+    dec     a
+    jr      nz, 1$
+    ret
+
+;; ============================================================
+;; void scroll_shift_right_4(void)
+;;   Desplaça les 160 línies de joc 4 bytes (8 px en Mode 0) cap a la dreta.
+;; ============================================================
+_scroll_shift_right_4::
+    ld      hl, #_scr_addr_table
+    ld      a, #160
+1$:
+    push    af
+    ld      e, (hl)
+    inc     hl
+    ld      d, (hl)
+    inc     hl                  ;; DE = inici línia VRAM
+    ld      a, (_g_vram_base_hi)
+    cp      #0x80
+    jr      nz, 2$
+    res     6, d
+2$:
+    push    hl
+    ld      hl, #79
+    add     hl, de              ;; HL = base + 79
+    ld      bc, #75
+    ex      de, hl              ;; DE = base + 79 (destí fi), HL = base
+    add     hl, bc              ;; HL = base + 75 (font fi)
+    ld      bc, #76             ;; 76 bytes cap avall
+    lddr
+    pop     hl
+    pop     af
+    dec     a
+    jr      nz, 1$
+    ret
+
+;; ============================================================
+;; void scroll_shift_up_8(void)
+;;   Desplaça les 20 files de subtiles 1 subtile (8 scanlines) cap amunt.
+;;   Files 1..19 passen a ser 0..18. La fila 19 queda lliure per render_row.
+;; ============================================================
+_scroll_shift_up_8::
+    ld      a, (_g_vram_base_hi)
+    ld      c, a                ;; C = base_h (0xC0 o 0x80)
+    ld      b, #8               ;; 8 línies de trama
+1$:
+    push    bc
+    ld      d, c
+    ld      e, #0x00            ;; DE = destí (base_h : 00)
+    ld      h, c
+    ld      l, #80              ;; HL = font (base_h : 80)
+    ld      bc, #1520           ;; 19 files * 80 bytes = 1520 bytes
+    ldir
+    pop     bc
+    ld      a, c
+    add     a, #8               ;; Següent línia de trama (+0x0800)
+    ld      c, a
+    djnz    1$
+    ret
+
+;; ============================================================
+;; void scroll_shift_down_8(void)
+;;   Desplaça les 20 files de subtiles 1 subtile (8 scanlines) cap avall.
+;;   Files 0..18 passen a ser 1..19. La fila 0 queda lliure per render_row.
+;; ============================================================
+_scroll_shift_down_8::
+    ld      a, (_g_vram_base_hi)
+    ld      c, a                ;; C = base_h (0xC0 o 0x80)
+    ld      b, #8               ;; 8 línies de trama
+1$:
+    push    bc
+    ld      a, c
+    add     a, #6
+    ld      d, a
+    ld      e, #63              ;; DE = base + 1599 = (base_h + 6):63 (destí fi)
+    ld      a, c
+    add     a, #5
+    ld      h, a
+    ld      l, #239             ;; HL = base + 1519 = (base_h + 5):239 (font fi)
+    ld      bc, #1520
+    lddr
+    pop     bc
+    ld      a, c
+    add     a, #8
+    ld      c, a
+    djnz    1$
     ret
 
 
@@ -115,14 +259,24 @@ _sprite_blit_player::
     ld      (s_spr_ptr), hl
 
     ld      a, (_g_spr_y)
-    ld      (_s_old_y), a
     ld      (s_cur_y), a
 
+    ld      a, (_g_vram_base_hi)
+    cp      #0x80
+    jr      z, 1$
+    ld      a, (_g_spr_y)
+    ld      (_s_old_y_c0), a
     ld      a, (_g_spr_x)
-    ld      (_s_old_x), a
-
-    ld      bc, #_s_player_bg   ;; BC = punter desti de desat de fons
-
+    ld      (_s_old_x_c0), a
+    ld      bc, #_s_player_bg_c0
+    jr      2$
+1$:
+    ld      a, (_g_spr_y)
+    ld      (_s_old_y_80), a
+    ld      a, (_g_spr_x)
+    ld      (_s_old_x_80), a
+    ld      bc, #_s_player_bg_80
+2$:
     ld      a, #30              ;; 30 linies
     ld      (s_line_cnt), a
 
@@ -139,12 +293,17 @@ blit_line:
     inc     hl
     ld      d, (hl)             ;; DE = adreca scanline VRAM
 
-    ld      a, (_s_old_x)
+    ld      a, (_g_spr_x)
     add     a, e
     ld      e, a
     jr      nc, 3$
     inc     d
 3$:
+    ld      a, (_g_vram_base_hi)
+    cp      #0x80
+    jr      nz, 4$
+    res     6, d                ;; Si base és 0x8000, 0xC0..0xF8 -> 0x80..0xB8
+4$:
     ld      hl, (s_spr_ptr)     ;; HL = sprite [inv_mask, img_masked]
 
     pop     bc                  ;; Recuperar BC = bg_write_ptr

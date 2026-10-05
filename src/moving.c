@@ -112,8 +112,10 @@ void moving_restore(u8 page, u8 force) {
     }
 }
 
-void moving_draw(u8 page) {
+void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
     u8 i, y, x;
+    i16 view_x = (i16)(cam_x4 << 2);
+    i16 view_y = (i16)(cam_row << 3);
     if (page > 1) return;
 
     for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
@@ -125,6 +127,13 @@ void moving_draw(u8 page) {
         if (e->drawn[page]) continue;
         world_x = (i16)(e->center_x - ELEVATOR_SPR_HALF_W);
         world_y = (i16)(e->y - ELEVATOR_OBJECT_H);
+        // The ring contains only the viewport-sized working set. Off-screen
+        // world positions alias into visible VRAM after the CRTC wrap, so
+        // never blit an elevator unless its sprite intersects this viewport.
+        if (world_x + ELEVATOR_WIDTH_PX <= view_x ||
+            world_x >= view_x + 160 ||
+            world_y + ELEVATOR_H <= view_y ||
+            world_y >= view_y + 160) continue;
         frame = e->frame ? g_elevator_frame_1 : g_elevator_frame_0;
 
         for (y = 0; y < ELEVATOR_H; y++) {

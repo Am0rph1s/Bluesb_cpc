@@ -31,7 +31,7 @@ extern MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
 void moving_init(void);
 void moving_update(void);
 void moving_restore(u8 page, u8 force);
-void moving_draw(u8 page);
+void moving_draw(u8 page, u16 cam_x4, u16 cam_row);
 u8 level_get_tile_type(u16 col, u16 row);
 i8 moving_find_landing(i16 player_x, i16 previous_feet, i16 current_feet,
                        i16 vy, i16* player_top);

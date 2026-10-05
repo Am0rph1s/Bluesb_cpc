@@ -198,13 +198,13 @@ void main(void) {
     // Inicialitzar la primera pàgina visible (0xC000)
     g_vram_base_hi = 0xC0;
     render_all(g_cam_x4, g_cam_row);
-    moving_draw(0);
+    moving_draw(0, g_cam_x4, g_cam_row);
     crtc_set_display_start((u16)(0x3000 + g_vram_start));
 
     // I preparar el backbuffer a 0x8000 amb el mateix fons
     g_vram_base_hi = 0x80;
     render_all(g_cam_x4, g_cam_row);
-    moving_draw(1);
+    moving_draw(1, g_cam_x4, g_cam_row);
     s_back_page = 1; // El proper frame actiu serà a 0x8000
 
     s_px8 = (i16)(START_PX * SUB);
@@ -450,7 +450,7 @@ void main(void) {
         g_vram_start = camera_ma(g_cam_x4, g_cam_row);
 
         // Redraw moving objects over the updated background.
-        moving_draw(s_back_page);
+        moving_draw(s_back_page, g_cam_x4, g_cam_row);
 
         // --- Dibuix d'Sprite al BACKBUFFER (fora de pantalla, 0 flicker!) ---
         g_spr_y = (u8)dsy;

@@ -12,6 +12,13 @@
 #define ELEVATOR_SPR_HALF_W 8
 
 MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
+u16 g_moving_dst;
+u16 g_moving_background;
+u16 g_moving_sprite;
+u8 g_moving_span;
+
+extern void moving_blit_span(void);
+extern void moving_restore_span(void);
 
 // These are object slots 19..23 (type 7, object opcode 4) in cyxx/blues'
 // Magasin level data. X is halved because DOS/Amiga graphics are 320 px wide.
@@ -43,6 +50,10 @@ void moving_init(void) {
         e->frame = 0;
         e->drawn[0] = e->drawn[1] = 0;
         e->drawn_frame[0] = e->drawn_frame[1] = 0;
+        e->drawn_start_byte[0] = e->drawn_start_byte[1] = 0;
+        e->drawn_byte_count[0] = e->drawn_byte_count[1] = 0;
+        e->drawn_start_row[0] = e->drawn_start_row[1] = 0;
+        e->drawn_row_count[0] = e->drawn_row_count[1] = 0;
         e->drawn_x[0] = e->drawn_x[1] = 0;
         e->drawn_y[0] = e->drawn_y[1] = 0;
     }
@@ -94,28 +105,31 @@ static u8 elevator_needs_redraw(const MovingElevator* e, u8 page) {
 }
 
 void moving_restore(u8 page, u8 force) {
-    u8 i, y, x;
+    u8 i, y;
     if (page > 1) return;
 
     for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
         MovingElevator* e = &g_mag_elevators[i];
         if (!e->drawn[page] || (!force && !elevator_needs_redraw(e, page))) continue;
 
-        for (y = 0; y < ELEVATOR_H; y++) {
-            i16 world_y = (i16)(e->drawn_y[page] + y);
-            u8* dst = ring_address(page, e->drawn_x[page], world_y);
-            for (x = 0; x < ELEVATOR_W_BYTES; x++) {
-                *dst = e->bg[page][(u16)y * ELEVATOR_W_BYTES + x];
-                dst++;
-                if (((u16)dst & 0x07FF) == 0) dst = (u8*)((u16)dst - 0x0800);
-            }
+        for (y = 0; y < e->drawn_row_count[page]; y++) {
+            u8 sprite_row;
+            u16 bg_off;
+            sprite_row = (u8)(e->drawn_start_row[page] + y);
+            bg_off = (u16)sprite_row * ELEVATOR_W_BYTES + e->drawn_start_byte[page];
+            g_moving_dst = (u16)ring_address(page,
+                (i16)(e->drawn_x[page] + e->drawn_start_byte[page] * 2),
+                (i16)(e->drawn_y[page] + sprite_row));
+            g_moving_background = (u16)&e->bg[page][bg_off];
+            g_moving_span = e->drawn_byte_count[page];
+            moving_restore_span();
         }
         e->drawn[page] = 0;
     }
 }
 
 void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
-    u8 i, y, x;
+    u8 i, y;
     i16 view_x = (i16)(cam_x4 << 2);
     i16 view_y = (i16)(cam_row << 3);
     if (page > 1) return;
@@ -124,6 +138,8 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
         MovingElevator* e = &g_mag_elevators[i];
         i16 world_x;
         i16 world_y;
+        i16 clip_x0, clip_x1, clip_y0, clip_y1;
+        u8 start_byte, byte_count, start_row, row_count;
         const u8* frame;
 
         if (e->drawn[page]) continue;
@@ -132,24 +148,34 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
         // The ring contains only the viewport-sized working set. Off-screen
         // world positions alias into visible VRAM after the CRTC wrap, so
         // never blit an elevator unless its sprite intersects this viewport.
-        if (world_x + ELEVATOR_SPR_WIDTH_PX <= view_x ||
-            world_x >= view_x + 160 ||
-            world_y + ELEVATOR_H <= view_y ||
-            world_y >= view_y + 160) continue;
+        clip_x0 = world_x > view_x ? world_x : view_x;
+        clip_x1 = world_x + ELEVATOR_SPR_WIDTH_PX < view_x + 160 ?
+                  (i16)(world_x + ELEVATOR_SPR_WIDTH_PX) : (i16)(view_x + 160);
+        clip_y0 = world_y > view_y ? world_y : view_y;
+        clip_y1 = world_y + ELEVATOR_H < view_y + 160 ?
+                  (i16)(world_y + ELEVATOR_H) : (i16)(view_y + 160);
+        if (clip_x0 >= clip_x1 || clip_y0 >= clip_y1) continue;
+
+        start_byte = (u8)((clip_x0 - world_x) >> 1);
+        byte_count = (u8)((clip_x1 - clip_x0) >> 1);
+        start_row = (u8)(clip_y0 - world_y);
+        row_count = (u8)(clip_y1 - clip_y0);
         frame = e->frame ? g_elevator_frame_1 : g_elevator_frame_0;
 
-        for (y = 0; y < ELEVATOR_H; y++) {
-            i16 line_y = (i16)(world_y + y);
-            u8* dst = ring_address(page, world_x, line_y);
-            for (x = 0; x < ELEVATOR_W_BYTES; x++) {
-                u16 off = ((u16)y * ELEVATOR_W_BYTES + x) << 1;
-                u8 bg = *dst;
-                e->bg[page][(u16)y * ELEVATOR_W_BYTES + x] = bg;
-                *dst = (u8)((bg & frame[off]) | frame[off + 1]);
-                dst++;
-                if (((u16)dst & 0x07FF) == 0) dst = (u8*)((u16)dst - 0x0800);
-            }
+        for (y = 0; y < row_count; y++) {
+            u8 sprite_row = (u8)(start_row + y);
+            u16 bg_off = (u16)sprite_row * ELEVATOR_W_BYTES + start_byte;
+            u16 frame_off = bg_off << 1;
+            g_moving_dst = (u16)ring_address(page, clip_x0, (i16)(clip_y0 + y));
+            g_moving_background = (u16)&e->bg[page][bg_off];
+            g_moving_sprite = (u16)(frame + frame_off);
+            g_moving_span = byte_count;
+            moving_blit_span();
         }
+        e->drawn_start_byte[page] = start_byte;
+        e->drawn_byte_count[page] = byte_count;
+        e->drawn_start_row[page] = start_row;
+        e->drawn_row_count[page] = row_count;
         e->drawn_x[page] = world_x;
         e->drawn_y[page] = world_y;
         e->drawn_frame[page] = e->frame;

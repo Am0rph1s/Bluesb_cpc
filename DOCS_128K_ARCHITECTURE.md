@@ -20,9 +20,9 @@ El joc s'executa en mode bare-metal (sense firmware AMSDOS en temps de joc) apro
 |                              RAM BASE (64 KB)                           |
 +-------------------+-----------------------------------------------------+
 | 0x0000 - 0x00FF   | Vectors del sistema Z80 (ISR IM 1 a 0x0038)        |
-| 0x0100 - 0x29D4   | Codi executable (_CODE: C + ASM + taules constants) |
-| 0x3200 - 0x39FC   | Variables globals i dades estàtiques (_DATA)        |
-| 0x39FD - 0x3FFE   | PILA CPU (SP=0x3FFE; ~1,5 KB disponibles)            |
+| 0x0100 - 0x2C86   | Codi executable (_CODE: C + ASM + taules constants) |
+| 0x3200 - 0x3A29   | Variables globals i dades estàtiques (_DATA)        |
+| 0x3A2A - 0x3FFE   | PILA CPU (SP=0x3FFE; ~1,5 KB disponibles)            |
 +-------------------+-----------------------------------------------------+
 | 0x4000 - 0x7FFF   | Finestra de Bank Switching (Bancs 4..7 de 16 KB)   |
 |                   | - En descans (0xC0): RAM Base Bloc 1               |
@@ -73,7 +73,7 @@ Per garantir estabilitat absoluta:
    LINKARGS = ["-mz80", "--no-std-crt0", "-Wl-u", "--code-loc", "0x0100", "--data-loc", "0x3200", "-Wl-x"]
    ```
    Les dades globals se situen a partir de `0x3200`; al build actual `_CODE`
-   acaba a `0x29D5` i `_DATA` a `0x39F9`, sense codi executable dins la finestra
+   acaba a `0x2C87` i les dades inicialitzades a `0x3A2A`, sense codi executable dins la finestra
    commutable de `0x4000..0x7FFF`.
 
 ---
@@ -155,10 +155,10 @@ subtile complet de 8 px. Verticalment l'offset avança 40 paraules per subtile.
 fotogrames als extrems, es mou 2 px per fotograma i canvia de direcció quan
 troba el `tile_type == 10` de parada: `ypos16 - 4` en pujar i `ypos16 + 1`
 en baixar. Les dues pàgines desen/restauren el fons independentment.
-El blitter només els dibuixa si intersecten el viewport de 160×160 px; això
-evita que posicions llunyanes aliasin dins el ring circular CRTC.
-El blit i la restauració calculen l'adreça una sola vegada per línia i després
-copien els bytes en seqüència, reduint el cost per fotograma.
+El blitter només els dibuixa si intersecten el viewport de 160×160 px i retalla
+les files/bytes que en queden fora; així cap píxel de l'ascensor pot aliasar a
+l'altra banda del ring CRTC. `engine/moving_blit.s` bliteja i restaura cada fila
+amb una rutina Z80, reutilitzant l'adreça inicial de la fila.
 
 Jake pot aterrar-hi i queda transportat pel delta vertical de la plataforma;
 les cintes es detecten pels `op_func` 27 (dreta) i 28 (esquerra), i hi afegeixen

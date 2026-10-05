@@ -22,6 +22,10 @@ typedef struct {
     u8 frame;
     u8 drawn[2];
     u8 drawn_frame[2];
+    u8 drawn_start_byte[2];
+    u8 drawn_byte_count[2];
+    u8 drawn_start_row[2];
+    u8 drawn_row_count[2];
     i16 drawn_x[2];
     i16 drawn_y[2];
     u8 bg[2][ELEVATOR_BG_SIZE];

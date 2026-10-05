@@ -157,6 +157,8 @@ troba el `tile_type == 10` de parada: `ypos16 - 4` en pujar i `ypos16 + 1`
 en baixar. Les dues pàgines desen/restauren el fons independentment.
 El blitter només els dibuixa si intersecten el viewport de 160×160 px; això
 evita que posicions llunyanes aliasin dins el ring circular CRTC.
+El blit i la restauració calculen l'adreça una sola vegada per línia i després
+copien els bytes en seqüència, reduint el cost per fotograma.
 
 Jake pot aterrar-hi i queda transportat pel delta vertical de la plataforma;
 les cintes es detecten pels `op_func` 27 (dreta) i 28 (esquerra), i hi afegeixen

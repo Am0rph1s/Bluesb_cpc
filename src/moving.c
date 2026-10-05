@@ -21,8 +21,8 @@ static const u8 s_map_col[MAG_ELEVATOR_COUNT] = { 95, 101, 95, 101, 38 };
 
 extern u8 level_get_tile_type(u16 col, u16 row);
 
-static u8* ring_address(u8 page, i16 x, i16 y, u8 byte_x) {
-    u16 x_byte = (u16)((x >> 1) + byte_x);
+static u8* ring_address(u8 page, i16 x, i16 y) {
+    u16 x_byte = (u16)(x >> 1);
     u16 ma = (u16)((((u16)(y >> 3) * 40) + (x_byte >> 1)) & 0x03FF);
     u16 offset = (u16)(((ma << 1) + (x_byte & 1)) & 0x07FF);
     u16 base = page ? 0x8000 : 0xC000;
@@ -103,9 +103,11 @@ void moving_restore(u8 page, u8 force) {
 
         for (y = 0; y < ELEVATOR_H; y++) {
             i16 world_y = (i16)(e->drawn_y[page] + y);
+            u8* dst = ring_address(page, e->drawn_x[page], world_y);
             for (x = 0; x < ELEVATOR_W_BYTES; x++) {
-                *ring_address(page, e->drawn_x[page], world_y, x) =
-                    e->bg[page][(u16)y * ELEVATOR_W_BYTES + x];
+                *dst = e->bg[page][(u16)y * ELEVATOR_W_BYTES + x];
+                dst++;
+                if (((u16)dst & 0x07FF) == 0) dst = (u8*)((u16)dst - 0x0800);
             }
         }
         e->drawn[page] = 0;
@@ -130,7 +132,7 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
         // The ring contains only the viewport-sized working set. Off-screen
         // world positions alias into visible VRAM after the CRTC wrap, so
         // never blit an elevator unless its sprite intersects this viewport.
-        if (world_x + ELEVATOR_WIDTH_PX <= view_x ||
+        if (world_x + ELEVATOR_SPR_WIDTH_PX <= view_x ||
             world_x >= view_x + 160 ||
             world_y + ELEVATOR_H <= view_y ||
             world_y >= view_y + 160) continue;
@@ -138,12 +140,14 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
 
         for (y = 0; y < ELEVATOR_H; y++) {
             i16 line_y = (i16)(world_y + y);
+            u8* dst = ring_address(page, world_x, line_y);
             for (x = 0; x < ELEVATOR_W_BYTES; x++) {
                 u16 off = ((u16)y * ELEVATOR_W_BYTES + x) << 1;
-                u8* dst = ring_address(page, world_x, line_y, x);
                 u8 bg = *dst;
                 e->bg[page][(u16)y * ELEVATOR_W_BYTES + x] = bg;
                 *dst = (u8)((bg & frame[off]) | frame[off + 1]);
+                dst++;
+                if (((u16)dst & 0x07FF) == 0) dst = (u8*)((u16)dst - 0x0800);
             }
         }
         e->drawn_x[page] = world_x;

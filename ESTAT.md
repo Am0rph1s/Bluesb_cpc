@@ -1,23 +1,31 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-05 — scroll CRTC amb rings de VRAM.
+Última actualització: 2026-10-05 — Proporcions 1:1 d'en Jake, paleta completa i física a 25 Hz.
 Idioma de treball amb l'usuari: **català**.
 
-## Estat vigent — scroll CRTC
+## Estat vigent — Proporcions 1:1, paleta i física a 25 Hz
 
-- El scroll ja no copia/desplaça tota la finestra de VRAM. R12/R13 del CRTC
-  seleccionen l'origen MA circular: `(cam_row * 40 + cam_x4) & 0x03FF`.
-- El seguiment horitzontal avança ara en unitats de 4 px (una paraula MA), i
-  `render_column()` dibuixa la meitat de tile corresponent a la vora entrant.
-- `render_column()` i `render_row()` pinten només les vores entrants als dos
-  backbuffers; `engine/tile_blit.s` fa la còpia de subtiles a VRAM en Z80.
-- `engine/sprite.s` calcula adreces de Jake amb l'origen MA i tracta el wrap de
-  2 KB; es mantenen buffers de fons independents per les dues pàgines.
-- El display actiu és de 20 files CRTC (160 línies), coherent amb el viewport
-  20x20. La descripció tècnica autoritativa és `DOCS_128K_ARCHITECTURE.md`.
-- Les notes posteriors d'aquest fitxer que parlen de `scroll_shift_*` descriuen
-  l'arquitectura anterior i són històriques.
-- Build provat a ZEsarUX: `bluesb.dsk`, scroll CRTC circular i doble buffer.
+- **Proporcions reals de Jake 1:1 respecte a l'escenari**:
+  - S'ha corregit la sobre-dimensió de l'sprite (abans duplicada a 24 px Mode 0 = 48 px Amiga).
+  - Mida nova: **12 px Mode 0 (6 bytes) × 30 línies** = 24 px Amiga (1,5 rajoles d'ample). Encaixa perfectament amb les caixes, els forats de terra i entre columnes com a C64 i Atari ST.
+- **Paleta de colors Mode 0 autèntica**:
+  - Pen 1: Carn / pell (`0x47` rosa/carn a `video.s`) per a la cara i la mà que subjecta el barret.
+  - Pen 4: Blau marí (`0x44`) per al barret i el vestit.
+  - Pen 15: Blanc (`0x40`) per a la camisa.
+  - Pen 0: Negre (`0x54`) per a les ulleres de sol, sabates i vores.
+- **Optimització blitter i estalvi de memòria**:
+  - Blitter ASM desenrotllat en `.rept 6` i restauració de 6 bytes per línia (~10.500 T-states $\approx$ 2,6 ms, el doble de ràpid).
+  - Buffers de fons reduïts a la meitat: `_s_player_bg_c0` i `_s_player_bg_80` de 360 a **180 bytes** cadascun.
+  - Binari `PFRAMES.BIN` al banc 7 reduït de 5.760 a **2.880 bytes**.
+- **Física fidel i lògica a 25 Hz fixos**:
+  - Temporització fixa a 25 Hz (40 ms per cicle) via comptador `_g_ticks` a la ISR del CPC (12 ticks de 300 Hz), eliminant estrebades i fluctuacions.
+  - Salt fidel: `JUMP_VY = -136`, `GRAV = 22` (~3,2 rajoles d'alçada) i límit horitzontal a l'aire `SPEED_AIR = 14` (distància ~2,5 rajoles en lloc de 13).
+  - Col·lisions de paret ajustades a l'amplada de 12 px (sondes a `+10` dreta i `+1` esquerra).
+- **Scroll CRTC circular i doble buffer**:
+  - R12/R13 del CRTC seleccionen l'origen MA circular: `(cam_row * 40 + cam_x4) & 0x03FF`.
+  - El seguiment horitzontal avança en unitats de 4 px (una paraula MA), i `render_column()` dibuixa la meitat de tile de la vora entrant.
+  - Display actiu de 20 files CRTC (160 línies), doble buffer 100% flicker-free.
+  - Verificat autònomament a ZEsarUX amb captures a [informe_proporcions_jake.md](file:///C:/Users/esquerra/.gemini/antigravity/brain/1592641d-8217-48b5-aebf-30a79b1763e6/informe_proporcions_jake.md).
 
 ## 📚 Històric — sessió de neteja del motor Mode 0
 

@@ -52,7 +52,7 @@ El joc s'executa en mode bare-metal (sense firmware AMSDOS en temps de joc) apro
 +-------------------+-----------------------------------------------------+
 | Banc 6 (0xC6)     | Reservat (futur: cançons AKG / dades dels enemics)   |
 +-------------------+-----------------------------------------------------+
-| Banc 7 (0xC7)     | PFRAMES.BIN (5.760 B; frames masked de Jake)         |
+| Banc 7 (0xC7)     | PFRAMES.BIN (2.880 B; frames masked de Jake 12x30 px) |
 +-------------------+-----------------------------------------------------+
 ```
 
@@ -170,17 +170,17 @@ ascensors provenen dels frames 0 i 1 de `ENEMI1.SQV`, convertits amb
 
 ## 5. El Blitter d'Sprites (`engine/sprite.s`)
 
-El jugador (Jake) té una mida de **24x30 píxels** (en Mode 0: **12 bytes d'amplada per 30 línies d'alçada**).
+El jugador (Jake) té una mida de **12x30 píxels Mode 0** (en bytes: **6 bytes d'amplada per 30 línies d'alçada** = 1,5 rajoles), amb proporcions visuals 1:1 respecte a les versions C64 i Atari ST.
 
 ### 5.1 Format de les Dades
-Els frames es generen amb `tools/gen_player.py` a `assets/bbdata/PFRAMES.BIN` i es carreguen al banc 7 a `0x4000`. `src/player_frames.h` conté només els offsets i les dimensions; abans del blit, el codi mapeja el banc 7. Cada píxel té la màscara invertida i les dades acolorides combinades:
+Els frames es generen amb `tools/compose_m0.py` i `tools/gen_player.py` a `assets/bbdata/PFRAMES.BIN` (2.880 bytes per a 4 frames dreta + 4 frames esquerra) i es carreguen al banc 7 a `0x4000`. `src/player_frames.h` conté només els offsets i les dimensions (`PLAYER_FRAME_SIZE = 360`, `wb = 6`, `h = 30`). Cada píxel té la màscara invertida i les dades acolorides combinades:
 - `inv_mask`: bits a 0 on hi ha sprite, bits a 1 on es preserva el fons.
-- `img_masked`: píxels Mode 0 del personatge.
+- `img_masked`: píxels Mode 0 del personatge (Pen 1 carn, Pen 4 blau marí, Pen 15 blanc, Pen 0 negre).
 
 ### 5.2 Estructura Dual del Buffer de Fons
 Com que tenim dues pàgines de VRAM físiques independents (`0xC000` i `0x8000`), el fons que tapa el personatge a la pàgina A no és el mateix que a la pàgina B (degut a l'scroll i al moviment entre fotogrames). Per tant, el mòdul ASM manté **dos buffers de restauració de fons independents**:
-- `_s_player_bg_c0`: 360 bytes (12x30) per a la pàgina `0xC000`.
-- `_s_player_bg_80`: 360 bytes (12x30) per a la pàgina `0x8000`.
+- `_s_player_bg_c0`: 180 bytes (6x30) per a la pàgina `0xC000`.
+- `_s_player_bg_80`: 180 bytes (6x30) per a la pàgina `0x8000`.
 - Coordenades anteriors separades (`_s_old_x_c0`/`_s_old_y_c0` i `_s_old_x_80`/`_s_old_y_80`).
 
 ### 5.3 Adreçament sobre el ring CRTC
@@ -191,8 +191,8 @@ wrap de 2 KB quan la línia de Jake creua el límit físic del ring; el camí co
 no-wrap es manté desenrotllat per reduir el cost per fotograma.
 
 ### 5.4 Algorisme del Blitter
-El camí habitual bliteja 12 bytes per línia desenrotllats amb `.rept 12`, combinant
-la màscara i desant el fons alhora:
+El camí habitual bliteja 6 bytes per línia desenrotllats amb `.rept 6`, combinant
+la màscara i desant el fons alhora en només **~10.500 T-states (~2,6 ms)**:
 ```z80
     ld   a, (de)             ; Llegeix el fons existent a VRAM
     ld   (bc), a             ; Desa el fons original al buffer de restauració

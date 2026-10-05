@@ -9,9 +9,9 @@ BIN = os.path.join(PROJ, 'assets', 'jake_elwood_sprites', 'jake_composed_m0.bin'
 OUT = os.path.join(PROJ, 'src', 'player_frames.h')
 OUT_BIN = os.path.join(PROJ, 'assets', 'bbdata', 'PFRAMES.BIN')
 
-W_BYTES = 12
+W_BYTES = 6
 H = 30
-FRAME = W_BYTES * 2 * H   # 720 bytes
+FRAME = W_BYTES * 2 * H   # 360 bytes
 
 
 def flip_m0_byte(b):

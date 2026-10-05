@@ -7,6 +7,11 @@
     .optsdcc -mz80 sdcccall(1)
 
     .globl _cpc_install_isr
+    .globl _g_ticks
+
+    .area _DATA
+_g_ticks::
+    .db 0
 
     .area _CODE
 
@@ -20,5 +25,11 @@ _cpc_install_isr::
     ret
 
 isr_stub:
+    push    af
+    push    hl
+    ld      hl, #_g_ticks
+    inc     (hl)
+    pop     hl
+    pop     af
     ei
     reti

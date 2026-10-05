@@ -39,8 +39,8 @@ s_bg_read_ptr:      .dw 0
 s_addr_segment:     .db 0
 s_byte_cnt:         .db 0
 
-_s_player_bg_c0:    .ds 360     ;; 12 bytes * 30 linies = 360 bytes (pàgina 0xC000)
-_s_player_bg_80:    .ds 360     ;; 12 bytes * 30 linies = 360 bytes (pàgina 0x8000)
+_s_player_bg_c0:    .ds 180     ;; 6 bytes * 30 linies = 180 bytes (pàgina 0xC000)
+_s_player_bg_80:    .ds 180     ;; 6 bytes * 30 linies = 180 bytes (pàgina 0x8000)
 
 
     ;; ============================================================
@@ -107,14 +107,14 @@ rst_line_loop:
     cp      #0x07
     jr      nz, rst_fast_copy
     ld      a, e
-    cp      #0xF5
+    cp      #0xFA
     jr      nc, rst_wrap_copy
 rst_fast_copy:
-    ld      bc, #12
+    ld      bc, #6
     ldir
     jr      rst_copy_done
 rst_wrap_copy:
-    ld      b, #12
+    ld      b, #6
 rst_byte_loop:
     ld      a, (hl)
     ld      (de), a
@@ -257,10 +257,10 @@ blit_line:
     cp      #0x07
     jr      nz, blit_fast_line
     ld      a, e
-    cp      #0xF5
+    cp      #0xFA
     jp      nc, blit_wrap_line
 blit_fast_line:
-    .rept 12
+    .rept 6
     ld      a, (de)             ;; Llegir pantalla original
     ld      (bc), a             ;; Desar al buffer de fons
     inc     bc
@@ -274,7 +274,7 @@ blit_fast_line:
     jp      blit_line_done
 
 blit_wrap_line:
-    ld      a, #12
+    ld      a, #6
     ld      (s_byte_cnt), a
 blit_wrap_loop:
     ld      a, (de)

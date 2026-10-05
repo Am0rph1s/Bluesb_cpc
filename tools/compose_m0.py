@@ -15,6 +15,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CW, CH = 24, 21
+CW_M0 = 12
 BG_COLORS = {(255, 251, 240), (255, 0, 255)}
 BODY_OFF = 13          # on es col·loca l'sprite de cames respecte el cap
 CHAR_H = 30            # alcada real del personatge muntat (sense les 4 linies buides de sota)
@@ -31,38 +32,53 @@ def load_sheet(path):
 
 
 def compose(sheet, head_i, body_i, off=BODY_OFF, h=CHAR_H):
-    """Munta head_i (a dalt) + body_i (a off) -> llista de files de colors."""
+    """Munta head_i (a dalt) + body_i (a off) -> llista de files de colors (12 px M0)."""
     head = sheet[head_i]
     body = sheet[body_i]
-    out = [[None] * CW for _ in range(h)]
+    out = [[None] * CW_M0 for _ in range(h)]
     for y in range(CH):
         if y < h:
-            for x in range(CW):
-                c = head[y][x]
+            for x in range(CW_M0):
+                c = head[y][x * 2]
                 if c not in BG_COLORS:
                     out[y][x] = c
     for y in range(CH):
         Y = off + y
         if Y < h:
-            for x in range(CW):
-                c = body[y][x]
+            for x in range(CW_M0):
+                c = body[y][x * 2]
                 if c not in BG_COLORS:
                     out[Y][x] = c
     return out
 
 
-def to_m0(rows):
-    """rows: llista de h files de colors -> bytes [mask,img] per 2 px (Mode 0 interleaved)."""
+def to_m0(rows, is_jump=False):
+    """rows: llista de h files de colors -> bytes [mask,img] per 2 px (Mode 0 interleaved, 6 bytes/row)."""
     data = bytearray()
     for y in range(len(rows)):
-        for xb in range(CW // 2):
+        for xb in range(CW_M0 // 2):
             img = 0
             mask = 0
             for k in range(2):
-                col = rows[y][xb * 2 + k]
+                x = xb * 2 + k
+                col = rows[y][x]
                 if col is None or col in BG_COLORS:
                     continue
-                pen = C64_COLORS.get(col, 1) & 0x0F
+                if col == (0, 0, 0):
+                    pen = 0
+                elif col == (0, 0, 128):
+                    pen = 4
+                elif col == (192, 192, 192):
+                    if is_jump and y < 3 and x >= 6:
+                        pen = 1   # mà tocant el barret
+                    elif y < 13:
+                        pen = 1   # cara (pell)
+                    else:
+                        pen = 15  # camisa blanca
+                else:
+                    pen = 1
+                pen &= 0x0F
+
                 if k == 0:
                     mask |= 0xAA
                     img |= ((pen & 1) << 7) | (((pen >> 2) & 1) << 5) | (((pen >> 1) & 1) << 3) | (((pen >> 3) & 1) << 1)
@@ -98,7 +114,7 @@ def main():
     preview_rows = []
     for name, hi, bi in UNIQUE_FRAMES:
         rows = compose(sheet, hi, bi)
-        blob += to_m0(rows)
+        blob += to_m0(rows, is_jump=(name == 'jump'))
         index.append((name, hi, bi))
         preview_rows.append(rows)
     out = os.path.join(args.frames_dir, '%s_composed_m0.bin' % args.prefix)
@@ -106,26 +122,34 @@ def main():
     print("binari:", out, len(blob), "bytes", "(%d frames x %d)" % (len(index), len(blob) // len(index)))
 
     if args.preview:
-        pal = [(0, 0, 0), (0, 0, 170), (0, 170, 0), (0, 170, 170),
-               (170, 0, 0), (170, 0, 170), (170, 85, 0), (170, 170, 170),
-               (85, 85, 85), (0, 0, 255), (0, 255, 0), (0, 255, 255),
-               (255, 85, 85), (255, 0, 255), (255, 255, 85), (255, 255, 255)]
+        pal = [(0, 0, 0), (255, 140, 140), (0, 0, 0), (0, 0, 0),
+               (0, 0, 160), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+               (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0),
+               (0, 0, 0), (0, 0, 0), (0, 0, 0), (255, 255, 255)]
         S = 4
-        fw, fh = CW * S + 8, CHAR_H * S + 14
+        fw, fh = CW_M0 * S * 2 + 8, CHAR_H * S + 14
         im = Image.new('RGB', (len(preview_rows) * fw, fh), (120, 120, 160))
         from PIL import ImageDraw
         dr = ImageDraw.Draw(im)
         for k, rows in enumerate(preview_rows):
             ox = k * fw
             dr.text((ox + 2, 2), index[k][0], fill=(255, 255, 0))
+            is_jump = (index[k][0] == 'jump')
             for y in range(CHAR_H):
-                for x in range(CW):
+                for x in range(CW_M0):
                     c = rows[y][x]
                     if c is None or c in BG_COLORS:
                         continue
+                    if c == (0, 0, 0): pen = 0
+                    elif c == (0, 0, 128): pen = 4
+                    elif c == (192, 192, 192):
+                        if is_jump and y < 3 and x >= 6: pen = 1
+                        elif y < 13: pen = 1
+                        else: pen = 15
+                    else: pen = 1
                     for yy in range(S):
-                        for xx in range(S):
-                            im.putpixel((ox + x * S + xx, 14 + y * S + yy), pal[C64_COLORS.get(c, 1)])
+                        for xx in range(S * 2):
+                            im.putpixel((ox + x * S * 2 + xx, 14 + y * S + yy), pal[pen])
         im.save(args.preview)
         print("preview", args.preview)
 

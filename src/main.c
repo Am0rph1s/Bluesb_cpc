@@ -20,16 +20,18 @@ extern void render_column(u16 cam_col, u16 cam_row, u16 sx);
 extern void render_row(u16 cam_col, u16 cam_row, u16 sy);
 extern void crtc_set_display_start(u16 ma);
 extern void cpc_install_isr(void);
+extern volatile u8 g_ticks;
 
 #define SUB         8
 #define PH          30
-#define PW          24
-#define SPR_WB      12
-#define SPEED_MAX   24
-#define MOVE_ACC    4
+#define PW          12
+#define SPR_WB      6
+#define SPEED_MAX   28
+#define SPEED_AIR   14
+#define MOVE_ACC    6
 #define VY_MAX      (15 * SUB)
-#define GRAV        3
-#define JUMP_VY     (-52)
+#define GRAV        22
+#define JUMP_VY     (-136)
 
 #define LEVEL_W_PX  (128 * 8)
 #define DEAD_L      48
@@ -214,6 +216,7 @@ void main(void) {
     s_anim_idx = 0; s_anim_timer = 0;
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
+    u8 last_ticks = g_ticks;
 
     while (1) {
         i8  move = 0;
@@ -245,11 +248,14 @@ void main(void) {
         if (cpct_isKeyPressed(Key_Space) || cpct_isKeyPressed(Key_CursorUp) ||
             cpct_isKeyPressed(Joy0_Fire1)) { jump = 1; }
 
-        if (move > 0)      { s_vx = (i16)(s_vx + MOVE_ACC); if (s_vx >  SPEED_MAX) s_vx =  SPEED_MAX; }
-        else if (move < 0) { s_vx = (i16)(s_vx - MOVE_ACC); if (s_vx < -SPEED_MAX) s_vx = -SPEED_MAX; }
-        else {
-            if (s_vx > 0) { s_vx = (i16)(s_vx - MOVE_ACC); if (s_vx < 0) s_vx = 0; }
-            else if (s_vx < 0) { s_vx = (i16)(s_vx + MOVE_ACC); if (s_vx > 0) s_vx = 0; }
+        {
+            i16 max_spd = s_on_ground ? SPEED_MAX : SPEED_AIR;
+            if (move > 0)      { s_vx = (i16)(s_vx + MOVE_ACC); if (s_vx >  max_spd) s_vx =  max_spd; }
+            else if (move < 0) { s_vx = (i16)(s_vx - MOVE_ACC); if (s_vx < -max_spd) s_vx = -max_spd; }
+            else {
+                if (s_vx > 0) { s_vx = (i16)(s_vx - MOVE_ACC); if (s_vx < 0) s_vx = 0; }
+                else if (s_vx < 0) { s_vx = (i16)(s_vx + MOVE_ACC); if (s_vx > 0) s_vx = 0; }
+            }
         }
 
         py = (i16)(s_py8 >> 3);
@@ -258,8 +264,8 @@ void main(void) {
         belt_push = 0;
         if (s_on_ground) {
             u16 row = (u16)((py + PH) >> 4);
-            u16 col0 = (u16)((px + 7) >> 3);
-            u16 col1 = (u16)((px + 16) >> 3);
+            u16 col0 = (u16)((px + 3) >> 3);
+            u16 col1 = (u16)((px + 8) >> 3);
             belt_push = moving_conveyor_push(col0, col1, row);
             if (move == 0 && belt_push != 0) {
                 move = belt_push > 0 ? 1 : -1;
@@ -271,27 +277,27 @@ void main(void) {
         // --- Moviment horitzontal i col·lisió de parets 1:1 ---
         if (effective_vx > 0) {
             u16 next_px = (u16)((s_px8 + effective_vx) >> 3);
-            u16 c_right = (u16)((next_px + 18) >> 3);
+            u16 c_right = (u16)((next_px + 10) >> 3);
             u16 r_waist = (u16)((py + 16) >> 4);
             u16 r_head  = (u16)(py >> 4);
             u8 fl = get_tile_flags(c_right, r_waist) |
                     get_tile_flags(c_right, r_head);
             if (fl & 1) {
                 s_vx = 0;
-                s_px8 = (i16)(((c_right << 3) - 19) * SUB);
+                s_px8 = (i16)(((c_right << 3) - 11) * SUB);
             } else {
                 s_px8 = (i16)(s_px8 + effective_vx);
             }
         } else if (effective_vx < 0) {
             u16 next_px = (u16)((s_px8 + effective_vx) >> 3);
-            u16 c_left  = (u16)((next_px + 5) >> 3);
+            u16 c_left  = (u16)((next_px + 1) >> 3);
             u16 r_waist = (u16)((py + 16) >> 4);
             u16 r_head  = (u16)(py >> 4);
             u8 fl = get_tile_flags(c_left, r_waist) |
                     get_tile_flags(c_left, r_head);
             if (fl & 2) {
                 s_vx = 0;
-                s_px8 = (i16)(((c_left << 3) + 8 - 5) * SUB);
+                s_px8 = (i16)(((c_left << 3) + 8 - 1) * SUB);
             } else {
                 s_px8 = (i16)(s_px8 + effective_vx);
             }
@@ -320,8 +326,8 @@ void main(void) {
 
             {
                 i16 curr_feet = (i16)(py + PH);
-                u16 c_mid1 = (u16)((px + 7) >> 3);
-                u16 c_mid2 = (u16)((px + 16) >> 3);
+                u16 c_mid1 = (u16)((px + 3) >> 3);
+                u16 c_mid2 = (u16)((px + 8) >> 3);
                 u8 landed = 0;
 
                 if (s_vy >= 0) {
@@ -372,7 +378,7 @@ void main(void) {
                     }
                 } else {
                     u16 head_row = (u16)(py >> 4);
-                    u16 c_mid = (u16)((px + 11) >> 3);
+                    u16 c_mid = (u16)((px + 5) >> 3);
                     if (is_ceiling_solid(c_mid, head_row)) {
                         py = (i16)((head_row + 1) << 4);
                         s_py8 = (i16)(py * SUB);
@@ -465,7 +471,11 @@ void main(void) {
         }
         s_have_drawn[s_back_page] = 1;
 
-        // --- Sincronització amb VSYNC i Commutació de Pàgina de Vídeo (CRTC R12) ---
+        // --- Sincronització fixa a 25 Hz (12 ticks = 40 ms) i canvi de pàgina ---
+        while ((u8)(g_ticks - last_ticks) < 12) {
+        }
+        last_ticks = g_ticks;
+
         cpc_wait_vsync_start();
         crtc_set_display_start((u16)((s_back_page == 1 ? 0x2000 : 0x3000) + g_vram_start));
 

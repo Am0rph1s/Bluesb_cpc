@@ -20,7 +20,7 @@ El joc s'executa en mode bare-metal (sense firmware AMSDOS en temps de joc) apro
 |                              RAM BASE (64 KB)                           |
 +-------------------+-----------------------------------------------------+
 | 0x0000 - 0x00FF   | Vectors del sistema Z80 (ISR IM 1 a 0x0038)        |
-| 0x0100 - 0x31DC   | Codi executable (_CODE: C + ASM + taules constants) |
+| 0x0100 - 0x31F0   | Codi executable (_CODE: C + ASM + taules constants) |
 | 0x3200 - 0x3526   | Variables globals i dades estàtiques (_DATA)        |
 | 0x3527 - 0x3FFE   | PILA DE LA CPU (Stack Pointer SP fixat a 0x3FFE)    |
 +-------------------+-----------------------------------------------------+
@@ -123,7 +123,7 @@ un caràcter de pantalla ocupa 80 bytes i un subtile vertical de 8 píxels ocupa
 40 paraules MA. L'offset circular de càmera és:
 
 ```c
-ma_offset = (cam_row * 40 + cam_col * 2) & 0x03FF;
+ma_offset = (cam_row * 40 + cam_x4) & 0x03FF;
 ```
 
 L'adreça escrita a `R12/R13` és `0x2000 + ma_offset` per a la pàgina `0x8000`,
@@ -140,7 +140,8 @@ escriu R12 i R13 amb l'adreça MA completa durant el VSYNC.
 5. S'alterna la pàgina. La pàgina que queda oculta es posa al dia amb les tires pendents abans de tornar-la a mostrar.
 
 Cada pàgina té el seu propi ring de tiles i el seu buffer de restauració de Jake.
-L'offset MA avança 2 paraules per subtile horitzontal i 40 per subtile vertical.
+`cam_x4` avança una paraula MA (4 px) per pas horitzontal; dues paraules són un
+subtile complet de 8 px. Verticalment l'offset avança 40 paraules per subtile.
 
 ---
 
@@ -192,11 +193,15 @@ L'scroll es produeix quan el jugador creua els límits de la zona morta (`DEAD_L
 
 ### 6.1 Mapping de les coordenades
 
-El viewport ocupa 20 caràcters CRTC d'ample i 20 files de caràcter d'alt. Les
-coordenades del mapa es projecten a cada pàgina circular així:
+El viewport ocupa 40 caràcters CRTC d'ample i 20 files de caràcter d'alt.
+Cada tile de 8 px abasta dos caràcters CRTC; les coordenades es projecten a
+cada pàgina circular així:
 
 ```text
-MA = (world_subrow * 40 + world_col * 2) & 0x03FF
+world_char_x = cam_x4 + screen_char
+world_col = world_char_x >> 1
+tile_half_x = world_char_x & 1
+MA = (world_subrow * 40 + world_char_x) & 0x03FF
 byte_offset = MA * 2
 CPU address = page_base + (RA * 0x0800) + byte_offset
 ```
@@ -207,7 +212,8 @@ el display actiu a les 160 línies del viewport.
 
 ### 6.2 Render incremental i doble buffer
 
-- Scroll horitzontal: es renderitza només la columna entrant (20 subtiles).
+- Scroll horitzontal: cada pas de 4 px renderitza només un caràcter CRTC
+  (mitja amplada de tile) per cadascuna de les 20 files visibles.
 - Scroll vertical: es renderitza només la fila entrant (20 subtiles).
 - En moviment diagonal es dibuixen les dues vores entrants; la cantonada queda
   coberta pels dos renders.

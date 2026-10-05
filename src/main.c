@@ -2,8 +2,8 @@
 // BLUES BROTHERS CPC - Motor Mode 0 (fet des de zero)
 // ============================================================
 //   - video_init(): RMR Mode 0 + CRTC + paleta (protocol GA correcte)
-//   - Scroll estil Titus: display start per CRTC (R12/R13) + ring de 16K
-//     i render incremental de la columna/fila que entra.
+//   - Scroll CRTC en ring de 16 KB, amb passos horitzontals de 4 px i render
+//     incremental del caràcter/fila que entra.
 //   - Física sub-pixel (1/8 px) com el motor de Titus (cyxx/blues)
 //   - Sprite de Jake amb mascara + desat de fons (flicker-free)
 // ============================================================
@@ -37,11 +37,11 @@ extern void cpc_install_isr(void);
 #define DEAD_B      116
 #define START_PX    32
 #define START_PY    1106
-#define CAM0_COL    0
+#define CAM0_X4     0
 #define CAM0_ROW    124
-#define PLAY_COLS   20
+#define PLAY_CHARS  40
 
-static u16 g_cam_col;
+static u16 g_cam_x4;
 static u16 g_cam_row;
 
 static i16 s_px8, s_py8;
@@ -121,39 +121,39 @@ static u8 is_ceiling_solid(u16 col, u16 row) {
     return 0;
 }
 
-static u16 camera_ma(u16 col, u16 row) {
-    return (u16)(((row * 40) + (col << 1)) & 0x03FF);
+static u16 camera_ma(u16 x4, u16 row) {
+    return (u16)((row * 40 + x4) & 0x03FF);
 }
 
 // La pàgina que toca mostrar rep només les tires noves; la pàgina alterna es
 // posa al dia al fotograma següent, abans de tornar-la a mostrar.
-static void sync_backbuffer(i8 dx, i8 dy, u16 target_col, u16 target_row) {
+static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
     u16 row_before = (u16)(target_row - dy);
 
-    // move_x/move_y mouen com a màxim un subtile per fotograma. El buffer
-    // altern pot anar un pas més endarrerit: dx/dy són [-2, 2].
+    // move_x avança un caràcter CRTC (4 px); move_y avança un subtile (8 px).
+    // El buffer altern pot anar un pas més endarrerit: dx/dy són [-2, 2].
     if (dx == 2) {
-        render_column((u16)(target_col - 1), row_before, 19);
+        render_column((u16)(target_x4 - 1), row_before, 39);
     }
     if (dx > 0) {
-        render_column(target_col, row_before, 19);
+        render_column(target_x4, row_before, 39);
     } else if (dx == -2) {
-        render_column((u16)(target_col + 1), row_before, 0);
+        render_column((u16)(target_x4 + 1), row_before, 0);
     }
     if (dx < 0) {
-        render_column(target_col, row_before, 0);
+        render_column(target_x4, row_before, 0);
     }
 
     if (dy == 2) {
-        render_row(target_col, (u16)(target_row - 1), 19);
+        render_row(target_x4, (u16)(target_row - 1), 19);
     }
     if (dy > 0) {
-        render_row(target_col, target_row, 19);
+        render_row(target_x4, target_row, 19);
     } else if (dy == -2) {
-        render_row(target_col, (u16)(target_row + 1), 0);
+        render_row(target_x4, (u16)(target_row + 1), 0);
     }
     if (dy < 0) {
-        render_row(target_col, target_row, 0);
+        render_row(target_x4, target_row, 0);
     }
 }
 
@@ -172,20 +172,20 @@ void main(void) {
     cpct_memset((void*)0xC000, 0, 0x4000);
     cpct_memset((void*)0x8000, 0, 0x4000);
 
-    g_cam_col = CAM0_COL;
+    g_cam_x4 = CAM0_X4;
     g_cam_row = CAM0_ROW;
-    g_vram_start = camera_ma(g_cam_col, g_cam_row);
+    g_vram_start = camera_ma(g_cam_x4, g_cam_row);
     s_pending_x = 0;
     s_pending_y = 0;
 
     // Inicialitzar la primera pàgina visible (0xC000)
     g_vram_base_hi = 0xC0;
-    render_all(g_cam_col, g_cam_row);
+    render_all(g_cam_x4, g_cam_row);
     crtc_set_display_start((u16)(0x3000 + g_vram_start));
 
     // I preparar el backbuffer a 0x8000 amb el mateix fons
     g_vram_base_hi = 0x80;
-    render_all(g_cam_col, g_cam_row);
+    render_all(g_cam_x4, g_cam_row);
     s_back_page = 1; // El proper frame actiu serà a 0x8000
 
     s_px8 = (i16)(START_PX * SUB);
@@ -325,12 +325,12 @@ void main(void) {
         // --- Camera: seguiment continu de personatge (estil C64 / Amiga) ---
         {
             i16 sy = (i16)(py - (i16)(g_cam_row * 8));
-            i16 sx = (i16)(px - (i16)(g_cam_col * 8));
-            if (sx > DEAD_R && g_cam_col < (128 - PLAY_COLS)) {
-                g_cam_col++;
+            i16 sx = (i16)(px - (i16)(g_cam_x4 * 4));
+            if (sx > DEAD_R && g_cam_x4 < ((LEVEL_W_PX / 4) - PLAY_CHARS)) {
+                g_cam_x4++;
                 move_x = 1;
-            } else if (sx < DEAD_L && g_cam_col > 0) {
-                g_cam_col--;
+            } else if (sx < DEAD_L && g_cam_x4 > 0) {
+                g_cam_x4--;
                 move_x = -1;
             }
 
@@ -361,7 +361,7 @@ void main(void) {
 
         // dsx en BYTES de pantalla (1 byte = 2 px en Mode 0)
         {
-            i16 screen_x = (i16)((px - (i16)(g_cam_col * 8)) >> 1);
+            i16 screen_x = (i16)((px - (i16)(g_cam_x4 * 4)) >> 1);
             i16 screen_y = (i16)(py - (i16)(g_cam_row * 8));
             if (screen_x < 0) screen_x = 0;
             if (screen_x > (80 - SPR_WB)) screen_x = (80 - SPR_WB);
@@ -373,7 +373,7 @@ void main(void) {
 
         page_dx = (i8)(s_pending_x + move_x);
         page_dy = (i8)(s_pending_y + move_y);
-        g_vram_start = camera_ma((u16)(g_cam_col - page_dx),
+        g_vram_start = camera_ma((u16)(g_cam_x4 - page_dx),
                                  (u16)(g_cam_row - page_dy));
 
         // --- Restaurar el fons del personatge al BACKBUFFER ---
@@ -383,8 +383,8 @@ void main(void) {
         }
 
         // Dibuixar les tires noves al ring buffer, sense copiar la pantalla.
-        sync_backbuffer(page_dx, page_dy, g_cam_col, g_cam_row);
-        g_vram_start = camera_ma(g_cam_col, g_cam_row);
+        sync_backbuffer(page_dx, page_dy, g_cam_x4, g_cam_row);
+        g_vram_start = camera_ma(g_cam_x4, g_cam_row);
 
         // --- Dibuix d'Sprite al BACKBUFFER (fora de pantalla, 0 flicker!) ---
         g_spr_y = (u8)dsy;

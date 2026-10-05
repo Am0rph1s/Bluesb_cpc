@@ -6,7 +6,9 @@ Idioma de treball amb l'usuari: **català**.
 ## Estat vigent — scroll CRTC
 
 - El scroll ja no copia/desplaça tota la finestra de VRAM. R12/R13 del CRTC
-  seleccionen l'origen MA circular: `(cam_row * 40 + cam_col * 2) & 0x03FF`.
+  seleccionen l'origen MA circular: `(cam_row * 40 + cam_x4) & 0x03FF`.
+- El seguiment horitzontal avança ara en unitats de 4 px (una paraula MA), i
+  `render_column()` dibuixa la meitat de tile corresponent a la vora entrant.
 - `render_column()` i `render_row()` pinten només les vores entrants als dos
   backbuffers; `engine/tile_blit.s` fa la còpia de subtiles a VRAM en Z80.
 - `engine/sprite.s` calcula adreces de Jake amb l'origen MA i tracta el wrap de

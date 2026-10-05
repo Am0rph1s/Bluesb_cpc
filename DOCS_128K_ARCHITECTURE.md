@@ -20,14 +20,15 @@ El joc s'executa en mode bare-metal (sense firmware AMSDOS en temps de joc) apro
 |                              RAM BASE (64 KB)                           |
 +-------------------+-----------------------------------------------------+
 | 0x0000 - 0x00FF   | Vectors del sistema Z80 (ISR IM 1 a 0x0038)        |
-| 0x0100 - 0x31F0   | Codi executable (_CODE: C + ASM + taules constants) |
-| 0x3200 - 0x3526   | Variables globals i dades estàtiques (_DATA)        |
-| 0x3527 - 0x3FFE   | PILA DE LA CPU (Stack Pointer SP fixat a 0x3FFE)    |
+| 0x0100 - 0x29D4   | Codi executable (_CODE: C + ASM + taules constants) |
+| 0x3200 - 0x39FC   | Variables globals i dades estàtiques (_DATA)        |
+| 0x39FD - 0x3FFE   | PILA CPU (SP=0x3FFE; ~1,5 KB disponibles)            |
 +-------------------+-----------------------------------------------------+
 | 0x4000 - 0x7FFF   | Finestra de Bank Switching (Bancs 4..7 de 16 KB)   |
 |                   | - En descans (0xC0): RAM Base Bloc 1               |
 |                   | - Si es commuta 0xC4: Banc 4 visible (TILESET)      |
 |                   | - Si es commuta 0xC5: Banc 5 visible (MAP + TRIG)   |
+|                   | - Si es commuta 0xC7: Banc 7 visible (frames Jake)   |
 +-------------------+-----------------------------------------------------+
 | 0x8000 - 0xBFFF   | PÀGINA DE VRAM 'B' (anell circular de 16 KB)        |
 |                   | Base CRTC MA = 0x2000 + offset de càmera            |
@@ -46,12 +47,12 @@ El joc s'executa en mode bare-metal (sense firmware AMSDOS en temps de joc) apro
 | Banc 4 (0xC4)     | TILESET0.BIN (16.384 bytes = 256 tiles de 8x16 Mode0|
 +-------------------+-----------------------------------------------------+
 | Banc 5 (0xC5)     | 0x4000..0x63FF: MAP0.BIN (9.216 B = 128x72 índexs)  |
-|                   | 0x6400..0x6800: TRIG0.BIN (1.024 B = flags i opcodes|
-|                   | 0x6800..0x7FFF: Espai lliure per a nivells / dades  |
+|                   | 0x6400..0x6DFF: TRIG0.BIN (2.560 B = 256×10)        |
+|                   | 0x6E00..0x7FFF: Espai lliure per a nivells / dades  |
 +-------------------+-----------------------------------------------------+
 | Banc 6 (0xC6)     | Reservat (futur: cançons AKG / dades dels enemics)   |
 +-------------------+-----------------------------------------------------+
-| Banc 7 (0xC7)     | Reservat (futur: banc d'animacions extres)          |
+| Banc 7 (0xC7)     | PFRAMES.BIN (5.760 B; frames masked de Jake)         |
 +-------------------+-----------------------------------------------------+
 ```
 
@@ -71,8 +72,9 @@ Per garantir estabilitat absoluta:
    ```python
    LINKARGS = ["-mz80", "--no-std-crt0", "-Wl-u", "--code-loc", "0x0100", "--data-loc", "0x3200", "-Wl-x"]
    ```
-   Les dades globals se situen a partir de `0x3200`; al build actual `_DATA`
-   acaba a `0x3526`, deixant aproximadament 2,7 KB lliures abans de `SP=0x3FFE`.
+   Les dades globals se situen a partir de `0x3200`; al build actual `_CODE`
+   acaba a `0x29D5` i `_DATA` a `0x39F9`, sense codi executable dins la finestra
+   commutable de `0x4000..0x7FFF`.
 
 ---
 
@@ -134,14 +136,31 @@ escriu R12 i R13 amb l'adreça MA completa durant el VSYNC.
 ### Bucle de doble buffer a `src/main.c`
 
 1. Es restaura Jake al backbuffer ocult amb l'origen MA que tenia quan s'hi va dibuixar.
-2. En moure la càmera, només es renderitza la columna/fila entrant al ring; no es copia la finestra sencera.
-3. S'actualitza `_g_vram_start` i es bliteja Jake al backbuffer.
-4. S'espera VSYNC i s'escriu a R12/R13 la pàgina més l'offset circular objectiu.
-5. S'alterna la pàgina. La pàgina que queda oculta es posa al dia amb les tires pendents abans de tornar-la a mostrar.
+2. Es restauren els ascensors del backbuffer; si ha canviat la càmera, es fa abans de redibuixar les vores del ring.
+3. En moure la càmera, només es renderitza la columna/fila entrant al ring; no es copia la finestra sencera.
+4. Es dibuixen els ascensors i després Jake al backbuffer, perquè cada sprite desi el fons correcte.
+5. S'espera VSYNC i s'escriu a R12/R13 la pàgina més l'offset circular objectiu.
+6. S'alterna la pàgina. La pàgina que queda oculta es posa al dia amb les tires pendents abans de tornar-la a mostrar.
 
-Cada pàgina té el seu propi ring de tiles i el seu buffer de restauració de Jake.
+Cada pàgina té el seu propi ring de tiles i buffers de restauració per a Jake i per
+a cadascun dels cinc ascensors.
 `cam_x4` avança una paraula MA (4 px) per pas horitzontal; dues paraules són un
 subtile complet de 8 px. Verticalment l'offset avança 40 paraules per subtile.
+
+### 4.1 Ascensors i cintes transportadores (`src/moving.c`)
+
+`moving.c` implementa els cinc ascensors dels slots 19–23 de les dades de
+*Magasin*. Les posicions d'origen es converteixen a píxels Mode 0 halvant X
+(320 px originals a 160 px CPC) i mantenint Y. Cada ascensor espera 40
+fotogrames als extrems, es mou 2 px per fotograma i canvia de direcció quan
+troba el `tile_type == 10` de parada: `ypos16 - 4` en pujar i `ypos16 + 1`
+en baixar. Les dues pàgines desen/restauren el fons independentment.
+
+Jake pot aterrar-hi i queda transportat pel delta vertical de la plataforma;
+les cintes es detecten pels `op_func` 27 (dreta) i 28 (esquerra), i hi afegeixen
+2 px/fotograma a la velocitat horitzontal mentre és a terra. Els sprites dels
+ascensors provenen dels frames 0 i 1 de `ENEMI1.SQV`, convertits amb
+`tools/gen_elevator_frames.py` a Mode 0 masked (`src/elevator_frames.h`).
 
 ---
 
@@ -150,7 +169,7 @@ subtile complet de 8 px. Verticalment l'offset avança 40 paraules per subtile.
 El jugador (Jake) té una mida de **24x30 píxels** (en Mode 0: **12 bytes d'amplada per 30 línies d'alçada**).
 
 ### 5.1 Format de les Dades
-Els frames estan precalculats a `src/player_frames.h`. Cada píxel conté la seva màscara invertida i les dades acolorides combinades:
+Els frames es generen amb `tools/gen_player.py` a `assets/bbdata/PFRAMES.BIN` i es carreguen al banc 7 a `0x4000`. `src/player_frames.h` conté només els offsets i les dimensions; abans del blit, el codi mapeja el banc 7. Cada píxel té la màscara invertida i les dades acolorides combinades:
 - `inv_mask`: bits a 0 on hi ha sprite, bits a 1 on es preserva el fons.
 - `img_masked`: píxels Mode 0 del personatge.
 

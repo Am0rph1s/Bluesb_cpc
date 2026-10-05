@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""
-gen_player.py - Genera src/player_frames.h (Mode 0) des del binari compost
-de Jake (assets/jake_elwood_sprites/jake_composed_m0.bin).
-
-Format: cada frame = 34 linies x 24 bytes ([inv_mask, img_masked] interleaved per 2 px).
-w = 12 bytes de pantalla, h = 34.
-Ordre: 0 idle, 1..3 walk, 4 jump.
-"""
+"""Generate CPC Mode 0 Jake frames and the bank-7 runtime asset."""
 import os
 import sys
 
@@ -14,6 +7,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROJ = os.path.dirname(HERE)
 BIN = os.path.join(PROJ, 'assets', 'jake_elwood_sprites', 'jake_composed_m0.bin')
 OUT = os.path.join(PROJ, 'src', 'player_frames.h')
+OUT_BIN = os.path.join(PROJ, 'assets', 'bbdata', 'PFRAMES.BIN')
 
 W_BYTES = 12
 H = 30
@@ -52,46 +46,32 @@ def main():
     data = open(BIN, 'rb').read()
     assert len(data) % FRAME == 0, len(data)
     n = len(data) // FRAME
+    right = [to_fast_format(data[f * FRAME:(f + 1) * FRAME]) for f in range(n)]
+    left = [flip_frame(frame) for frame in right]
+    with open(OUT_BIN, 'wb') as f:
+        f.write(b''.join(right + left))
+
     lines = ['#ifndef PLAYER_FRAMES_H', '#define PLAYER_FRAMES_H', '',
              '#include "cpctelera.h"', '',
-             '// Frames de Jake en Mode 0 (pre-mirallats dreta i esquerra).',
-             '// Format ultra-ràpid: [inv_mask, img_masked] per píxel interleaved.',
-             '// Generat per tools/gen_player.py', '']
-    # Frames Dreta
-    for f in range(n):
-        raw = data[f * FRAME:(f + 1) * FRAME]
-        blob = to_fast_format(raw)
-        lines.append('static const u8 g_pf_r_%d[%d] = {' % (f, FRAME))
-        for i in range(0, FRAME, 12):
-            lines.append('    ' + ','.join('0x%02X' % b for b in blob[i:i + 12]) + ',')
-        lines.append('};')
-        lines.append('')
-    # Frames Esquerra (pre-mirallats)
-    for f in range(n):
-        raw = data[f * FRAME:(f + 1) * FRAME]
-        blob = flip_frame(to_fast_format(raw))
-        lines.append('static const u8 g_pf_l_%d[%d] = {' % (f, FRAME))
-        for i in range(0, FRAME, 12):
-            lines.append('    ' + ','.join('0x%02X' % b for b in blob[i:i + 12]) + ',')
-        lines.append('};')
-        lines.append('')
-    lines.append('typedef struct { const u8* data; u8 wb; u8 h; } PSprFrame;')
+             '// Jake frames reside in bank 7; the blitter reads them while mapped.',
+             '#define PLAYER_FRAMES_BANK 0xC7',
+             '#define PLAYER_FRAMES_BASE 0x4000',
+             '#define PLAYER_FRAME_SIZE %d' % FRAME, '',
+             'typedef struct { u16 offset; u8 wb; u8 h; } PSprFrame;']
     lines.append('static const PSprFrame g_player_frames_r[%d] = {' % n)
     for f in range(n):
-        lines.append('    { g_pf_r_%d, %d, %d },' % (f, W_BYTES, H))
+        lines.append('    { %d, %d, %d },' % (f * FRAME, W_BYTES, H))
     lines.append('};')
     lines.append('')
     lines.append('static const PSprFrame g_player_frames_l[%d] = {' % n)
     for f in range(n):
-        lines.append('    { g_pf_l_%d, %d, %d },' % (f, W_BYTES, H))
+        lines.append('    { %d, %d, %d },' % ((n + f) * FRAME, W_BYTES, H))
     lines.append('};')
-    lines.append('')
-    # walk cycle: 1, 2, 3, 2 (frame 0 = idle)
-    lines.append('static const u8 g_walk_seq[4] = { 1, 2, 3, 2 };')
     lines.append('')
     lines.append('#endif')
     open(OUT, 'w').write('\n'.join(lines) + '\n')
-    print("escrit", OUT, "(%d frames R + %d frames L)" % (n, n))
+    print("wrote %s (%d frames R + %d frames L)" % (OUT_BIN, n, n))
+    print("wrote", OUT)
 
 
 if __name__ == '__main__':

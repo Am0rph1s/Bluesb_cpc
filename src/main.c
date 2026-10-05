@@ -12,6 +12,7 @@
 #include "fdc.h"
 #include "disk_tables.h"
 #include "sprite.h"
+#include "moving.h"
 
 extern void video_init(void);
 extern void render_all(u16 cam_col, u16 cam_row);
@@ -47,6 +48,7 @@ static u16 g_cam_row;
 static i16 s_px8, s_py8;
 static i16 s_vx, s_vy;
 static u8  s_on_ground;
+static i8  s_ground_elevator = -1;
 static u8  s_face;
 static u8  s_anim_idx, s_anim_timer;
 
@@ -125,6 +127,18 @@ static u16 camera_ma(u16 x4, u16 row) {
     return (u16)((row * 40 + x4) & 0x03FF);
 }
 
+u8 level_get_tile_type(u16 col, u16 row) {
+    u8 t, type;
+    u16 off;
+    if (col >= 128 || row >= 72) return 0;
+    cpc_bank_set(0xC5);
+    t = MAP_PTR[(row << 7) + col];
+    off = (((u16)t) << 3) + (((u16)t) << 1);
+    type = TRIG_PTR[off];
+    cpc_bank_restore();
+    return type;
+}
+
 // La pàgina que toca mostrar rep només les tires noves; la pàgina alterna es
 // posa al dia al fotograma següent, abans de tornar-la a mostrar.
 static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
@@ -163,7 +177,9 @@ void main(void) {
     // Carregar fitxers directament als Bancs 4 i 5 de la RAM estesa de 128 KB
     if (!fdc_load_file(&g_file_tiles, 0xC4, (void*)0x4000) ||
         !fdc_load_file(&g_file_map,   0xC5, (void*)0x4000) ||
-        !fdc_load_file(&g_file_trig,  0xC5, (void*)0x6400)) {
+        !fdc_load_file(&g_file_trig,  0xC5, (void*)0x6400) ||
+        !fdc_load_file(&g_file_pframes, PLAYER_FRAMES_BANK,
+                       (void*)PLAYER_FRAMES_BASE)) {
         while (1) { }
     }
 
@@ -177,15 +193,18 @@ void main(void) {
     g_vram_start = camera_ma(g_cam_x4, g_cam_row);
     s_pending_x = 0;
     s_pending_y = 0;
+    moving_init();
 
     // Inicialitzar la primera pàgina visible (0xC000)
     g_vram_base_hi = 0xC0;
     render_all(g_cam_x4, g_cam_row);
+    moving_draw(0);
     crtc_set_display_start((u16)(0x3000 + g_vram_start));
 
     // I preparar el backbuffer a 0x8000 amb el mateix fons
     g_vram_base_hi = 0x80;
     render_all(g_cam_x4, g_cam_row);
+    moving_draw(1);
     s_back_page = 1; // El proper frame actiu serà a 0x8000
 
     s_px8 = (i16)(START_PX * SUB);
@@ -202,8 +221,21 @@ void main(void) {
         i8  move_y = 0;
         i8  page_dx, page_dy;
         u8  jump = 0;
-        i16 px, py;
+        i16 px, py, effective_vx, belt_push;
         u16 dsx, dsy;
+
+        moving_update();
+        if (s_on_ground && s_ground_elevator >= 0) {
+            MovingElevator* e = &g_mag_elevators[(u8)s_ground_elevator];
+            px = (i16)(s_px8 >> 3);
+            if (px + PW > e->center_x - ELEVATOR_HALF_W &&
+                px < e->center_x + ELEVATOR_HALF_W) {
+                s_py8 = (i16)(s_py8 + e->delta_y * SUB);
+            } else {
+                s_ground_elevator = -1;
+                s_on_ground = 0;
+            }
+        }
 
         cpct_scanKeyboard_f();
         if (cpct_isKeyPressed(Key_CursorLeft) || cpct_isKeyPressed(Key_Q) ||
@@ -221,10 +253,24 @@ void main(void) {
         }
 
         py = (i16)(s_py8 >> 3);
+        px = (i16)(s_px8 >> 3);
+
+        belt_push = 0;
+        if (s_on_ground) {
+            u16 row = (u16)((py + PH) >> 4);
+            u16 col0 = (u16)((px + 7) >> 3);
+            u16 col1 = (u16)((px + 16) >> 3);
+            belt_push = moving_conveyor_push(col0, col1, row);
+            if (move == 0 && belt_push != 0) {
+                move = belt_push > 0 ? 1 : -1;
+                s_face = belt_push > 0 ? 0 : 1;
+            }
+        }
+        effective_vx = (i16)(s_vx + belt_push);
 
         // --- Moviment horitzontal i col·lisió de parets 1:1 ---
-        if (s_vx > 0) {
-            u16 next_px = (u16)((s_px8 + s_vx) >> 3);
+        if (effective_vx > 0) {
+            u16 next_px = (u16)((s_px8 + effective_vx) >> 3);
             u16 c_right = (u16)((next_px + 18) >> 3);
             u16 r_waist = (u16)((py + 16) >> 4);
             u16 r_head  = (u16)(py >> 4);
@@ -234,10 +280,10 @@ void main(void) {
                 s_vx = 0;
                 s_px8 = (i16)(((c_right << 3) - 19) * SUB);
             } else {
-                s_px8 = (i16)(s_px8 + s_vx);
+                s_px8 = (i16)(s_px8 + effective_vx);
             }
-        } else if (s_vx < 0) {
-            u16 next_px = (u16)((s_px8 + s_vx) >> 3);
+        } else if (effective_vx < 0) {
+            u16 next_px = (u16)((s_px8 + effective_vx) >> 3);
             u16 c_left  = (u16)((next_px + 5) >> 3);
             u16 r_waist = (u16)((py + 16) >> 4);
             u16 r_head  = (u16)(py >> 4);
@@ -247,7 +293,7 @@ void main(void) {
                 s_vx = 0;
                 s_px8 = (i16)(((c_left << 3) + 8 - 5) * SUB);
             } else {
-                s_px8 = (i16)(s_px8 + s_vx);
+                s_px8 = (i16)(s_px8 + effective_vx);
             }
         }
         if (s_px8 < 0) { s_px8 = 0; s_vx = 0; }
@@ -266,6 +312,7 @@ void main(void) {
             if (jump && s_on_ground) {
                 s_vy = JUMP_VY;
                 s_on_ground = 0;
+                s_ground_elevator = -1;
             }
 
             s_py8 = (i16)(s_py8 + s_vy);
@@ -278,8 +325,19 @@ void main(void) {
                 u8 landed = 0;
 
                 if (s_vy >= 0) {
+                    i16 elevator_top;
+                    i8 elevator_id = moving_find_landing(px, prev_feet, curr_feet,
+                                                        s_vy, &elevator_top);
+                    if (elevator_id >= 0) {
+                        py = elevator_top;
+                        s_py8 = (i16)(py * SUB);
+                        s_vy = 0;
+                        s_on_ground = 1;
+                        s_ground_elevator = elevator_id;
+                        landed = 1;
+                    }
                     u16 target_row = (u16)(curr_feet >> 4);
-                    if (target_row < 72) {
+                    if (!landed && target_row < 72) {
                         i16 surf = (i16)(target_row << 4);
                         if (is_floor_solid(c_mid1, target_row, s_vy) || is_floor_solid(c_mid2, target_row, s_vy)) {
                             if (prev_feet <= (surf + 8) && curr_feet >= surf) {
@@ -287,6 +345,7 @@ void main(void) {
                                 s_py8 = (i16)(py * SUB);
                                 s_vy = 0;
                                 s_on_ground = 1;
+                                s_ground_elevator = -1;
                                 landed = 1;
                             }
                         }
@@ -301,6 +360,7 @@ void main(void) {
                                     s_py8 = (i16)(py * SUB);
                                     s_vy = 0;
                                     s_on_ground = 1;
+                                    s_ground_elevator = -1;
                                     landed = 1;
                                 }
                             }
@@ -308,6 +368,7 @@ void main(void) {
                     }
                     if (!landed) {
                         s_on_ground = 0;
+                        s_ground_elevator = -1;
                     }
                 } else {
                     u16 head_row = (u16)(py >> 4);
@@ -318,6 +379,7 @@ void main(void) {
                         s_vy = 0;
                     }
                     s_on_ground = 0;
+                    s_ground_elevator = -1;
                 }
             }
         }
@@ -381,17 +443,25 @@ void main(void) {
             sprite_restore_player();
             s_have_drawn[s_back_page] = 0;
         }
+        moving_restore(s_back_page, (move_x != 0 || move_y != 0));
 
         // Dibuixar les tires noves al ring buffer, sense copiar la pantalla.
         sync_backbuffer(page_dx, page_dy, g_cam_x4, g_cam_row);
         g_vram_start = camera_ma(g_cam_x4, g_cam_row);
 
+        // Redraw moving objects over the updated background.
+        moving_draw(s_back_page);
+
         // --- Dibuix d'Sprite al BACKBUFFER (fora de pantalla, 0 flicker!) ---
         g_spr_y = (u8)dsy;
         g_spr_x = (u8)dsx;
         {
-            const u8* spr_data = (s_face == 0) ? g_player_frames_r[cur].data : g_player_frames_l[cur].data;
-            sprite_blit_player(spr_data);
+            const PSprFrame* frame = (s_face == 0) ?
+                &g_player_frames_r[cur] : &g_player_frames_l[cur];
+            u16 spr_addr = (u16)(PLAYER_FRAMES_BASE + frame->offset);
+            cpc_bank_set(PLAYER_FRAMES_BANK);
+            sprite_blit_player((const u8*)spr_addr);
+            cpc_bank_restore();
         }
         s_have_drawn[s_back_page] = 1;
 

@@ -39,8 +39,17 @@ ASM_SOURCES = [
 C_SOURCES = [
     "engine/fdc.c",
     "src/render.c",
+    "src/moving.c",
     "src/main.c",
 ]
+C_HEADERS = {
+    "engine/fdc.c": ["engine/fdc.h", "engine/cpctelera.h"],
+    "src/render.c": ["engine/cpctelera.h"],
+    "src/moving.c": ["engine/cpctelera.h", "src/moving.h", "src/sprite.h",
+                     "src/elevator_frames.h"],
+    "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "src/disk_tables.h",
+                   "src/sprite.h", "src/moving.h", "src/player_frames.h"],
+}
 
 PROGNAME = "bluesb"
 DSKNAME8 = "BLUESB"
@@ -53,6 +62,7 @@ DATA_FILES = [
     ("TILES", "BIN", os.path.join(PROJ, "assets", "bbdata", "TILESET0.BIN")),
     ("MAP",   "BIN", os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN")),
     ("TRIG",  "BIN", os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN")),
+    ("PFRAMES", "BIN", os.path.join(PROJ, "assets", "bbdata", "PFRAMES.BIN")),
 ]
 
 
@@ -112,8 +122,8 @@ def compile_and_link(force):
     for rel_src in C_SOURCES:
         src = os.path.join(PROJ, rel_src)
         rel = os.path.join(obj, os.path.splitext(os.path.basename(src))[0] + ".rel")
-        hdr = os.path.join(PROJ, "src", "disk_tables.h")
-        if force or newer(rel, [src, hdr]):
+        headers = [os.path.join(PROJ, name) for name in C_HEADERS[rel_src]]
+        if force or newer(rel, [src] + headers):
             run([SDCC] + INCLUDES + CFLAGS + ["-c", src, "-o", rel])
         objs.append(rel)
     ihx = os.path.join(obj, PROGNAME + ".ihx")
@@ -182,7 +192,9 @@ def main():
 
     prev = None
     for it in range(2):
-        bin_path, exec_addr, code_size = compile_and_link(force or it > 0)
+        # Header changes from the generated CHS table are picked up through
+        # newer(); avoid recompiling every assembly and C source on pass two.
+        bin_path, exec_addr, code_size = compile_and_link(force)
         chs_map = package(bin_path, exec_addr, code_size)
         text = gen_header(chs_map)
         if text == prev:

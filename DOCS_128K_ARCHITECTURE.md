@@ -20,23 +20,24 @@ El joc s'executa en mode bare-metal (sense firmware AMSDOS en temps de joc) apro
 |                              RAM BASE (64 KB)                           |
 +-------------------+-----------------------------------------------------+
 | 0x0000 - 0x00FF   | Vectors del sistema Z80 (ISR IM 1 a 0x0038)        |
-| 0x0100 - 0x30D7   | Codi executable (_CODE: C + ASM + taules constants) |
-| 0x3200 - 0x3528   | Variables globals i dades estàtiques (_DATA)        |
-| 0x3529 - 0x3FFE   | PILA DE LA CPU (Stack Pointer SP fixat a 0x3FFE)    |
+| 0x0100 - 0x31DC   | Codi executable (_CODE: C + ASM + taules constants) |
+| 0x3200 - 0x3526   | Variables globals i dades estàtiques (_DATA)        |
+| 0x3527 - 0x3FFE   | PILA DE LA CPU (Stack Pointer SP fixat a 0x3FFE)    |
 +-------------------+-----------------------------------------------------+
 | 0x4000 - 0x7FFF   | Finestra de Bank Switching (Bancs 4..7 de 16 KB)   |
 |                   | - En descans (0xC0): RAM Base Bloc 1               |
 |                   | - Si es commuta 0xC4: Banc 4 visible (TILESET)      |
 |                   | - Si es commuta 0xC5: Banc 5 visible (MAP + TRIG)   |
 +-------------------+-----------------------------------------------------+
-| 0x8000 - 0xB7FF   | PÀGINA DE VRAM 'B' (14 KB usats / 16 KB total)      |
-|                   | Display start CRTC: R12 = 0x20                     |
-| 0xB800 - 0xB9FF   | Buffer FDC RAW de sectors (512 bytes)              |
-| 0xBA00 - 0xBA0F   | Àrea de treball FDC (16 bytes)                      |
-| 0xBA10 - 0xBFFF   | Espai lliure / reservat per a SFX i taules auxiliars|
+| 0x8000 - 0xBFFF   | PÀGINA DE VRAM 'B' (anell circular de 16 KB)        |
+|                   | Base CRTC MA = 0x2000 + offset de càmera            |
+|                   | Scratch FDC superposat; es reutilitza després càrrega|
+| 0xB800 - 0xB9FF   | Buffer FDC RAW temporal durant la càrrega           |
+| 0xBA00 - 0xBA0F   | Àrea FDC temporal; alliberada abans del joc          |
+| 0xBA10 - 0xBFFF   | VRAM B; memòria de vídeo durant el joc              |
 +-------------------+-----------------------------------------------------+
-| 0xC000 - 0xFFFF   | PÀGINA DE VRAM 'A' (16 KB estàndard CPC)            |
-|                   | Display start CRTC: R12 = 0x30                     |
+| 0xC000 - 0xFFFF   | PÀGINA DE VRAM 'A' (anell circular de 16 KB)        |
+|                   | Base CRTC MA = 0x3000 + offset de càmera            |
 +-------------------+-----------------------------------------------------+
 
 +-------------------------------------------------------------------------+
@@ -70,7 +71,8 @@ Per garantir estabilitat absoluta:
    ```python
    LINKARGS = ["-mz80", "--no-std-crt0", "-Wl-u", "--code-loc", "0x0100", "--data-loc", "0x3200", "-Wl-x"]
    ```
-   Totes les variables globals (posició del jugador, estats d'animació, punters de buffers) estan concentrades entre `0x3200` i `0x3528`, deixant quasi 3 KB lliures de pila fins a `0x3FFE`.
+   Les dades globals se situen a partir de `0x3200`; al build actual `_DATA`
+   acaba a `0x3526`, deixant aproximadament 2,7 KB lliures abans de `SP=0x3FFE`.
 
 ---
 
@@ -110,28 +112,35 @@ Per eliminar definitivament el parpelleig (*sprite flicker*) i el tall de pantal
 | Paràmetre | Pàgina A | Pàgina B |
 | :--- | :--- | :--- |
 | **Adreça CPU (RAM)** | `0xC000` | `0x8000` |
-| **Registre CRTC R12** | `0x30` | `0x20` |
+| **Base CRTC MA** | `0x3000` | `0x2000` |
 | **Offset MA13..MA12** | Bits 13-12 actius (`11`) | Bit 13 actiu (`10`) |
 | **Variable interna ASM** | `_g_vram_base_hi = 0xC0` | `_g_vram_base_hi = 0x80` |
 
-### Commutació de Pàgina a `engine/cpc_hardware.s`:
-```z80
-_crtc_set_page::
-    ld   bc, #0xBC0C         ; CRTC Registre 12 (Display Start High)
-    out  (c), c
-    ld   b, #0xBD
-    out  (c), a              ; Escriu 0x30 (pàgina 0xC000) o 0x20 (pàgina 0x8000)
-    ret
+### Start address de càmera
+
+El CRTC adreça la pantalla en paraules MA de 16 bits (2 bytes). Amb `R1=40`,
+un caràcter de pantalla ocupa 80 bytes i un subtile vertical de 8 píxels ocupa
+40 paraules MA. L'offset circular de càmera és:
+
+```c
+ma_offset = (cam_row * 40 + cam_col * 2) & 0x03FF;
 ```
 
-### Bucle de Doble Buffer a `src/main.c`:
-1. La CPU dibuixa exclusivament sobre la pàgina oculta (`g_backbuffer = 0x8000` o `0xC000`).
-2. S'esborra/restaura el fons de la posició anterior del jugador.
-3. S'executen els canvis de càmera i desplaçaments.
-4. Es bliteja el jugador sobre el fons del backbuffer.
-5. S'espera l'inici del retrocés vertical: `cpc_wait_vsync_start()`.
-6. Es commuta el registre 12 del CRTC a la nova pàgina visible.
-7. S'inverteix el punter `s_back_page ^= 1` per al següent fotograma.
+L'adreça escrita a `R12/R13` és `0x2000 + ma_offset` per a la pàgina `0x8000`,
+o `0x3000 + ma_offset` per a `0xC000`. El Gate Array fa wrap de l'adreça dins
+de cada bloc de trama de 2 KB. `_crtc_set_display_start` a `engine/video.s`
+escriu R12 i R13 amb l'adreça MA completa durant el VSYNC.
+
+### Bucle de doble buffer a `src/main.c`
+
+1. Es restaura Jake al backbuffer ocult amb l'origen MA que tenia quan s'hi va dibuixar.
+2. En moure la càmera, només es renderitza la columna/fila entrant al ring; no es copia la finestra sencera.
+3. S'actualitza `_g_vram_start` i es bliteja Jake al backbuffer.
+4. S'espera VSYNC i s'escriu a R12/R13 la pàgina més l'offset circular objectiu.
+5. S'alterna la pàgina. La pàgina que queda oculta es posa al dia amb les tires pendents abans de tornar-la a mostrar.
+
+Cada pàgina té el seu propi ring de tiles i el seu buffer de restauració de Jake.
+L'offset MA avança 2 paraules per subtile horitzontal i 40 per subtile vertical.
 
 ---
 
@@ -150,20 +159,16 @@ Com que tenim dues pàgines de VRAM físiques independents (`0xC000` i `0x8000`)
 - `_s_player_bg_80`: 360 bytes (12x30) per a la pàgina `0x8000`.
 - Coordenades anteriors separades (`_s_old_x_c0`/`_s_old_y_c0` i `_s_old_x_80`/`_s_old_y_80`).
 
-### 5.3 Suport Transparent per a Bases `0xC000` i `0x8000`
-La taula `_scr_addr_table` conté les adreces d'inici de les 200 línies de pantalla en format natiu CPC (`0xC000..0xF800`).
-Per evitar duplicar una taula de 400 bytes, el blitter comprova la variable `_g_vram_base_hi`:
-```z80
-    ld   a, (_g_vram_base_hi)
-    cp   #0x80
-    jr   nz, no_remap
-    res  6, d                ; Si base és 0x80, neteja el bit 6: 0xC0..0xF8 -> 0x80..0xB8
-no_remap:
-```
-Això mapeja a l'instant qualsevol scanline de `0xC000` cap a `0x8000` amb només 2 cicles de rellotge!
+### 5.3 Adreçament sobre el ring CRTC
 
-### 5.4 Algorisme del Blitter (Sense Branques)
-El bucle principal bliteja 12 bytes consecutius per línia desenrotllats amb la directiva `.rept 12`:
+La taula `_scr_addr_table` conté les adreces de línia de base CPC. `sprite_map_line`
+hi suma `_g_vram_start` i conserva els bits de pàgina/trama. El blitter resol el
+wrap de 2 KB quan la línia de Jake creua el límit físic del ring; el camí comú
+no-wrap es manté desenrotllat per reduir el cost per fotograma.
+
+### 5.4 Algorisme del Blitter
+El camí habitual bliteja 12 bytes per línia desenrotllats amb `.rept 12`, combinant
+la màscara i desant el fons alhora:
 ```z80
     ld   a, (de)             ; Llegeix el fons existent a VRAM
     ld   (bc), a             ; Desa el fons original al buffer de restauració
@@ -173,29 +178,45 @@ El bucle principal bliteja 12 bytes consecutius per línia desenrotllats amb la 
     or   (hl)                ; Afegeix els colors del sprite
     inc  hl
     ld   (de), a             ; Escriu el resultat final a la pantalla oculta!
-    inc  de
+    inc  de                  ; el camí de wrap es tracta separadament
 ```
-Rendiment: bliteig complet amb desat de fons en només **~21.000 T-states** (~6 ms de CPU Z80).
+El camí ràpid evita comprovacions de wrap per byte; només les línies que
+travessen el límit de 2 KB fan servir el camí de còpia byte a byte.
 
 ---
 
-## 6. Motor d'Scroll per Blocs (160x160 px)
+## 6. Motor d'Scroll CRTC amb VRAM circular (160x160 px)
 
 El viewport de joc mostra una finestra activa de **20x20 subtiles (160x160 píxels)**.
 L'scroll es produeix quan el jugador creua els límits de la zona morta (`DEAD_L=48`, `DEAD_R=88`, `DEAD_T=32`, `DEAD_B=116`).
 
-### 6.1 Desplaçament Intern en Memòria
-Quan la càmera es mou, es desplacen les dades gràfiques de la finestra de joc a la VRAM oculta:
-- **`scroll_shift_left_4`**: Desplaça 19 columnes (76 bytes) cap a l'esquerra per línia mitjançant `LDIR`. Deixa la columna 19 buida per renderitzar el nou bloc.
-- **`scroll_shift_right_4`**: Desplaça 19 columnes cap a la dreta mitjançant `LDDR`. Deixa la columna 0 lliure.
-- **`scroll_shift_up_8`**: Desplaça 19 files cap amunt amb `LDIR` de 1.520 bytes per scanline.
-- **`scroll_shift_down_8`**: Desplaça 19 files cap avall amb `LDDR`.
+### 6.1 Mapping de les coordenades
 
-> [!IMPORTANT]
-> **Nota crítica sobre els registres Z80:** Les rutines `scroll_shift_left_4` i `scroll_shift_right_4` fan servir `A` com a comptador de les 160 línies. Cal fer `push af` abans de consultar `_g_vram_base_hi` per evitar sobreescriure el comptador de bucle (error solucionat que causava el penjat inicial).
+El viewport ocupa 20 caràcters CRTC d'ample i 20 files de caràcter d'alt. Les
+coordenades del mapa es projecten a cada pàgina circular així:
 
-### 6.2 Sincronització entre ambdós Buffers
-Com que treballem amb doble buffer, quan es produeix un moviment de càmera, **tots dos buffers han d'aplicar el desplaçament** (`move_x` / `move_y`) perquè la imatge no faci salts endavant i endarrere en alternar entre la pàgina A i la B.
+```text
+MA = (world_subrow * 40 + world_col * 2) & 0x03FF
+byte_offset = MA * 2
+CPU address = page_base + (RA * 0x0800) + byte_offset
+```
+
+Cada subtile Mode 0 ocupa 4 bytes × 8 línies de trama. `engine/tile_blit.s`
+copia les 32 bytes directament als vuit bancs RA de la pàgina. `R6=20` limita
+el display actiu a les 160 línies del viewport.
+
+### 6.2 Render incremental i doble buffer
+
+- Scroll horitzontal: es renderitza només la columna entrant (20 subtiles).
+- Scroll vertical: es renderitza només la fila entrant (20 subtiles).
+- En moviment diagonal es dibuixen les dues vores entrants; la cantonada queda
+  coberta pels dos renders.
+- La pàgina que s'acaba de mostrar queda al dia; la que passa a oculta renderitza
+  les tires pendents abans del següent flip.
+
+El CRTC mou la finestra actualitzant R12/R13 al VSYNC. No es copia la finestra
+de 12 KB per pàgina: el cost de cada pas de càmera queda reduït a renderitzar la
+tira entrant.
 
 ---
 
@@ -205,7 +226,8 @@ El sistema de compilació automàtic s'encarrega de tot el cicle d'integració:
 1. **Dades primer**: Munta `TITLE.BIN`, `TILESET0.BIN`, `MAP0.BIN` i `TRIG0.BIN` als primers sectors del disc `.dsk`.
 2. **Generació automàtica de taules CHS**: Genera `src/disk_tables.h` amb les coordenades físiques exactes (pista, cap, sector) de cada fitxer al disquet.
 3. **Compilació SDCC 4.5+**: Compila els mòduls C i ASM amb `--opt-code-size` i format `__sdcccall(1)`.
-4. **Enllaçat**: Genera el binari `BLUESB.BIN` amb punt d'entrada a `_start` (`0x0E42`).
+4. **Enllaçat**: Genera el binari `BLUESB.BIN` i n'obté automàticament el punt
+   d'entrada `_start` del map file de l'enllaçador.
 5. **Generació del fitxer DSK**: Insereix el binari i actualitza la capçalera AMSDOS per permetre l'arrencada amb `RUN"BLUESB"`.
 
 ---
@@ -225,5 +247,7 @@ Per a qualsevol programador que vulgui continuar desenvolupament:
 3. A la interrupció IM 1 (`engine/isr.s`), activar el banc 6, cridar `PLY_AKG_Play()`, restaurar el banc 0xC0 i sortir amb `RETI`.
 
 ### Render Incremental de Vores:
-1. Actualment `render_column` i `render_row` són funcions buides (stubs).
-2. Per completar l'scroll continu perfecte, implementar el dibuix de la columna entrant llegint els tiles del Banc 4/5 i pintant només els 4 bytes corresponents a la vora alliberada per `scroll_shift_*`.
+1. `render_column` i `render_row` ja llegeixen índexs del Banc 5 i dibuixen les
+   tires entrants amb els gràfics del Banc 4.
+2. Les properes optimitzacions de vídeo s'han de validar amb perfil de CPU a
+   ZEsarUX, especialment durant scroll diagonal i restauració d'Sprites.

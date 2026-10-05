@@ -17,9 +17,7 @@ extern void video_init(void);
 extern void render_all(u16 cam_col, u16 cam_row);
 extern void render_column(u16 cam_col, u16 cam_row, u16 sx);
 extern void render_row(u16 cam_col, u16 cam_row, u16 sy);
-extern void scroll_set(u16 word_off);
-extern u16  scroll_get(void);
-extern void crtc_set_scroll(u16 word_off);
+extern void crtc_set_display_start(u16 ma);
 extern void cpc_install_isr(void);
 
 #define SUB         8
@@ -37,16 +35,11 @@ extern void cpc_install_isr(void);
 #define DEAD_R      88
 #define DEAD_T      32
 #define DEAD_B      116
-#define SHIFT_X     1
-#define SHIFT_Y     1
-
 #define START_PX    32
 #define START_PY    1106
 #define CAM0_COL    0
 #define CAM0_ROW    124
 #define PLAY_COLS   20
-#define PLAY_ROWS   20
-#define WORDS_LINE  40
 
 static u16 g_cam_col;
 static u16 g_cam_row;
@@ -58,10 +51,9 @@ static u8  s_face;
 static u8  s_anim_idx, s_anim_timer;
 
 static u8  s_have_drawn[2];
-static u8  s_last_x, s_last_y, s_last_cur, s_last_face;
+static i8  s_pending_x, s_pending_y;
 
-u8* g_backbuffer = (u8*)0x8000;
-static u8 s_back_page = 1;  // 1 -> back is 0x8000 (front 0xC000, R12=0x30); 0 -> back is 0xC000 (front 0x8000, R12=0x20)
+static u8 s_back_page = 1;  // 1 -> pàgina B; 0 -> pàgina A
 
 static const u8 g_walk[4] = { 0, 1, 2, 1 };
 
@@ -129,11 +121,40 @@ static u8 is_ceiling_solid(u16 col, u16 row) {
     return 0;
 }
 
-// Actualitza el display start del CRTC. Model simple: display start fix a 0
-// (el render dibuixa el viewport a 0xC000 o 0x8000).
-static void update_scroll(void) {
-    scroll_set(0);
-    crtc_set_scroll(0);
+static u16 camera_ma(u16 col, u16 row) {
+    return (u16)(((row * 40) + (col << 1)) & 0x03FF);
+}
+
+// La pàgina que toca mostrar rep només les tires noves; la pàgina alterna es
+// posa al dia al fotograma següent, abans de tornar-la a mostrar.
+static void sync_backbuffer(i8 dx, i8 dy, u16 target_col, u16 target_row) {
+    u16 row_before = (u16)(target_row - dy);
+
+    // move_x/move_y mouen com a màxim un subtile per fotograma. El buffer
+    // altern pot anar un pas més endarrerit: dx/dy són [-2, 2].
+    if (dx == 2) {
+        render_column((u16)(target_col - 1), row_before, 19);
+    }
+    if (dx > 0) {
+        render_column(target_col, row_before, 19);
+    } else if (dx == -2) {
+        render_column((u16)(target_col + 1), row_before, 0);
+    }
+    if (dx < 0) {
+        render_column(target_col, row_before, 0);
+    }
+
+    if (dy == 2) {
+        render_row(target_col, (u16)(target_row - 1), 19);
+    }
+    if (dy > 0) {
+        render_row(target_col, target_row, 19);
+    } else if (dy == -2) {
+        render_row(target_col, (u16)(target_row + 1), 0);
+    }
+    if (dy < 0) {
+        render_row(target_col, target_row, 0);
+    }
 }
 
 void main(void) {
@@ -153,16 +174,16 @@ void main(void) {
 
     g_cam_col = CAM0_COL;
     g_cam_row = CAM0_ROW;
-    update_scroll();
+    g_vram_start = camera_ma(g_cam_col, g_cam_row);
+    s_pending_x = 0;
+    s_pending_y = 0;
 
     // Inicialitzar la primera pàgina visible (0xC000)
-    g_backbuffer = (u8*)0xC000;
     g_vram_base_hi = 0xC0;
     render_all(g_cam_col, g_cam_row);
-    crtc_set_page(0x30); // Mostrar 0xC000
+    crtc_set_display_start((u16)(0x3000 + g_vram_start));
 
     // I preparar el backbuffer a 0x8000 amb el mateix fons
-    g_backbuffer = (u8*)0x8000;
     g_vram_base_hi = 0x80;
     render_all(g_cam_col, g_cam_row);
     s_back_page = 1; // El proper frame actiu serà a 0x8000
@@ -174,10 +195,12 @@ void main(void) {
     s_anim_idx = 0; s_anim_timer = 0;
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
-    s_last_x = 255; s_last_y = 255; s_last_cur = 255; s_last_face = 255;
 
     while (1) {
         i8  move = 0;
+        i8  move_x = 0;
+        i8  move_y = 0;
+        i8  page_dx, page_dy;
         u8  jump = 0;
         i16 px, py;
         u16 dsx, dsy;
@@ -300,14 +323,12 @@ void main(void) {
         }
 
         // --- Camera: seguiment continu de personatge (estil C64 / Amiga) ---
-        i8 move_x = 0;
-        i8 move_y = 0;
         {
             i16 sy = (i16)(py - (i16)(g_cam_row * 8));
             i16 sx = (i16)(px - (i16)(g_cam_col * 8));
             if (sx > DEAD_R && g_cam_col < (128 - PLAY_COLS)) {
                 g_cam_col++;
-                move_x = +1;
+                move_x = 1;
             } else if (sx < DEAD_L && g_cam_col > 0) {
                 g_cam_col--;
                 move_x = -1;
@@ -315,7 +336,7 @@ void main(void) {
 
             if (sy > DEAD_B && g_cam_row < 124) {
                 g_cam_row++;
-                move_y = +1;
+                move_y = 1;
             } else if (sy < DEAD_T && g_cam_row > 0) {
                 g_cam_row--;
                 move_y = -1;
@@ -345,34 +366,25 @@ void main(void) {
             if (screen_x < 0) screen_x = 0;
             if (screen_x > (80 - SPR_WB)) screen_x = (80 - SPR_WB);
             if (screen_y < 0) screen_y = 0;
-            if (screen_y > (200 - PH)) screen_y = (200 - PH);
+            if (screen_y > (160 - PH)) screen_y = (160 - PH);
             dsx = (u16)screen_x;
             dsy = (u16)screen_y;
         }
 
-        // --- Restaurar fons del personatge al BACKBUFFER si estava dibuixat ---
+        page_dx = (i8)(s_pending_x + move_x);
+        page_dy = (i8)(s_pending_y + move_y);
+        g_vram_start = camera_ma((u16)(g_cam_col - page_dx),
+                                 (u16)(g_cam_row - page_dy));
+
+        // --- Restaurar el fons del personatge al BACKBUFFER ---
         if (s_have_drawn[s_back_page]) {
             sprite_restore_player();
             s_have_drawn[s_back_page] = 0;
         }
 
-        // --- Shift de VRAM i render de vores si hi ha hagut scroll ---
-        if (move_x != 0 || move_y != 0) {
-            if (move_x == 1) {
-                scroll_shift_left_4();
-                render_column(g_cam_col, g_cam_row, 19);
-            } else if (move_x == -1) {
-                scroll_shift_right_4();
-                render_column(g_cam_col, g_cam_row, 0);
-            }
-            if (move_y == 1) {
-                scroll_shift_up_8();
-                render_row(g_cam_col, g_cam_row, 19);
-            } else if (move_y == -1) {
-                scroll_shift_down_8();
-                render_row(g_cam_col, g_cam_row, 0);
-            }
-        }
+        // Dibuixar les tires noves al ring buffer, sense copiar la pantalla.
+        sync_backbuffer(page_dx, page_dy, g_cam_col, g_cam_row);
+        g_vram_start = camera_ma(g_cam_col, g_cam_row);
 
         // --- Dibuix d'Sprite al BACKBUFFER (fora de pantalla, 0 flicker!) ---
         g_spr_y = (u8)dsy;
@@ -385,34 +397,12 @@ void main(void) {
 
         // --- Sincronització amb VSYNC i Commutació de Pàgina de Vídeo (CRTC R12) ---
         cpc_wait_vsync_start();
-        crtc_set_page(s_back_page == 1 ? 0x20 : 0x30);
+        crtc_set_display_start((u16)((s_back_page == 1 ? 0x2000 : 0x3000) + g_vram_start));
 
         // --- Invertir pàgines: el que era front ara és backbuffer ---
         s_back_page ^= 1;
-        g_backbuffer = (s_back_page == 1) ? (u8*)0x8000 : (u8*)0xC000;
         g_vram_base_hi = (s_back_page == 1) ? 0x80 : 0xC0;
-
-        // Si hi ha hagut moviment de càmera en aquest frame, l'altre buffer
-        // també ha de rebre el mateix desplaçament perquè tots dos quedin sincronitzats!
-        if (move_x != 0 || move_y != 0) {
-            if (s_have_drawn[s_back_page]) {
-                sprite_restore_player();
-                s_have_drawn[s_back_page] = 0;
-            }
-            if (move_x == 1) {
-                scroll_shift_left_4();
-                render_column(g_cam_col, g_cam_row, 19);
-            } else if (move_x == -1) {
-                scroll_shift_right_4();
-                render_column(g_cam_col, g_cam_row, 0);
-            }
-            if (move_y == 1) {
-                scroll_shift_up_8();
-                render_row(g_cam_col, g_cam_row, 19);
-            } else if (move_y == -1) {
-                scroll_shift_down_8();
-                render_row(g_cam_col, g_cam_row, 0);
-            }
-        }
+        s_pending_x = move_x;
+        s_pending_y = move_y;
     }
 }

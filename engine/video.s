@@ -12,7 +12,7 @@
     .optsdcc -mz80 sdcccall(1)
 
     .globl _video_init
-    .globl _crtc_set_scroll
+    .globl _crtc_set_display_start
 
     .area _CODE
 
@@ -71,12 +71,10 @@ _video_init::
     ret
 
 ;; ============================================================
-;; void crtc_set_scroll(u16 word_off)
-;;   HL = nou display start en unitats de paraula (R12/R13).
-;;   Base de pantalla 0xC000: el display start s'expressa com a offset
-;;   dins la finestra (0x0000-0x1FFF). S'usa per al scroll fi vertical.
+;; void crtc_set_display_start(u16 ma)
+;;   HL = adreça MA completa, incloent pàgina 0x2000/0x3000 i offset circular.
 ;; ============================================================
-_crtc_set_scroll::
+_crtc_set_display_start::
     ld      bc, #0xBC0D         ;; R13 = byte baix
     out     (c), c
     ld      a, l
@@ -85,7 +83,6 @@ _crtc_set_scroll::
     ld      bc, #0xBC0C         ;; R12 = byte alt
     out     (c), c
     ld      a, h
-    or      #0x30           ;; base de pantalla 0xC000 (MA13=MA12=1)
     ld      b, #0xBD
     out     (c), a
     ret
@@ -94,7 +91,7 @@ _crtc_set_scroll::
 ;; R12=0x30: display start 0x3000 -> adreca fisica 0xC000
 ;; R13=0x00: sense scroll.
 crtc_table:
-    .db  0x3F, 0x28, 0x2E, 0x8E, 0x26, 0x00, 0x19, 0x1E
+    .db  0x3F, 0x28, 0x2E, 0x8E, 0x26, 0x00, 0x14, 0x1E
     .db  0x00, 0x07, 0x00, 0x00, 0x30, 0x00
 
 ;; Paleta Mode 0 (Amiga -> CPC hardware):

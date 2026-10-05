@@ -34,6 +34,7 @@ ASM_SOURCES = [
     "engine/video.s",
     "engine/isr.s",
     "engine/sprite.s",
+    "engine/tile_blit.s",
 ]
 C_SOURCES = [
     "engine/fdc.c",

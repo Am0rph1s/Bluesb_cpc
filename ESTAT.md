@@ -1,12 +1,27 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: motor Mode 0 net (fons + Jake funcionant, via ZRCP autònom).
+Última actualització: 2026-10-05 — scroll CRTC amb rings de VRAM.
 Idioma de treball amb l'usuari: **català**.
 
-## ⭐ SESSIÓ MODE-0 NETA (troballes clau — LLEGIR PRIMER)
+## Estat vigent — scroll CRTC
 
-S'ha reescrit el motor de vídeo **des de zero** (sense codi mode 1) i ja es veu el
-nivell + Jake es mou. Les claus (després de moltes proves):
+- El scroll ja no copia/desplaça tota la finestra de VRAM. R12/R13 del CRTC
+  seleccionen l'origen MA circular: `(cam_row * 40 + cam_col * 2) & 0x03FF`.
+- `render_column()` i `render_row()` pinten només les vores entrants als dos
+  backbuffers; `engine/tile_blit.s` fa la còpia de subtiles a VRAM en Z80.
+- `engine/sprite.s` calcula adreces de Jake amb l'origen MA i tracta el wrap de
+  2 KB; es mantenen buffers de fons independents per les dues pàgines.
+- El display actiu és de 20 files CRTC (160 línies), coherent amb el viewport
+  20x20. La descripció tècnica autoritativa és `DOCS_128K_ARCHITECTURE.md`.
+- Les notes posteriors d'aquest fitxer que parlen de `scroll_shift_*` descriuen
+  l'arquitectura anterior i són històriques.
+- Build provat a ZEsarUX: `bluesb.dsk`, scroll CRTC circular i doble buffer.
+
+## 📚 Històric — sessió de neteja del motor Mode 0
+
+En aquesta etapa es va reescriure el motor de vídeo **des de zero** (sense codi
+Mode 1). Les notes següents documenten aquella iteració; l'arquitectura vigent
+és la descrita al principi d'aquest fitxer i a `DOCS_128K_ARCHITECTURE.md`.
 
 ### Bug CRÍTIC: variables `static` amb inicialitzador > 0 no es copien
 `--no-std-crt0` → els valors inicialitzats (`_INITIALIZED`) NO es copien a RAM.
@@ -39,21 +54,11 @@ era la càmera i l'inicialització de variables.
   - Únicament quan en Jake cau cap avall (`s_vy >= 0`) des de dalt, actuen com a suport i aterra a sobre.
   - Sostres sòlids reals (`op == 20`) bloquegen el cap; plataformes no.
   - En aturar-se (`move == 0`), torna fidelment a *idle* (peus junts a terra).
-- **Càmera i Scroll Continu 2D (estil C64 / Amiga)**:
-  - *Deadzone* central 2D: en Jake es mou lliurement a la zona central de la pantalla (`DEAD_L = 48`, `DEAD_R = 88` en horitzontal; `DEAD_T = 32`, `DEAD_B = 116` en vertical) sense moviment de càmera (50 FPS sòlids).
-  - **Seguiment horitzontal continu (pas d'1 subtile = 8 px)**:
-    - En creuar la dreta (`sx > 88`): la càmera avança 1 subtile (`g_cam_col++`).
-    - En creuar l'esquerra (`sx < 48`): la càmera recula 1 subtile (`g_cam_col--`).
-    - `_scroll_shift_left_4` i `_scroll_shift_right_4` a [`engine/sprite.s`](file:///C:/Projects/bluesb_cpc/engine/sprite.s): desplacen 4 bytes en ASM amb `LDIR`/`LDDR`.
-    - Streaming incremental de la columna de vora amb `render_column(cam_col, cam_row, 19/0)`.
-  - **Seguiment vertical continu (pas d'1 subtile = 8 scanlines)**:
-    - En caure o baixar (`sy > 116`): la càmera avança 1 subtile cap avall (`g_cam_row++`).
-    - En saltar o pujar escales (`sy < 32`): la càmera recula 1 subtile cap amunt (`g_cam_row--`).
-    - `_scroll_shift_up_8`: desplaça les 19 files cap amunt amb 8 blocs `LDIR` de 1520 bytes (un per cada línia de trama intercalada RA=0..7).
-    - `_scroll_shift_down_8`: desplaça les 19 files cap avall amb 8 blocs `LDDR` de 1520 bytes.
-    - Streaming incremental de la fila nova amb `render_row(cam_col, cam_row, 19/0)`.
-  - **Ordre net de renderitzat**: primer es restaura el fons d'en Jake, després es desplaça la pantalla en ASM i es bliteja la fila/columna d'entrada, i finalment es desa el nou fons i es dibuixa en Jake a la nova posició `dsx, dsy`.
-  - Sense parpalleig, sense trencaments gràfics ni salts sobtats de mig bloc.
+- **Scroll en memòria amb `scroll_shift_*` (històric, substituït 2026-10-05)**:
+  - Aquesta implementació desplaçava les dues pàgines amb `LDIR`/`LDDR` i
+    provocava una baixada forta de rendiment.
+  - El model vigent és el ring CRTC documentat a `DOCS_128K_ARCHITECTURE.md`:
+    R12/R13 mouen l'origen i només es renderitza la tira entrant.
 - **Dades i memòria**: Codi = 11.950 B (límit 0x3600, marge lliure de **1.618 bytes**), `bluesb.dsk` llest per executar (`RUN"BLUESB"`).
 
 ## Objectiu

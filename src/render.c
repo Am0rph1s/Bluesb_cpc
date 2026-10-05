@@ -11,55 +11,95 @@
 #define TILESET    ((const u8*)0x4000)
 #define GMAP       ((const u8*)0x4000)
 
-#define LEVEL_W    128
 #define PLAY_COLS  20
 #define PLAY_ROWS  20
 
-extern u8* g_backbuffer;
+extern void render_tile_fast(const u8* tile);
+
+u16 g_render_tile_offset;
+
+static void draw_subtile(u8 tile_index, u16 ma, u8 tile_half) {
+    u16 tile_subrow;
+    const u8* tile;
+
+    tile_subrow = (u16)(tile_half << 5);
+    tile = TILESET + (tile_index << 6) + tile_subrow;
+
+    // Cada tile ocupa 2 paraules CRTC d'ample i una fila de caràcter d'alt.
+    g_render_tile_offset = (u16)(ma << 1);
+    render_tile_fast(tile);
+}
+
+// Llegeix una columna del mapa amb el Banc 5 actiu i la dibuixa amb el Banc 4.
+// Així cada tira només commuta banc dues vegades, no dues vegades per tile.
+static void render_map_column(u16 map_col, u16 cam_row) {
+    u8 tile_ids[PLAY_ROWS];
+    u16 sy;
+    u16 ma;
+
+    cpc_bank_set(0xC5);
+    for (sy = 0; sy < PLAY_ROWS; sy++) {
+        u16 world_subrow = (u16)(cam_row + sy);
+        u16 map_row = (u16)(world_subrow >> 1);
+        if (map_col < 128 && map_row < 72)
+            tile_ids[sy] = GMAP[(map_row << 7) + map_col];
+        else
+            tile_ids[sy] = 0;
+    }
+
+    cpc_bank_set(0xC4);
+    ma = (u16)(((cam_row * 40) + (map_col << 1)) & 0x03FF);
+    for (sy = 0; sy < PLAY_ROWS; sy++) {
+        draw_subtile(tile_ids[sy], ma, (u8)((cam_row + sy) & 1));
+        ma = (u16)((ma + 40) & 0x03FF);
+    }
+}
 
 void render_all(u16 cam_col, u16 cam_row) {
-    u16 sx, sy;
-    u8* vram = g_backbuffer;
+    u16 sx;
 
     for (sx = 0; sx < PLAY_COLS; sx++) {
-        u16 scol = (u16)(cam_col + sx);
-        for (sy = 0; sy < PLAY_ROWS; sy++) {
-            u16 srow = (u16)(cam_row + sy);
-            u16 trow = (u16)(srow >> 1);
-            u16 sub_off = (u16)((srow & 1) << 5);
-            u8* dst = vram + sy * 80 + (sx << 2);
-            u8 b;
-            const u8* t;
-            u8 j;
-
-            // Llegir índex de tile des del Banc 5
-            cpc_bank_set(0xC5);
-            b = GMAP[(trow << 7) + scol];
-
-            // Llegir gràfic del tile des del Banc 4
-            cpc_bank_set(0xC4);
-            t = TILESET + (((u16)b) << 6) + sub_off;
-
-            for (j = 0; j < 8; j++) {
-                dst[0] = t[0];
-                dst[1] = t[1];
-                dst[2] = t[2];
-                dst[3] = t[3];
-                t += 4;
-                dst += 0x0800;
-            }
-        }
+        render_map_column((u16)(cam_col + sx), cam_row);
     }
     cpc_bank_restore();
 }
 
 void render_column(u16 cam_col, u16 cam_row, u16 sx) {
-    (void)cam_col; (void)cam_row; (void)sx;
+    u16 world_col;
+
+    if (sx >= PLAY_COLS) return;
+    world_col = (u16)(cam_col + sx);
+    render_map_column(world_col, cam_row);
+    cpc_bank_restore();
 }
 
 void render_row(u16 cam_col, u16 cam_row, u16 sy) {
-    (void)cam_col; (void)cam_row; (void)sy;
-}
+    u16 sx;
+    u16 world_subrow;
+    u16 map_row;
+    u8 tile_half;
+    u8 tile_ids[PLAY_COLS];
 
-void scroll_set(u16 word_off) { (void)word_off; }
-u16  scroll_get(void)         { return 0; }
+    if (sy >= PLAY_ROWS) return;
+
+    world_subrow = (u16)(cam_row + sy);
+    map_row = (u16)(world_subrow >> 1);
+    tile_half = (u8)(world_subrow & 1);
+    world_subrow = (u16)(((world_subrow * 40) + (cam_col << 1)) & 0x03FF);
+
+    cpc_bank_set(0xC5);
+    for (sx = 0; sx < PLAY_COLS; sx++) {
+        u16 map_col = (u16)(cam_col + sx);
+        if (map_col < 128 && map_row < 72)
+            tile_ids[sx] = GMAP[(map_row << 7) + map_col];
+        else
+            tile_ids[sx] = 0;
+    }
+
+    cpc_bank_set(0xC4);
+    for (sx = 0; sx < PLAY_COLS; sx++) {
+        draw_subtile(tile_ids[sx], world_subrow, tile_half);
+        world_subrow = (u16)((world_subrow + 2) & 0x03FF);
+    }
+    cpc_bank_restore();
+}

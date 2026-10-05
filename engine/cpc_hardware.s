@@ -16,7 +16,6 @@
     .globl _cpct_drawSpriteMasked
     .globl _cpc_bank_set
     .globl _cpc_bank_restore
-    .globl _crtc_set_page
 
     .globl _cpct_keyboardStatusBuffer
     .globl _cpct_mode_rom_status
@@ -37,16 +36,6 @@ _cpc_bank_set::
 _cpc_bank_restore::
     ld      bc, #0x7F00
     ld      a, #0xC0
-    out     (c), a
-    ret
-
-;; ============================================================
-;; crtc_set_page(u8 page_reg) - page_reg in A (0x30 per 0xC000, 0x20 per 0x8000)
-;; ============================================================
-_crtc_set_page::
-    ld      bc, #0xBC0C         ;; CRTC R12
-    out     (c), c
-    ld      b, #0xBD
     out     (c), a
     ret
 

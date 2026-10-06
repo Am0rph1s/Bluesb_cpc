@@ -17,11 +17,20 @@
     .globl _g_vram_base_hi
     .globl _g_vram_start
     .globl _scr_addr_table
+    .globl _g_grate_enable
+    .globl _g_grate_phase_x
+    .globl _g_grate_base_y
 
     ;; ============================================================
     ;; DADES DE TREBALL A _DATA
     ;; ============================================================
     .area _DATA
+
+_g_grate_enable::   .db 0
+_g_grate_phase_x::  .db 0
+_g_grate_base_y::   .db 0
+s_grate_cur_y:      .db 0
+s_grate_ptr:        .dw 0
 
 _g_spr_y::          .db 0
 _g_spr_x::          .db 0
@@ -220,6 +229,12 @@ _sprite_blit_player::
     ld      (_s_old_x_80), a
     ld      bc, #_s_player_bg_80
 2$:
+    ld      a, (_g_grate_enable)
+    or      a
+    jr      z, 3$
+    ld      a, (_g_grate_base_y)
+    ld      (s_grate_cur_y), a
+3$:
     ld      a, #30              ;; 30 linies
     ld      (s_line_cnt), a
 
@@ -251,7 +266,12 @@ blit_line:
 
     pop     bc                  ;; Recuperar BC = bg_write_ptr
 
-    ;; Camí ràpid per a gairebé totes les línies (sense creuar el wrap de 2 KB).
+    ;; Comprovar si cal aplicar la reixa per sobre d'en Jake
+    ld      a, (_g_grate_enable)
+    or      a
+    jr      nz, blit_grate_line
+
+    ;; Camí normal (sense reixa)
     ld      a, d
     and     #0x07
     cp      #0x07
@@ -290,9 +310,97 @@ blit_wrap_loop:
     dec     a
     ld      (s_byte_cnt), a
     jr      nz, blit_wrap_loop
-blit_line_done:
+    jp      blit_line_done
 
+;; ------------------------------------------------------------
+;; Línia amb reixa: dibuixa en Jake i aplica la reixa estrictament
+;; a sobre dels píxels d'en Jake dins del mateix rectangle!
+;; ------------------------------------------------------------
+blit_grate_line:
+    push    de
+    ld      a, (s_grate_cur_y)
+    and     #0x07
+    add     a, a
+    ld      e, a
+    ld      a, (_g_grate_phase_x)
+    and     #0x01
+    or      e
+    ld      l, a
+    ld      h, #0
+    ld      e, l
+    ld      d, h
+    add     hl, hl              ;; *2
+    add     hl, de              ;; *3
+    add     hl, hl              ;; *6
+    add     hl, hl              ;; *12
+    ld      de, #_grate_lut
+    add     hl, de
+    ld      (s_grate_ptr), hl
+    pop     de
+    ld      hl, (s_spr_ptr)
+
+    ld      a, d
+    and     #0x07
+    cp      #0x07
+    jr      nz, blit_grate_fast_line
+    ld      a, e
+    cp      #0xFA
+    jp      nc, blit_grate_wrap_line
+
+blit_grate_fast_line:
+    push    ix
+    ld      ix, (s_grate_ptr)
+    .rept 6
+    ld      a, (de)             ;; Llegir pantalla original
+    ld      (bc), a             ;; Desar fons net!
+    inc     bc
+    and     (hl)                ;; A = pantalla & inv_mask
+    inc     hl
+    or      (hl)                ;; A = (pantalla & inv_mask) | img_masked
+    inc     hl
+    and     0(ix)               ;; Aplicar màscara de reixa
+    or      6(ix)               ;; Afegir color de reixa
+    inc     ix
+    ld      (de), a             ;; Escriure a VRAM!
+    inc     de
+    .endm
+    pop     ix
+    jr      blit_grate_line_done
+
+blit_grate_wrap_line:
+    push    ix
+    ld      ix, (s_grate_ptr)
+    ld      a, #6
+    ld      (s_byte_cnt), a
+blit_grate_wrap_loop:
+    ld      a, (de)
+    ld      (bc), a
+    inc     bc
+    and     (hl)
+    inc     hl
+    or      (hl)
+    inc     hl
+    and     0(ix)
+    or      6(ix)
+    inc     ix
+    ld      (de), a
+    call    sprite_inc_de_ring
+    ld      a, (s_byte_cnt)
+    dec     a
+    ld      (s_byte_cnt), a
+    jr      nz, blit_grate_wrap_loop
+    pop     ix
+
+blit_grate_line_done:
     ld      (s_spr_ptr), hl
+    ld      hl, #s_grate_cur_y
+    inc     (hl)
+    jr      blit_next_line
+
+blit_line_done:
+    ld      (s_spr_ptr), hl
+
+blit_next_line:
 
     ld      hl, #s_cur_y
     inc     (hl)
@@ -301,6 +409,44 @@ blit_line_done:
     dec     (hl)
     jp      nz, blit_line
     ret
+
+;; ============================================================
+;; Taula de reixa periòdica (8 línies × 2 fases × 12 bytes = 192 bytes)
+;; Cada entrada de 12 bytes conté: 6 bytes de màscara + 6 bytes de color
+;; ============================================================
+_grate_lut:
+    .db #0xAA, #0xFF, #0xAA, #0xFF, #0xAA, #0xFF  ;; y=0, phase=0 masks
+    .db #0x10, #0x00, #0x10, #0x00, #0x10, #0x00  ;; y=0, phase=0 vals
+    .db #0xFF, #0xAA, #0xFF, #0xAA, #0xFF, #0xAA  ;; y=0, phase=1 masks
+    .db #0x00, #0x10, #0x00, #0x10, #0x00, #0x10  ;; y=0, phase=1 vals
+    .db #0x55, #0x55, #0x55, #0x55, #0x55, #0x55  ;; y=1, phase=0 masks
+    .db #0x22, #0x22, #0x22, #0x22, #0x22, #0x22  ;; y=1, phase=0 vals
+    .db #0x55, #0x55, #0x55, #0x55, #0x55, #0x55  ;; y=1, phase=1 masks
+    .db #0x22, #0x22, #0x22, #0x22, #0x22, #0x22  ;; y=1, phase=1 vals
+    .db #0x55, #0x55, #0x55, #0x55, #0x55, #0x55  ;; y=2, phase=0 masks
+    .db #0x20, #0x20, #0x20, #0x20, #0x20, #0x20  ;; y=2, phase=0 vals
+    .db #0x55, #0x55, #0x55, #0x55, #0x55, #0x55  ;; y=2, phase=1 masks
+    .db #0x20, #0x20, #0x20, #0x20, #0x20, #0x20  ;; y=2, phase=1 vals
+    .db #0xFF, #0xAA, #0xFF, #0xAA, #0xFF, #0xAA  ;; y=3, phase=0 masks
+    .db #0x00, #0x11, #0x00, #0x11, #0x00, #0x11  ;; y=3, phase=0 vals
+    .db #0xAA, #0xFF, #0xAA, #0xFF, #0xAA, #0xFF  ;; y=3, phase=1 masks
+    .db #0x11, #0x00, #0x11, #0x00, #0x11, #0x00  ;; y=3, phase=1 vals
+    .db #0xFF, #0xAA, #0xFF, #0xAA, #0xFF, #0xAA  ;; y=4, phase=0 masks
+    .db #0x00, #0x10, #0x00, #0x10, #0x00, #0x10  ;; y=4, phase=0 vals
+    .db #0xAA, #0xFF, #0xAA, #0xFF, #0xAA, #0xFF  ;; y=4, phase=1 masks
+    .db #0x10, #0x00, #0x10, #0x00, #0x10, #0x00  ;; y=4, phase=1 vals
+    .db #0x55, #0x55, #0x55, #0x55, #0x55, #0x55  ;; y=5, phase=0 masks
+    .db #0x22, #0x22, #0x22, #0x22, #0x22, #0x22  ;; y=5, phase=0 vals
+    .db #0x55, #0x55, #0x55, #0x55, #0x55, #0x55  ;; y=5, phase=1 masks
+    .db #0x22, #0x22, #0x22, #0x22, #0x22, #0x22  ;; y=5, phase=1 vals
+    .db #0x55, #0x55, #0x55, #0x55, #0x55, #0x55  ;; y=6, phase=0 masks
+    .db #0x20, #0x20, #0x20, #0x20, #0x20, #0x20  ;; y=6, phase=0 vals
+    .db #0x55, #0x55, #0x55, #0x55, #0x55, #0x55  ;; y=6, phase=1 masks
+    .db #0x20, #0x20, #0x20, #0x20, #0x20, #0x20  ;; y=6, phase=1 vals
+    .db #0xAA, #0xFF, #0xAA, #0xFF, #0xAA, #0xFF  ;; y=7, phase=0 masks
+    .db #0x11, #0x00, #0x11, #0x00, #0x11, #0x00  ;; y=7, phase=0 vals
+    .db #0xFF, #0xAA, #0xFF, #0xAA, #0xFF, #0xAA  ;; y=7, phase=1 masks
+    .db #0x00, #0x11, #0x00, #0x11, #0x00, #0x11  ;; y=7, phase=1 vals
 
 
 ;; ============================================================

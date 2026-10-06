@@ -461,6 +461,17 @@ void main(void) {
         // --- Dibuix d'Sprite al BACKBUFFER (fora de pantalla, 0 flicker!) ---
         g_spr_y = (u8)dsy;
         g_spr_x = (u8)dsx;
+
+        // Comprovar si en Jake és dins d'una zona de reixa (Magasin)
+        if ((px >= 392 && px <= 630 && py >= 608 && py <= 644) ||
+            (px >= 392 && px <= 494 && py >= 704 && py <= 740)) {
+            g_grate_enable = 1;
+            g_grate_phase_x = (u8)((px >> 1) & 1);
+            g_grate_base_y = (u8)(py & 7);
+        } else {
+            g_grate_enable = 0;
+        }
+
         {
             const PSprFrame* frame = (s_face == 0) ?
                 &g_player_frames_r[cur] : &g_player_frames_l[cur];

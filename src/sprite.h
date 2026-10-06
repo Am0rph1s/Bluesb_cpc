@@ -14,4 +14,9 @@ void sprite_blit_player(const u8* spr);
 void sprite_restore_player(void);
 void cpc_wait_vsync_start(void);
 
+// Reixa Mode 0 (Magasin)
+extern u8 g_grate_enable;
+extern u8 g_grate_phase_x;
+extern u8 g_grate_base_y;
+
 #endif

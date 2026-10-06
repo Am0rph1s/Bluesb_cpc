@@ -247,6 +247,19 @@ El CRTC mou la finestra actualitzant R12/R13 al VSYNC. No es copia la finestra
 de 12 KB per pàgina: el cost de cada pas de càmera queda reduït a renderitzar la
 tira entrant.
 
+### 6.3 Cintes Transportadores i Reixa Transparent (Magasin)
+
+- **Cintes transportadores animades (`src/moving.c`, `src/render.c`)**:
+  - Les 4 cintes del magatzem estan definides en la taula estàtica `s_belts[4]` a ROM (`_CODE`).
+  - Animació cíclica de 3 fases cada 4 fotogrames (160 ms a 25 Hz).
+  - La funció `moving_draw_conveyor_tiles` només actualitza la pàgina de VRAM si `s_page_conveyor_phase[page] != s_conveyor_phase`.
+  - A més, s'actualitza `MAP_MUT` al Banc 5 (`0xC5`) perquè qualsevol tira entrant revelada per l'scroll circular (`sync_backbuffer`) es dibuixi directament en la fase d'animació activa sense desincronització.
+  - Els sentits visuals coincideixen amb la física:
+    - Arrossegament dreta (op 27): superfície `248 -> 249 -> 250`, corrons `253 -> 252 -> 251` (gir horari).
+    - Arrossegament esquerra (op 28): superfície `239 -> 238 -> 237`, corrons `240 -> 241 -> 242` (gir antihorari).
+- **Efecte de reixa transparent per sobre d'en Jake (`engine/sprite.s`)**:
+  - Quan en Jake es troba a les zones de reixa del magatzem, el blitter d'sprites aplica la taula de màscares i trames periòdiques `_grate_lut` directament a sobre dels píxels de l'sprite dins del mateix cicle de blit, preservant el fons original sense corrompre la VRAM ni requerir passades addicionals.
+
 ---
 
 ## 7. Pipeline de Construcció (`tools/build.py`)

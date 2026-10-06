@@ -13,6 +13,8 @@ extern u16 g_vram_start;
 void sprite_blit_player(const u8* spr);
 void sprite_restore_player(void);
 void cpc_wait_vsync_start(void);
+void sprite_hflip_init_lut(u8* lut_256_aligned);
+void sprite_hflip(const u8* src, u8* dst);
 
 // Reixa Mode 0 (Magasin)
 extern u8 g_grate_enable;
@@ -20,3 +22,4 @@ extern u8 g_grate_phase_x;
 extern u8 g_grate_base_y;
 
 #endif
+

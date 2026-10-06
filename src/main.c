@@ -13,6 +13,7 @@
 #include "disk_tables.h"
 #include "sprite.h"
 #include "moving.h"
+#include "bank.h"
 
 extern void video_init(void);
 extern void render_all(u16 cam_col, u16 cam_row);
@@ -24,8 +25,8 @@ extern volatile u8 g_ticks;
 
 #define SUB         8
 #define PH          30
-#define PW          12
-#define SPR_WB      6
+#define PW          16
+#define SPR_WB      8
 #define SPEED_MAX   28
 #define SPEED_AIR   14
 #define MOVE_ACC    6
@@ -51,7 +52,7 @@ static i16 s_px8, s_py8;
 static i16 s_vx, s_vy;
 static u8  s_on_ground;
 static i8  s_ground_elevator = -1;
-static u8  s_face;
+u8 g_face;
 static u8  s_anim_idx, s_anim_timer;
 
 static u8  s_have_drawn[2];
@@ -59,7 +60,9 @@ static i8  s_pending_x, s_pending_y;
 
 static u8 s_back_page = 1;  // 1 -> pàgina B; 0 -> pàgina A
 
-static const u8 g_walk[4] = { 0, 1, 2, 1 };
+// Sequencia de caminar original de Titus 1.EXE: [2, 0, 1, 3, 0, 1]
+// Mapat als frames: 1(walk1/DOS 2), 2(walk2/DOS 0), 0(idle/DOS 1), 3(walk3/DOS 3)
+static const u8 g_walk[6] = { 1, 2, 0, 3, 2, 0 };
 
 #include "player_frames.h"
 #include "stack_canary.h"
@@ -188,6 +191,14 @@ void main(void) {
     }
 
     video_init();
+
+    // Inicialitzar la taula de H-FLIP ràpid al Banc 7 (0x7F00)
+    {
+        u8 prev = bank_set(0xC7);
+        sprite_hflip_init_lut((u8*)0x7F00);
+        bank_restore(prev);
+    }
+
     // Netejar les dues pàgines de VRAM (0xC000 i 0x8000)
     cpct_memset((void*)0xC000, 0, 0x4000);
     cpct_memset((void*)0x8000, 0, 0x4000);
@@ -214,7 +225,7 @@ void main(void) {
     s_px8 = (i16)(START_PX * SUB);
     s_py8 = (i16)(START_PY * SUB);
     s_vx = 0; s_vy = 0;
-    s_on_ground = 1; s_face = 0;
+    s_on_ground = 1; g_face = 0;
     s_anim_idx = 0; s_anim_timer = 0;
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
@@ -245,16 +256,23 @@ void main(void) {
             }
         }
 
+        u8  crouch = 0;
         cpct_scanKeyboard_f();
         if (cpct_isKeyPressed(Key_CursorLeft) || cpct_isKeyPressed(Key_Q) ||
-            cpct_isKeyPressed(Joy0_Left))  { move = -1; s_face = 1; }
+            cpct_isKeyPressed(Joy0_Left))  { move = -1; g_face = 1; }
         if (cpct_isKeyPressed(Key_CursorRight) || cpct_isKeyPressed(Key_S) ||
-            cpct_isKeyPressed(Joy0_Right)) { move = +1; s_face = 0; }
+            cpct_isKeyPressed(Joy0_Right)) { move = +1; g_face = 0; }
+        if (cpct_isKeyPressed(Key_CursorDown) || cpct_isKeyPressed(Key_Z) ||
+            cpct_isKeyPressed(Joy0_Down))  { crouch = 1; }
         if (cpct_isKeyPressed(Key_Space) || cpct_isKeyPressed(Key_CursorUp) ||
             cpct_isKeyPressed(Joy0_Fire1)) { jump = 1; }
 
         {
-            i16 max_spd = s_on_ground ? SPEED_MAX : SPEED_AIR;
+            i16 max_spd;
+            if (!s_on_ground) max_spd = SPEED_AIR;
+            else if (crouch)  max_spd = (SPEED_MAX >> 1);
+            else              max_spd = SPEED_MAX;
+
             if (move > 0)      { s_vx = (i16)(s_vx + MOVE_ACC); if (s_vx >  max_spd) s_vx =  max_spd; }
             else if (move < 0) { s_vx = (i16)(s_vx - MOVE_ACC); if (s_vx < -max_spd) s_vx = -max_spd; }
             else {
@@ -274,7 +292,7 @@ void main(void) {
             belt_push = moving_conveyor_push(col0, col1, row);
             if (move == 0 && belt_push != 0) {
                 move = belt_push > 0 ? 1 : -1;
-                s_face = belt_push > 0 ? 0 : 1;
+                g_face = belt_push > 0 ? 0 : 1;
             }
         }
         effective_vx = (i16)(s_vx + belt_push);
@@ -419,13 +437,25 @@ void main(void) {
         // --- Animacio ---
         u8 cur;
         if (!s_on_ground) {
-            cur = 3;
+            cur = 4; // jump: manté cames separades agafant-se el barret a l'aire!
+        } else if (crouch) {
+            if (move != 0) {
+                s_anim_timer++;
+                if (s_anim_timer >= 4) {
+                    s_anim_timer = 0;
+                    s_anim_idx ^= 1;
+                }
+                cur = s_anim_idx ? 8 : 7; // crawl: alternança crouch3 / crouch2
+            } else {
+                cur = 6; // crouch1: ajupit aturat
+                s_anim_timer = 0;
+            }
         } else if (move != 0) {
             s_anim_timer++;
-            if (s_anim_timer >= 4) {
+            if (s_anim_timer >= 3) {
                 s_anim_timer = 0;
                 s_anim_idx++;
-                if (s_anim_idx >= 4) s_anim_idx = 0;
+                if (s_anim_idx >= 6) s_anim_idx = 0;
             }
             cur = g_walk[s_anim_idx];
         } else {
@@ -479,12 +509,16 @@ void main(void) {
         }
 
         {
-            const PSprFrame* frame = (s_face == 0) ?
-                &g_player_frames_r[cur] : &g_player_frames_l[cur];
+            const PSprFrame* frame = &g_player_frames_r[cur];
             u16 spr_addr = (u16)(PLAYER_FRAMES_BASE + frame->offset);
-            cpc_bank_set(PLAYER_FRAMES_BANK);
-            sprite_blit_player((const u8*)spr_addr);
-            cpc_bank_restore();
+            u8 prev_b = bank_set(PLAYER_FRAMES_BANK);
+            if (g_face == 0) {
+                sprite_blit_player((const u8*)spr_addr);
+            } else {
+                sprite_hflip((const u8*)spr_addr, (u8*)0x7700);
+                sprite_blit_player((const u8*)0x7700);
+            }
+            bank_restore(prev_b);
         }
         s_have_drawn[s_back_page] = 1;
 

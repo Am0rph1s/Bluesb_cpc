@@ -1,0 +1,160 @@
+# -*- coding: utf-8 -*-
+import sys, os
+sys.path.insert(0, 'tools/bbdata')
+from sprites import load_sqv_frames
+
+frames = load_sqv_frames(r'assets/bbdata/SPRITE.SQV')
+
+# Mapatge autèntic DOS VGA -> Pen Mode 0 Amstrad CPC
+# Paleta Mode 0 configurada a engine/video.s:
+# Pen 0  = BLANC PUR per a la camisa (pen en desús a les tiles del nivell) (0x4B)
+# Pen 1  = Rosa / Carn (cara, mans) (0x47)
+# Pen 2  = Gris canonada/metàl·lic (restaurat per al nivell) (0x40)
+# Pen 3  = Gris mitjà (0x40)
+# Pen 4  = Blau vestit (reflex) (0x44)
+# Pen 8  = Blau cel (0x57)
+# Pen 11 = Negre sòlid (vestit, barret, ulleres) (0x54)
+# Pen 12 = Blau pastel (0x5F)
+# Pen 13 = Vermell fosc (0x5C)
+# Pen 15 = Gris clar / núvols (0x40)
+dos_to_cpc_pen = {
+    0:  None, # Transparent
+    1:  1,    # Rosa / Carn
+    2:  12,   # Blau pastel
+    3:  11,   # Negre sòlid vestit (Pen 11)
+    4:  4,    # Blau vestit
+    5:  1,    # Rosa / Carn clara
+    6:  1,    # Rosa / Carn mitja
+    7:  1,    # Rosa / Carn
+    8:  0,    # BLANC PUR camisa (Pen 0 exclusiu per al personatge)
+    9:  9,    # Verd
+    10: 10,   # Verd brillant
+    11: 11,   # Negre vestit / barret / ulleres (Pen 11)
+    12: 0,    # BLANC PUR camisa (Pen 0)
+    13: 13,   # Vermell fosc
+    14: 13,   # Vermell fosc
+    15: 0     # BLANC PUR (Pen 0)
+}
+
+def encode_pair(pen0, pen1):
+    mask = 0
+    img = 0
+    if pen0 is not None:
+        mask |= 0xAA
+        p = pen0 & 0x0F
+        img |= ((p & 1) << 7) | (((p >> 2) & 1) << 5) | (((p >> 1) & 1) << 3) | (((p >> 3) & 1) << 1)
+    if pen1 is not None:
+        mask |= 0x55
+        p = pen1 & 0x0F
+        img |= ((p & 1) << 6) | (((p >> 2) & 1) << 4) | (((p >> 1) & 1) << 2) | ((p >> 3) & 1)
+    inv_mask = (~mask) & 0xFF
+    img_masked = img & mask
+    return inv_mask, img_masked
+
+def pack_standard_frame(idx):
+    w, h, px = frames[idx]
+    # Ample Mode 0 complet: 16 píxels Mode 0 = 32 píxels DOS = 8 bytes
+    w_m0 = 16
+    x_shift = (w_m0 - ((w + 1) // 2)) // 2
+    y_shift = 30 - h
+    
+    box = [[None] * 16 for _ in range(30)]
+    for y in range(h):
+        out_y = y + y_shift
+        if 0 <= out_y < 30:
+            for xm in range(16):
+                xdos = (xm - x_shift) * 2
+                p0 = px[y][xdos] if 0 <= xdos < w else 0
+                p1 = px[y][xdos + 1] if 0 <= (xdos + 1) < w else 0
+                
+                # Seleccionar color prioritari (prioritzar camisa/detalls sobre contorns)
+                val = 0
+                if p0 != 0 and p1 != 0:
+                    val = p0 if p0 not in (3, 11) else p1
+                elif p0 != 0:
+                    val = p0
+                elif p1 != 0:
+                    val = p1
+                
+                pen = dos_to_cpc_pen.get(val)
+                box[out_y][xm] = pen
+                
+    raw = bytearray()
+    for y in range(30):
+        for xb in range(8):
+            p0 = box[y][xb * 2]
+            p1 = box[y][xb * 2 + 1]
+            inv_mask, img = encode_pair(p0, p1)
+            raw.append(inv_mask)
+            raw.append(img)
+    return bytes(raw)
+
+# 26 frames complets de gameplay (sense natació ni concert)
+# 26 frames x 480 bytes = 12.480 bytes (caben amb comoditat al Banc 7)
+GAME_FRAMES = [
+    # 0..3: Caminar i aturat
+    ('idle',  1),
+    ('walk1', 2),
+    ('walk2', 0),
+    ('walk3', 3),
+    # 4..5: Salt i caiguda
+    ('jump',  7), # agafant-se el barret (32 px DOS complets, sense peus tallats!)
+    ('fall',  8), # caiguda lliure
+    # 6..8: Ajupit (duck 1, crawl 2, crawl 3 - 32 px DOS complets!)
+    ('crouch1', 4),
+    ('crouch2', 5),
+    ('crouch3', 6),
+    # 9..11: Escala de mà
+    ('ladder1', 9),
+    ('ladder2', 10),
+    ('ladder3', 11),
+    # 12..17: Caixes (portar, caminar, agafar)
+    ('crate_walk1', 13),
+    ('crate_walk2', 14),
+    ('crate_walk3', 15),
+    ('crate_walk4', 16),
+    ('crate_walk5', 17),
+    ('crate_lift',  12),
+    # 18..19: Empènyer, llançar
+    ('crate_throw', 18),
+    ('crate_push',  20),
+    # 20..22: Diari / objecte
+    ('item1', 21),
+    ('item2', 22),
+    ('item3', 23),
+    # 23..25: Danys / hurt / hit
+    ('hurt1', 27),
+    ('hurt2', 28),
+    ('hurt3', 29),
+]
+
+out_bin = r'assets/bbdata/PFRAMES.BIN'
+all_blobs = []
+for name, idx in GAME_FRAMES:
+    all_blobs.append(pack_standard_frame(idx))
+
+with open(out_bin, 'wb') as f:
+    f.write(b''.join(all_blobs))
+
+total_bytes = len(all_blobs) * 480
+print(f'Generat {out_bin}: {total_bytes} bytes ({len(GAME_FRAMES)} frames x 480 B)')
+
+hdr = ['#ifndef PLAYER_FRAMES_H', '#define PLAYER_FRAMES_H', '',
+       '#include "cpctelera.h"', '',
+       '// Frames autèntics de Jake (DOS 16 colors) al Banc 7 - 16 px Mode 0 (8 bytes)',
+       '#define PLAYER_FRAMES_BANK 0xC7',
+       '#define PLAYER_FRAMES_BASE 0x4000',
+       '#define PLAYER_FRAME_SIZE 480',
+       f'#define PLAYER_FRAMES_COUNT {len(GAME_FRAMES)}', '',
+       'typedef struct { u16 offset; u8 wb; u8 h; } PSprFrame;',
+       'static const PSprFrame g_player_frames_r[%d] = {' % len(GAME_FRAMES)]
+
+for k, (name, _) in enumerate(GAME_FRAMES):
+    hdr.append('    { %5d, 8, 30 }, // %2d: %s' % (k * 480, k, name))
+hdr.append('};')
+hdr.append('')
+hdr.append('#endif')
+
+with open('src/player_frames.h', 'w') as f:
+    f.write('\n'.join(hdr) + '\n')
+print('Actualitzat src/player_frames.h!')

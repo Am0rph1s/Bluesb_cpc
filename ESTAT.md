@@ -1,42 +1,46 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-06 — Animació fidel de les cintes transportadores i renderitzat transparent de la reixa.
+Última actualització: 2026-10-06 — Sprites complets de Jake a 16 px Mode 0 (8 bytes), camisa blanca sòlida (Pen 0) i fons gris recuperat.
 Idioma de treball amb l'usuari: **català**.
 
-## Estat vigent — Cintes transportadores, reixa Amiga, proporcions 1:1 i 25 Hz
+## Estat vigent — Sprites de Jake 16 px Mode 0, camisa blanca i animacions completes
 
-- **Animació fidel de les cintes transportadores (Magasin)**:
-  - Recuperada i optimitzada l'animació de les cintes transportadores a 25 Hz (cicles de 3 fases cada 4 fotogrames / 160 ms).
-  - Sentits visuals 100% fidels a l'arrossegament de física:
-    - Cinta d'arrossegament cap a la dreta (op 27): superfície (`248 -> 249 -> 250`) i corrons (`253 -> 252 -> 251`) en rotació horària (dreta).
-    - Cinta d'arrossegament cap a l'esquerra (op 28): superfície (`239 -> 238 -> 237`) i corrons (`240 -> 241 -> 242`) en rotació anti-horària (esquerra).
-  - Arquitectura ultra-compacta i segura de memòria:
-    - 4 cintes definides en taula estàtica `s_belts[4]` a ROM (`_CODE`), sense gastar memòria a `_DATA`.
-    - Modificació coherent de `MAP_MUT` al Banc 5 (`0xC5`) perquè qualsevol tira revelada pel desplaçament de càmera (`sync_backbuffer`) entri ja amb la fase vigent d'animació.
-    - Funció `render_tile_world()` optimitzada i desenrotllada (sense bucles aniuats ni divisions SDCC), garantint un consum mínim de cicles CPU (< 4% d'un frame cada 4 frames).
-  - Separació estricta de memòria (`--code-loc 0x0100`, `--data-loc 0x3300`) amb espai de pila folgat (> 1.580 bytes fins a `0x3FFE`) i 0 corrupció de ring buffer.
+- **Amplada d'Sprite real (16 píxels Mode 0 / 8 bytes × 30 línies)**:
+  - Superat el límit anterior de 12 px (6 bytes) que tallava les extremitats d'en Jake.
+  - El salt amb cames separades subjectant el barret (frame 7 de DOS, 32 px DOS = 16 px Mode 0 = 8 bytes) ara es mostra **complet de cap a peus**, amb els dos peus, sabates i mitjons sencers sense cap retall.
+  - Els frames d'ajupit i arrossegar-se (frames 4, 5 i 6 de DOS) es mostren amb l'amplada i silueta reals.
+  - Blitter ASM (`engine/sprite.s`) i restauració de fons desenrotllats a `.rept 8` i `ld bc, #8`.
+  - Llindar de wrap VRAM ajustat a `0xF8` ($256 - 8$) per evitar corrupcions de memòria en els extrems de línia.
 
-- **Proporcions reals de Jake 1:1 respecte a l'escenari**:
-  - S'ha corregit la sobre-dimensió de l'sprite (abans duplicada a 24 px Mode 0 = 48 px Amiga).
-  - Mida nova: **12 px Mode 0 (6 bytes) × 30 línies** = 24 px Amiga (1,5 rajoles d'ample). Encaixa perfectament amb les caixes, els forats de terra i entre columnes com a C64 i Atari ST.
-- **Paleta de colors Mode 0 autèntica**:
-  - Pen 1: Carn / pell (`0x47` rosa/carn a `video.s`) per a la cara i la mà que subjecta el barret.
-  - Pen 4: Blau marí (`0x44`) per al barret i el vestit.
-  - Pen 15: Blanc (`0x40`) per a la camisa.
-  - Pen 0: Negre (`0x54`) per a les ulleres de sol, sabates i vores.
-- **Optimització blitter i estalvi de memòria**:
-  - Blitter ASM desenrotllat en `.rept 6` i restauració de 6 bytes per línia (~10.500 T-states $\approx$ 2,6 ms, el doble de ràpid).
-  - Buffers de fons reduïts a la meitat: `_s_player_bg_c0` i `_s_player_bg_80` de 360 a **180 bytes** cadascun.
-  - Binari `PFRAMES.BIN` al banc 7 reduït de 5.760 a **2.880 bytes**.
-- **Física fidel i lògica a 25 Hz fixos**:
-  - Temporització fixa a 25 Hz (40 ms per cicle) via comptador `_g_ticks` a la ISR del CPC (12 ticks de 300 Hz), eliminant estrebades i fluctuacions.
-  - Salt fidel: `JUMP_VY = -136`, `GRAV = 22` (~3,2 rajoles d'alçada) i límit horitzontal a l'aire `SPEED_AIR = 14` (distància ~2,5 rajoles en lloc de 13).
-  - Col·lisions de paret ajustades a l'amplada de 12 px (sondes a `+10` dreta i `+1` esquerra).
-- **Scroll CRTC circular i doble buffer**:
-  - R12/R13 del CRTC seleccionen l'origen MA circular: `(cam_row * 40 + cam_x4) & 0x03FF`.
-  - El seguiment horitzontal avança en unitats de 4 px (una paraula MA), i `render_column()` dibuixa la meitat de tile de la vora entrant.
-  - Display actiu de 20 files CRTC (160 línies), doble buffer 100% flicker-free.
-  - Verificat autònomament a ZEsarUX amb captures a [informe_proporcions_jake.md](file:///C:/Users/esquerra/.gemini/antigravity/brain/1592641d-8217-48b5-aebf-30a79b1763e6/informe_proporcions_jake.md).
+- **Solució definitiva de la Paleta de Colors**:
+  - **Pen 0 (`0x4B`) — Blanc Pur exclusiu per a Jake**: En analitzar les 256 rajoles de `TILESET0.BIN`, s'ha comprovat que cap rajola de l'escenari utilitza el Pen 0 (0 píxels totals). Assignar el blanc al Pen 0 permet una camisa completament blanca i sòlida sense alterar l'escenari.
+  - **Pen 2 i Pen 15 (`0x40`) — Gris Metàl·lic original restaurat**: Totes les canonades, bigues i parets de l'escenari recuperen el seu to gris metàl·lic original, solucionant el problema on tot el nivell s'havia tornat blanc.
+  - **Pen 1 (`0x47`) — Carn / pell**: Cara i mans d'en Jake.
+  - **Pen 11 (`0x54`) — Negre sòlid**: Vestit, barret i ulleres de sol.
+  - **Pen 4 (`0x44`) i Pen 12 (`0x5F`)**: Detalls blaus del vestit.
+
+- **Gir Horitzontal (H-Flip) sòlid i sense fallades (`engine/sprite_hflip.s`)**:
+  - Rutina ASM de reflex horitzontal adaptada a 8 parells per línia (`.rept 8`), amb offset inicial de màscara a 14 i salts de 32 bytes entre línies font.
+  - Buffer de gir dedicat al Banc 7 a `0x7700 .. 0x78DF` (480 bytes), aïllat de qualsevol buffer d'ascensors o fons.
+  - Moviment cap a l'esquerra fluid, sense escombraries gràfiques ni reinicis del CPC.
+
+- **Mapa de Memòria al Banc 7 (`0xC7`)**:
+  - `0x4000 .. 0x70BF`: 26 frames d'en Jake (`PFRAMES.BIN`, 12.480 B).
+  - `0x70C0 .. 0x751F`: Buffers dels 5 ascensors magnètics (1.120 B).
+  - `0x7520 .. 0x760F`: Buffer restauració fons Jake pàgina C0 (240 B).
+  - `0x7610 .. 0x76FF`: Buffer restauració fons Jake pàgina 80 (240 B).
+  - `0x7700 .. 0x78DF`: Buffer de gir horitzontal H-FLIP (480 B).
+  - `0x78E0 .. 0x7EFF`: **1.568 bytes lliures** de seguretat.
+  - `0x7F00 .. 0x7FFF`: Taula LUT H-FLIP (256 B).
+
+- **Pressupost de Memòria del Bloc 0 (`0x0000..0x3FFF`)**:
+  - `_CODE`: `0x0100 .. 0x368D` (13.709 B), marge positiu de 19 B fins a `_DATA`.
+  - `_DATA`: `0x36A0 .. 0x37A5` (261 B).
+  - Canari de pila a `0x37E0`.
+  - Marge de pila lliure (SP fins a `0x3FFE`): **2.137 bytes lliures**.
+
+- **Verificació Automatitzada amb ZEsarUX**:
+  - Testejat amb `tools/verify_all_actions.py` cobrint repòs, caminar dreta, caminar esquerra, ajupir-se, arrossegar-se i saltar a l'aire. Totes les accions validades i capturades correctament.
 
 ## 📚 Històric — sessió de neteja del motor Mode 0
 

@@ -30,7 +30,7 @@ typedef struct {
     i16 drawn_y[2];
 } MovingElevator;
 
-#define ELEVATOR_BG_BASE 0x7000
+#define ELEVATOR_BG_BASE 0x70C0
 
 static inline u8* elevator_bg_ptr(u8 idx, u8 page) {
     return (u8*)(ELEVATOR_BG_BASE + (((u16)idx << 1) + page) * ELEVATOR_BG_SIZE);

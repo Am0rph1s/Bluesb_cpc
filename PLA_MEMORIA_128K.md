@@ -118,7 +118,7 @@ Tots els frames són de 12 px Mode 0 (6 bytes) $\times$ 30 línies = 360 bytes (
 - [x] **CP-1.4:** Netejar codi mort i verificar que el joc segueix funcionant exactament igual. (Validat: eliminat `cpct_drawSpriteMasked` i estalviats bytes a _CODE).
 
 ### Fase 2 — Moure Lògica i Buffers de Fons
-- [ ] **CP-2.1:** Moure els buffers de fons dels sprites (1.635 bytes d'ascensors i Jake) fora del Bloc 0 cap al Banc 7.
+- [x] **CP-2.1:** Moure els buffers de fons dels sprites (1.480 bytes d'ascensors i Jake) fora del Bloc 0 cap al Banc 7. (Validat: _DATA es redueix de 1.740 B a 261 B, pila lliure creix a 2.193 B, ZEsarUX 100% net).
 - [ ] **CP-2.2:** Moure la lògica d'objectes i ascensors (`moving.c`) i la física/col·lisions al Banc 5.
 - [ ] **CP-2.3:** Comprovar que el Bloc 0 guanya > 6 KB lliures i que el bucle de 25 Hz manté la suavitat.
 

@@ -22,7 +22,7 @@ SDASZ80 = r"C:\Program Files\SDCC\bin\sdasz80.exe"
 CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "200000",
              "--disable-warning", "110"]
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0x3480", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0x3600", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 
@@ -47,7 +47,7 @@ C_SOURCES = [
 C_HEADERS = {
     "engine/fdc.c": ["engine/fdc.h", "engine/cpctelera.h"],
     "src/render.c": ["engine/cpctelera.h"],
-    "src/moving.c": ["engine/cpctelera.h", "src/moving.h", "src/sprite.h",
+    "src/moving.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h",
                      "src/elevator_frames.h"],
     "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "src/disk_tables.h",
                    "src/sprite.h", "src/moving.h", "src/player_frames.h",

@@ -28,8 +28,13 @@ typedef struct {
     u8 drawn_row_count[2];
     i16 drawn_x[2];
     i16 drawn_y[2];
-    u8 bg[2][ELEVATOR_BG_SIZE];
 } MovingElevator;
+
+#define ELEVATOR_BG_BASE 0x7000
+
+static inline u8* elevator_bg_ptr(u8 idx, u8 page) {
+    return (u8*)(ELEVATOR_BG_BASE + (((u16)idx << 1) + page) * ELEVATOR_BG_SIZE);
+}
 
 extern MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
 

@@ -1,5 +1,6 @@
 // Moving Magasin objects: conveyor floor triggers and the five DOS elevators.
 #include "cpctelera.h"
+#include "bank.h"
 #include "moving.h"
 #include "sprite.h"
 #include "elevator_frames.h"
@@ -182,9 +183,11 @@ static u8 elevator_needs_redraw(const MovingElevator* e, u8 page) {
 }
 
 void moving_restore(u8 page, u8 force) {
+    u8 prev_bank;
     u8 i, y;
     if (page > 1) return;
 
+    prev_bank = bank_set(0xC7);
     for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
         MovingElevator* e = &g_mag_elevators[i];
         if (!e->drawn[page] || (!force && !elevator_needs_redraw(e, page))) continue;
@@ -197,20 +200,23 @@ void moving_restore(u8 page, u8 force) {
             g_moving_dst = (u16)ring_address(page,
                 (i16)(e->drawn_x[page] + e->drawn_start_byte[page] * 2),
                 (i16)(e->drawn_y[page] + sprite_row));
-            g_moving_background = (u16)&e->bg[page][bg_off];
+            g_moving_background = (u16)(elevator_bg_ptr(i, page) + bg_off);
             g_moving_span = e->drawn_byte_count[page];
             moving_restore_span();
         }
         e->drawn[page] = 0;
     }
+    bank_restore(prev_bank);
 }
 
 void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
+    u8 prev_bank;
     u8 i, y;
     i16 view_x = (i16)(cam_x4 << 2);
     i16 view_y = (i16)(cam_row << 3);
     if (page > 1) return;
 
+    prev_bank = bank_set(0xC7);
     for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
         MovingElevator* e = &g_mag_elevators[i];
         i16 world_x;
@@ -244,7 +250,7 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
             u16 bg_off = (u16)sprite_row * ELEVATOR_W_BYTES + start_byte;
             u16 frame_off = bg_off << 1;
             g_moving_dst = (u16)ring_address(page, clip_x0, (i16)(clip_y0 + y));
-            g_moving_background = (u16)&e->bg[page][bg_off];
+            g_moving_background = (u16)(elevator_bg_ptr(i, page) + bg_off);
             g_moving_sprite = (u16)(frame + frame_off);
             g_moving_span = byte_count;
             moving_blit_span();
@@ -258,6 +264,7 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
         e->drawn_frame[page] = e->frame;
         e->drawn[page] = 1;
     }
+    bank_restore(prev_bank);
 }
 
 i8 moving_find_landing(i16 player_x, i16 previous_feet, i16 current_feet,

@@ -56,13 +56,13 @@ for i in range(18):
         if "PC=" in line and (i % 4 == 0 or i == 17):
             print(f"  [{i+1}s] {line.strip()}")
 
-print("\n--- COMPROVACIÓ DEL CANARI DE PILA (CP-0.1) ---")
-# El canari està a 0x3C00 (16 bytes = 8 paraules de 0xAA55 -> en little-endian: 55 AA 55 AA ...)
-canary_mem = z.read_mem(0x3C00, 16)
-print(f"Memòria a 0x3C00 (16 bytes): {canary_mem.hex()}")
+print("\n--- COMPROVACIÓ DEL CANARI DE PILA (CP-0.1, CP-2.1) ---")
+# El canari està a 0x3750 (16 bytes = 8 paraules de 0xAA55 -> en little-endian: 55 AA 55 AA ...)
+canary_mem = z.read_mem(0x3750, 16)
+print(f"Memòria a 0x3750 (16 bytes): {canary_mem.hex()}")
 expected = bytes.fromhex("55aa" * 8)
 if canary_mem == expected:
-    print("[EXIT] Canari de pila 100% INTACTE a 0x3C00 (0xAA55 repetit 8 vegades)!")
+    print("[EXIT] Canari de pila 100% INTACTE a 0x3750 (0xAA55 repetit 8 vegades)!")
 else:
     print(f"[ERROR] Canari corromput! Esperat {expected.hex()}, obtingut {canary_mem.hex()}")
 
@@ -73,8 +73,8 @@ for part in regs.split():
     if part.startswith("SP="):
         sp_val = int(part.split("SP=")[1], 16)
         print(f"Punter de pila actual: SP = 0x{sp_val:04X}")
-        margin = sp_val - 0x3C00
-        print(f"Marge net de pila sobre el canari (SP - 0x3C00): {margin} bytes!")
+        margin = sp_val - 0x3750
+        print(f"Marge net de pila sobre el canari (SP - 0x3750): {margin} bytes!")
 
 os.makedirs(os.path.join(PROJ, "scratch"), exist_ok=True)
 bmp_path = os.path.join(PROJ, "scratch", "phase0_live.bmp")

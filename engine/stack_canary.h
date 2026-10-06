@@ -4,8 +4,8 @@
 #include "cpctelera.h"
 
 // Canari de pila resident per detectar desbordaments de SP cap a _DATA
-// S'ubica a 0x3C00 (entre _DATA que acaba a ~0x3B4C i la pila que neix a 0x3FFE)
-#define CANARY_ADDR   0x3C00
+// S'ubica a 0x3750 (entre _DATA que acaba a ~0x3705 i la pila que neix a 0x3FFE)
+#define CANARY_ADDR   0x3750
 #define CANARY_MAGIC  0xAA55
 #define CANARY_WORDS  8
 

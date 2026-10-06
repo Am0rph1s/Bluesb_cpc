@@ -20,6 +20,9 @@
     .globl _g_grate_enable
     .globl _g_grate_phase_x
     .globl _g_grate_base_y
+    .globl _bank_set
+    .globl _bank_restore
+    .globl _g_bank
 
     ;; ============================================================
     ;; DADES DE TREBALL A _DATA
@@ -48,8 +51,9 @@ s_bg_read_ptr:      .dw 0
 s_addr_segment:     .db 0
 s_byte_cnt:         .db 0
 
-_s_player_bg_c0:    .ds 180     ;; 6 bytes * 30 linies = 180 bytes (pàgina 0xC000)
-_s_player_bg_80:    .ds 180     ;; 6 bytes * 30 linies = 180 bytes (pàgina 0x8000)
+;; Buffers de restauració de fons d'en Jake reubicats al Banc 7 (0x7500..0x7667)
+_s_player_bg_c0 = 0x7500
+_s_player_bg_80 = 0x75B4
 
 
     ;; ============================================================
@@ -62,6 +66,10 @@ _s_player_bg_80:    .ds 180     ;; 6 bytes * 30 linies = 180 bytes (pàgina 0x80
 ;;   Restaura el fons darrera del personatge dins la VRAM circular
 ;; ============================================================
 _sprite_restore_player::
+    ld      a, (_g_bank)
+    push    af                  ;; desa banc anterior a la pila
+    ld      a, #0xC7
+    call    _bank_set           ;; commuta a Banc 7 (on viuen els buffers de fons)
     ld      a, (_g_vram_base_hi)
     cp      #0x80
     jr      z, 9$
@@ -138,6 +146,8 @@ rst_copy_done:
 
     pop     bc
     djnz    rst_line_loop
+    pop     af
+    call    _bank_restore       ;; restaura el banc anterior
     ret
 
 ;; DE = adreça de línia del mapa base. Retorna DE amb l'offset MA circular

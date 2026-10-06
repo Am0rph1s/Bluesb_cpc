@@ -41,5 +41,6 @@ u8 level_get_tile_type(u16 col, u16 row);
 i8 moving_find_landing(i16 player_x, i16 previous_feet, i16 current_feet,
                        i16 vy, i16* player_top);
 i16 moving_conveyor_push(u16 col0, u16 col1, u16 row);
+void moving_draw_conveyor_tiles(u8 page, u16 cam_x4, u16 cam_row);
 
 #endif

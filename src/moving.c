@@ -5,11 +5,27 @@
 #include "elevator_frames.h"
 
 #define MAP_PTR  ((const u8*)0x4000)
+#define MAP_MUT  ((u8*)0x4000)
 #define TRIG_PTR ((const u8*)0x6400)
 #define ELEVATOR_WAIT 40
 #define ELEVATOR_SPEED 2
 #define ELEVATOR_OBJECT_H 30
 #define ELEVATOR_SPR_HALF_W 8
+#define MOVING_CONVEYOR_MAX 32
+
+typedef struct {
+    u8 row;
+    u8 col_start;
+    u8 col_end;
+    u8 op;
+} MagConveyorBelt;
+
+static const MagConveyorBelt s_belts[4] = {
+    { 36, 84, 86, 27 },
+    { 39, 83, 89, 28 },
+    { 42, 80, 86, 27 },
+    { 45, 84, 89, 28 }
+};
 
 MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
 u16 g_moving_dst;
@@ -19,12 +35,22 @@ u8 g_moving_span;
 
 extern void moving_blit_span(void);
 extern void moving_restore_span(void);
+extern void render_tile_world(u8 tile, u16 col, u16 row,
+                              u16 cam_x4, u16 cam_row);
 
 // These are object slots 19..23 (type 7, object opcode 4) in cyxx/blues'
 // Magasin level data. X is halved because DOS/Amiga graphics are 320 px wide.
 static const i16 s_start_x[MAG_ELEVATOR_COUNT] = { 760, 808, 760, 808, 304 };
 static const i16 s_start_y[MAG_ELEVATOR_COUNT] = { 384, 464, 592, 736, 784 };
 static const u8 s_map_col[MAG_ELEVATOR_COUNT] = { 95, 101, 95, 101, 38 };
+static u8 s_conveyor_phase;
+static u8 s_conveyor_tick;
+static u8 s_page_conveyor_phase[2];
+
+static const u8 s_belt_right_body[3]   = { 248, 249, 250 };
+static const u8 s_belt_right_roller[3] = { 253, 252, 251 };
+static const u8 s_belt_left_body[3]    = { 239, 238, 237 };
+static const u8 s_belt_left_roller[3]  = { 240, 241, 242 };
 
 extern u8 level_get_tile_type(u16 col, u16 row);
 
@@ -38,6 +64,11 @@ static u8* ring_address(u8 page, i16 x, i16 y) {
 
 void moving_init(void) {
     u8 i;
+
+    s_conveyor_phase = 0;
+    s_conveyor_tick = 0;
+    s_page_conveyor_phase[0] = s_page_conveyor_phase[1] = 0xFF;
+
     for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
         MovingElevator* e = &g_mag_elevators[i];
         e->center_x = s_start_x[i];
@@ -95,6 +126,52 @@ void moving_update(void) {
         e->frame = (u8)((e->anim_tick >> 2) & 1);
         e->anim_tick++;
     }
+
+    if (++s_conveyor_tick >= 4) {
+        u8 b, c;
+        s_conveyor_tick = 0;
+        if (++s_conveyor_phase >= 3) {
+            s_conveyor_phase = 0;
+        }
+        cpc_bank_set(0xC5);
+        for (b = 0; b < 4; b++) {
+            u8 body_tile   = (s_belts[b].op == 27) ? s_belt_right_body[s_conveyor_phase]
+                                                   : s_belt_left_body[s_conveyor_phase];
+            u8 roller_tile = (s_belts[b].op == 27) ? s_belt_right_roller[s_conveyor_phase]
+                                                   : s_belt_left_roller[s_conveyor_phase];
+            u16 row_off = (u16)s_belts[b].row << 7;
+            MAP_MUT[row_off + s_belts[b].col_start] = roller_tile;
+            for (c = (u8)(s_belts[b].col_start + 1); c < s_belts[b].col_end; c++) {
+                MAP_MUT[row_off + c] = body_tile;
+            }
+            MAP_MUT[row_off + s_belts[b].col_end] = roller_tile;
+        }
+        cpc_bank_restore();
+    }
+}
+
+void moving_draw_conveyor_tiles(u8 page, u16 cam_x4, u16 cam_row) {
+    u8 b, c;
+    if (page > 1 || s_page_conveyor_phase[page] == s_conveyor_phase) return;
+
+    for (b = 0; b < 4; b++) {
+        u16 belt_subrow = (u16)s_belts[b].row << 1;
+        if (belt_subrow + 2 <= cam_row || belt_subrow >= cam_row + 20) continue;
+
+        {
+            u8 body_tile   = (s_belts[b].op == 27) ? s_belt_right_body[s_conveyor_phase]
+                                                   : s_belt_left_body[s_conveyor_phase];
+            u8 roller_tile = (s_belts[b].op == 27) ? s_belt_right_roller[s_conveyor_phase]
+                                                   : s_belt_left_roller[s_conveyor_phase];
+            for (c = s_belts[b].col_start; c <= s_belts[b].col_end; c++) {
+                u16 char_x = (u16)c << 1;
+                if (char_x + 2 <= cam_x4 || char_x >= cam_x4 + 40) continue;
+                u8 tile = (c == s_belts[b].col_start || c == s_belts[b].col_end) ? roller_tile : body_tile;
+                render_tile_world(tile, c, s_belts[b].row, cam_x4, cam_row);
+            }
+        }
+    }
+    s_page_conveyor_phase[page] = s_conveyor_phase;
 }
 
 static u8 elevator_needs_redraw(const MovingElevator* e, u8 page) {

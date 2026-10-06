@@ -20,9 +20,9 @@ El joc s'executa en mode bare-metal (sense firmware AMSDOS en temps de joc) apro
 |                              RAM BASE (64 KB)                           |
 +-------------------+-----------------------------------------------------+
 | 0x0000 - 0x00FF   | Vectors del sistema Z80 (ISR IM 1 a 0x0038)        |
-| 0x0100 - 0x2C86   | Codi executable (_CODE: C + ASM + taules constants) |
-| 0x3200 - 0x3A29   | Variables globals i dades estàtiques (_DATA)        |
-| 0x3A2A - 0x3FFE   | PILA CPU (SP=0x3FFE; ~1,5 KB disponibles)            |
+| 0x0100 - 0x32EE   | Codi executable (_CODE: C + ASM + taules constants) |
+| 0x3300 - 0x39CB   | Variables globals i dades estàtiques (_DATA)        |
+| 0x39CC - 0x3FFE   | PILA CPU (SP=0x3FFE; ~1,6 KB disponibles)            |
 +-------------------+-----------------------------------------------------+
 | 0x4000 - 0x7FFF   | Finestra de Bank Switching (Bancs 4..7 de 16 KB)   |
 |                   | - En descans (0xC0): RAM Base Bloc 1               |

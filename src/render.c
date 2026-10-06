@@ -30,6 +30,47 @@ static void draw_char(u8 tile_index, u16 ma, u8 tile_half_y, u8 tile_half_x) {
     render_tile_fast(tile);
 }
 
+// Repinta un tile animat de 8x16 del mapa, només els caràcters CRTC de 4x8
+// que cauen dins el viewport actual. Això manté el ring circular lliure de wraps.
+void render_tile_world(u8 tile_index, u16 col, u16 row,
+                       u16 cam_x4, u16 cam_row) {
+    u16 cx = (u16)(col << 1);
+    u16 cy = (u16)(row << 1);
+    u16 ma;
+    i16 sx, sy;
+
+    cpc_bank_set(0xC4);
+
+    sy = (i16)cy - (i16)cam_row;
+    sx = (i16)cx - (i16)cam_x4;
+
+    // Subrow 0 (meitat superior del tile)
+    if (sy >= 0 && sy < PLAY_ROWS) {
+        ma = (u16)(((cy * 40) + cx) & 0x03FF);
+        if (sx >= 0 && sx < PLAY_CHARS) {
+            draw_char(tile_index, ma, 0, 0);
+        }
+        if ((sx + 1) >= 0 && (sx + 1) < PLAY_CHARS) {
+            draw_char(tile_index, (u16)((ma + 1) & 0x03FF), 0, 1);
+        }
+    }
+
+    // Subrow 1 (meitat inferior del tile)
+    sy++;
+    cy++;
+    if (sy >= 0 && sy < PLAY_ROWS) {
+        ma = (u16)(((cy * 40) + cx) & 0x03FF);
+        if (sx >= 0 && sx < PLAY_CHARS) {
+            draw_char(tile_index, ma, 1, 0);
+        }
+        if ((sx + 1) >= 0 && (sx + 1) < PLAY_CHARS) {
+            draw_char(tile_index, (u16)((ma + 1) & 0x03FF), 1, 1);
+        }
+    }
+
+    cpc_bank_restore();
+}
+
 // Llegeix una tira de 4 px: un caràcter CRTC d'ample per cada fila de tile.
 static void render_map_char_column(u16 cam_x4, u16 cam_row, u16 screen_char) {
     u8 tile_ids[PLAY_ROWS];

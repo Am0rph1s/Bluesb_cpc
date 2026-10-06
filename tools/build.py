@@ -22,7 +22,7 @@ SDASZ80 = r"C:\Program Files\SDCC\bin\sdasz80.exe"
 CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "200000",
              "--disable-warning", "110"]
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0x3200", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0x3300", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 

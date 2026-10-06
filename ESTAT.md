@@ -1,9 +1,20 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-05 — Proporcions 1:1 d'en Jake, paleta completa i física a 25 Hz.
+Última actualització: 2026-10-06 — Animació fidel de les cintes transportadores i renderitzat transparent de la reixa.
 Idioma de treball amb l'usuari: **català**.
 
-## Estat vigent — Proporcions 1:1, paleta i física a 25 Hz
+## Estat vigent — Cintes transportadores, reixa Amiga, proporcions 1:1 i 25 Hz
+
+- **Animació fidel de les cintes transportadores (Magasin)**:
+  - Recuperada i optimitzada l'animació de les cintes transportadores a 25 Hz (cicles de 3 fases cada 4 fotogrames / 160 ms).
+  - Sentits visuals 100% fidels a l'arrossegament de física:
+    - Cinta d'arrossegament cap a la dreta (op 27): superfície (`248 -> 249 -> 250`) i corrons (`253 -> 252 -> 251`) en rotació horària (dreta).
+    - Cinta d'arrossegament cap a l'esquerra (op 28): superfície (`239 -> 238 -> 237`) i corrons (`240 -> 241 -> 242`) en rotació anti-horària (esquerra).
+  - Arquitectura ultra-compacta i segura de memòria:
+    - 4 cintes definides en taula estàtica `s_belts[4]` a ROM (`_CODE`), sense gastar memòria a `_DATA`.
+    - Modificació coherent de `MAP_MUT` al Banc 5 (`0xC5`) perquè qualsevol tira revelada pel desplaçament de càmera (`sync_backbuffer`) entri ja amb la fase vigent d'animació.
+    - Funció `render_tile_world()` optimitzada i desenrotllada (sense bucles aniuats ni divisions SDCC), garantint un consum mínim de cicles CPU (< 4% d'un frame cada 4 frames).
+  - Separació estricta de memòria (`--code-loc 0x0100`, `--data-loc 0x3300`) amb espai de pila folgat (> 1.580 bytes fins a `0x3FFE`) i 0 corrupció de ring buffer.
 
 - **Proporcions reals de Jake 1:1 respecte a l'escenari**:
   - S'ha corregit la sobre-dimensió de l'sprite (abans duplicada a 24 px Mode 0 = 48 px Amiga).

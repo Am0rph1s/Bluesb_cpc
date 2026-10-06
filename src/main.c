@@ -454,6 +454,7 @@ void main(void) {
         // Dibuixar les tires noves al ring buffer, sense copiar la pantalla.
         sync_backbuffer(page_dx, page_dy, g_cam_x4, g_cam_row);
         g_vram_start = camera_ma(g_cam_x4, g_cam_row);
+        moving_draw_conveyor_tiles(s_back_page, g_cam_x4, g_cam_row);
 
         // Redraw moving objects over the updated background.
         moving_draw(s_back_page, g_cam_x4, g_cam_row);

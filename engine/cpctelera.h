@@ -42,7 +42,6 @@ u8   cpct_isKeyPressed(i16 key_id);
 // Memòria i blitter
 #define cpct_memcpy(dst, src, size) memcpy((dst), (src), (size))
 #define cpct_memset(dst, val, size) memset((dst), (val), (size))
-void cpct_drawSpriteMasked(const void* sprite, void* memory, u8 width, u8 height);
 
 // Enumeració canònica de tecles i joysticks CPC
 typedef enum cpct_e_keyID {

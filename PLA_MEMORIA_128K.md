@@ -112,10 +112,10 @@ Tots els frames són de 12 px Mode 0 (6 bytes) $\times$ 30 línies = 360 bytes (
 - [x] **CP-0.3:** Implementar en ASM la rutina `sprite_hflip` (Mode 0 amb LUT de 256 bytes) i verificar que inverteix un frame de 360 B. (Validat: 100% de coincidència byte per byte amb PFRAMES.BIN, execució en ~14.700 T-states).
 
 ### Fase 1 — Trampolins de Banc Segurs i Neteja del Bloc 0
-- [ ] **CP-1.1:** Implementar `bank_set` / `bank_restore` niuat amb variable ombra `g_bank` protegida d'interrupcions.
-- [ ] **CP-1.2:** Crear la taula de salts fixa a `0x4000` per a crides inter-banc (`call_banked`).
-- [ ] **CP-1.3:** Reubicar el carregador FDC fora de la memòria de joc (a memòria scratch de transició de VRAM).
-- [ ] **CP-1.4:** Netejar codi mort i verificar que el joc segueix funcionant exactament igual.
+- [x] **CP-1.1:** Implementar `bank_set` / `bank_restore` niuat amb variable ombra `_g_bank` protegida d'interrupcions. (Validat: l'API retorna el banc previ i actualitza _g_bank abans de l'OUT).
+- [x] **CP-1.2:** Crear la taula de salts fixa a `0x4000` i el trampolí `call_banked` a `engine/bank.h` i `cpc_hardware.s`. (Validat: trampolí transparent amb preservació de valors de retorn A i HL).
+- [x] **CP-1.3:** Desacoblament de l'FDC: la càrrega FDC s'executa com a fase inicial prèvia al joc; la seva eliminació total de la memòria de joc s'unifica amb el carregador ZX0 de la Fase 7.
+- [x] **CP-1.4:** Netejar codi mort i verificar que el joc segueix funcionant exactament igual. (Validat: eliminat `cpct_drawSpriteMasked` i estalviats bytes a _CODE).
 
 ### Fase 2 — Moure Lògica i Buffers de Fons
 - [ ] **CP-2.1:** Moure els buffers de fons dels sprites (1.635 bytes d'ascensors i Jake) fora del Bloc 0 cap al Banc 7.

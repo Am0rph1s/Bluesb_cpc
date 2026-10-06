@@ -13,9 +13,13 @@
     .globl _cpct_waitVSYNC
     .globl _cpct_scanKeyboard_f
     .globl _cpct_isKeyPressed
-    .globl _cpct_drawSpriteMasked
     .globl _cpc_bank_set
     .globl _cpc_bank_restore
+    .globl _bank_set
+    .globl _bank_restore
+    .globl _bank_get
+    .globl _call_banked
+    .globl _g_bank
 
     .globl _cpct_keyboardStatusBuffer
     .globl _cpct_mode_rom_status
@@ -23,20 +27,74 @@
     .area _CODE
 
 ;; ============================================================
-;; cpc_bank_set(u8 bank_val) - bank_val in A (ex: 0xC4..0xC7)
+;; bank_set(u8 bank_val) / cpc_bank_set(u8 bank_val)
+;; __sdcccall(1): A = nou banc (0xC4..0xC7). Retorna banc anterior en A.
 ;; ============================================================
+_bank_set::
 _cpc_bank_set::
+    ld      hl, #_g_bank
+    ld      e, (hl)             ;; E = banc anterior
+    ld      (hl), a             ;; _g_bank = nou banc (PRIMER abans de l'OUT!)
+    ld      bc, #0x7F00
+    out     (c), a              ;; Commuta banc de maquinari Gate Array
+    ld      a, e                ;; Retorna banc anterior
+    ret
+
+;; ============================================================
+;; bank_restore(u8 prev_bank)
+;; __sdcccall(1): A = prev_bank
+;; ============================================================
+_bank_restore::
+    ld      hl, #_g_bank
+    ld      (hl), a             ;; _g_bank = prev_bank
     ld      bc, #0x7F00
     out     (c), a
     ret
 
 ;; ============================================================
-;; cpc_bank_restore(void) - restaura la RAM base estàndard (0xC0)
+;; cpc_bank_restore(void) - compatibilitat històrica: restaura 0xC0
 ;; ============================================================
 _cpc_bank_restore::
-    ld      bc, #0x7F00
     ld      a, #0xC0
-    out     (c), a
+    jr      _bank_restore
+
+;; ============================================================
+;; bank_get(void) - retorna el banc actual actiu en A
+;; ============================================================
+_bank_get::
+    ld      a, (_g_bank)
+    ret
+
+;; ============================================================
+;; call_banked(u8 bank, void* fn_ptr)
+;; __sdcccall(1): A = bank, DE = fn_ptr
+;; Commuta a 'bank', crida 'fn_ptr', restaura el banc previ
+;; i preserva tots els valors de retorn (A, HL).
+;; ============================================================
+_call_banked::
+    ld      hl, #_g_bank
+    ld      c, (hl)             ;; C = banc anterior
+    push    bc                  ;; desa banc anterior a la pila (C = prev)
+    ld      (hl), a             ;; _g_bank = nou banc
+    ld      b, #0x7F
+    out     (c), a              ;; out (0x7F00), a
+
+    ld      hl, #banked_ret$
+    push    hl                  ;; adreça de retorn a la pila
+    push    de                  ;; adreça de la funció
+    ret                         ;; salt a DE (call indirecte)
+
+banked_ret$:
+    pop     bc                  ;; C = prev_bank
+    push    af                  ;; preserva retorn A / Flags
+    push    hl                  ;; preserva retorn HL
+    ld      a, c
+    ld      hl, #_g_bank
+    ld      (hl), a             ;; restaura _g_bank
+    ld      b, #0x7F
+    out     (c), a              ;; restaura maquinari Gate Array
+    pop     hl                  ;; restaura retorn HL
+    pop     af                  ;; restaura retorn A
     ret
 
 ;; ============================================================
@@ -157,57 +215,7 @@ _cpct_isKeyPressed::
     ld      l, a
     ret
 
-;; ============================================================
-;; cpct_drawSpriteMasked(const void* sprite, void* memory, u8 width, u8 height)
-;; sprite in HL, memory in DE, width/height packed on stack
-;; ============================================================
-_cpct_drawSpriteMasked::
-    pop     iy                  ;; return address
-    pop     bc                  ;; C = width, B = height
-    ld      a, c
-    ld      (s_dsm_w), a
-
-00010$:                         ;; height loop
-    push    de
-
-00011$:                         ;; width loop
-    ld      a, (de)
-    and     (hl)
-    inc     hl
-    or      (hl)
-    ld      (de), a
-    inc     de
-    inc     hl
-    dec     c
-    jr      nz, 00011$
-
-    pop     de
-    dec     b
-    jr      z, 00019$           ;; end
-
-    ld      a, (s_dsm_w)
-    ld      c, a
-
-    ld      a, d
-    add     #0x08
-    ld      d, a
-    and     #0x38
-    jr      nz, 00010$
-
-    ;; boundary crossed
-    ld      a, e
-    add     #0x50
-    ld      e, a
-    ld      a, d
-    adc     #0xC0
-    ld      d, a
-    jr      00010$
-
-00019$:
-    jp      (iy)
-
-s_dsm_w: .db 0
-
 .area _DATA
+_g_bank::                    .db 0xC0
 _cpct_keyboardStatusBuffer:: .ds 10
 _cpct_mode_rom_status::      .db 0x8D

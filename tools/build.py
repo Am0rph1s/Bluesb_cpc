@@ -22,7 +22,7 @@ SDASZ80 = r"C:\Program Files\SDCC\bin\sdasz80.exe"
 CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "200000",
              "--disable-warning", "110"]
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0x3300", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0x3480", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 
@@ -36,6 +36,7 @@ ASM_SOURCES = [
     "engine/sprite.s",
     "engine/moving_blit.s",
     "engine/tile_blit.s",
+    "engine/sprite_hflip.s",
 ]
 C_SOURCES = [
     "engine/fdc.c",
@@ -49,7 +50,8 @@ C_HEADERS = {
     "src/moving.c": ["engine/cpctelera.h", "src/moving.h", "src/sprite.h",
                      "src/elevator_frames.h"],
     "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "src/disk_tables.h",
-                   "src/sprite.h", "src/moving.h", "src/player_frames.h"],
+                   "src/sprite.h", "src/moving.h", "src/player_frames.h",
+                   "engine/stack_canary.h"],
 }
 
 PROGNAME = "bluesb"
@@ -111,6 +113,55 @@ def code_length(map_path, default=0x8000):
     return default
 
 
+def report_and_assert_memory_budget(map_path):
+    if not os.path.exists(map_path):
+        return
+    syms = {}
+    with open(map_path, "r", encoding="latin1") as f:
+        for line in f:
+            parts = line.split()
+            if len(parts) >= 2:
+                for k in ("s__CODE", "l__CODE", "s__DATA", "l__DATA"):
+                    if parts[1] == k:
+                        try:
+                            syms[k] = int(parts[0], 16)
+                        except ValueError:
+                            pass
+    s_code = syms.get("s__CODE", 0x0100)
+    l_code = syms.get("l__CODE", 0)
+    s_data = syms.get("s__DATA", 0x3300)
+    l_data = syms.get("l__DATA", 0)
+
+    code_end = s_code + l_code
+    data_end = s_data + l_data
+    code_margin = s_data - code_end
+    stack_top = 0x3FFE
+    stack_margin = stack_top - data_end
+
+    print("\n" + "=" * 68)
+    print(" PRESSUPOST DE MEMORIA (BLOC 0: 0x0000..0x3FFF)")
+    print("=" * 68)
+    print(" _CODE : 0x%04X..0x%04X (%5d B) | Marge fins _DATA : %4d B" %
+          (s_code, code_end, l_code, code_margin))
+    print(" _DATA : 0x%04X..0x%04X (%5d B) | Pila lliure (SP) : %4d B" %
+          (s_data, data_end, l_data, stack_margin))
+    print("=" * 68)
+
+    if code_margin < 0:
+        print("\n[FATAL] _CODE ha envait _DATA per %d bytes! (code_end=0x%04X > data_start=0x%04X)" %
+              (-code_margin, code_end, s_data))
+        sys.exit(1)
+    if stack_margin < 256:
+        print("\n[FATAL] Marge de pila insuficient (%d B < 256 B)! Risc immediat de crash." %
+              stack_margin)
+        sys.exit(1)
+    if code_margin < 32:
+        print("[AVIS] _CODE esta a punt de col-lidir amb _DATA! (nomes queden %d B)" % code_margin)
+    if stack_margin < 1024:
+        print("[AVIS] Marge de pila ajustat (%d B). Recomanat alliberar _DATA a bancs." % stack_margin)
+    print()
+
+
 def compile_and_link(force):
     obj = os.path.join(PROJ, "obj")
     objs = []
@@ -132,6 +183,7 @@ def compile_and_link(force):
     map_path = os.path.join(obj, PROGNAME + ".map")
     bin_path = os.path.join(obj, PROGNAME + ".bin")
     convert_ihx(ihx, bin_path, start_addr=0x0100, max_length=code_length(map_path))
+    report_and_assert_memory_budget(map_path)
     return bin_path, find_start(map_path), os.path.getsize(bin_path)
 
 

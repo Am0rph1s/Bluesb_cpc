@@ -62,6 +62,7 @@ static u8 s_back_page = 1;  // 1 -> pàgina B; 0 -> pàgina A
 static const u8 g_walk[4] = { 0, 1, 2, 1 };
 
 #include "player_frames.h"
+#include "stack_canary.h"
 
 void main(void);
 
@@ -174,6 +175,7 @@ static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
 }
 
 void main(void) {
+    stack_canary_init();
     cpc_install_isr();
 
     // Carregar fitxers directament als Bancs 4 i 5 de la RAM estesa de 128 KB
@@ -219,6 +221,9 @@ void main(void) {
     u8 last_ticks = g_ticks;
 
     while (1) {
+        if (!stack_canary_ok()) {
+            cpct_setBorder(0x4C);
+        }
         i8  move = 0;
         i8  move_x = 0;
         i8  move_y = 0;

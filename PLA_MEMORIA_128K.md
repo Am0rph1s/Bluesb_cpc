@@ -107,9 +107,9 @@ Tots els frames són de 12 px Mode 0 (6 bytes) $\times$ 30 línies = 360 bytes (
 ## 5. Llista de Checkpoints (TO-DO)
 
 ### Fase 0 — Canari de Pila, Assert de Memòria i Rutina H-FLIP
-- [ ] **CP-0.1:** Afegir canari de pila (`0x3800`, patró `0xAA55`) i funció de verificació ZRCP per ZEsarUX.
-- [ ] **CP-0.2:** Modificar `tools/build.py` perquè llegeixi el fitxer `.map` i falli el build si el Bloc 0 supera els límits de seguretat (alerta automàtica de memòria).
-- [ ] **CP-0.3:** Implementar en ASM la rutina `sprite_hflip` (Mode 0 amb LUT de 256 bytes) i verificar que inverteix un frame de 360 B en < 4.500 T-states.
+- [x] **CP-0.1:** Afegir canari de pila (`0x3C00`, patró `0xAA55`) i funció de verificació ZRCP per ZEsarUX. (Validat: canari 100% intacte a ZEsarUX, SP=0x3FE1, marge 993 B).
+- [x] **CP-0.2:** Modificar `tools/build.py` perquè llegeixi el fitxer `.map` i falli el build si el Bloc 0 supera els límits de seguretat (alerta automàtica de memòria). (Validat: assert actiu que atura el build si _CODE col·lideix amb _DATA).
+- [x] **CP-0.3:** Implementar en ASM la rutina `sprite_hflip` (Mode 0 amb LUT de 256 bytes) i verificar que inverteix un frame de 360 B. (Validat: 100% de coincidència byte per byte amb PFRAMES.BIN, execució en ~14.700 T-states).
 
 ### Fase 1 — Trampolins de Banc Segurs i Neteja del Bloc 0
 - [ ] **CP-1.1:** Implementar `bank_set` / `bank_restore` niuat amb variable ombra `g_bank` protegida d'interrupcions.

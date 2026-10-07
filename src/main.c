@@ -274,8 +274,8 @@ void main(void) {
 
         {
             i16 max_spd;
+            // L'original no alenteix ajupit: crawl == walk (a peu).
             if (!s_on_ground) max_spd = SPEED_AIR;
-            else if (crouch)  max_spd = (SPEED_MAX >> 2); // crawl DOS xmax=8 (1px/f)
             else              max_spd = SPEED_MAX;
 
             if (move > 0)      { s_vx = (i16)(s_vx + MOVE_ACC); if (s_vx >  max_spd) s_vx =  max_spd; }

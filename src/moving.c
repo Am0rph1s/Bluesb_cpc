@@ -13,9 +13,13 @@
 #define MAP_PTR  ((const u8*)0x4000)
 #define MAP_MUT  ((u8*)0x4000)
 #define TRIG_PTR ((const u8*)0x6400)
-#define ELEVATOR_WAIT 40
-#define ELEVATOR_SPEED 2
-#define ELEVATOR_OBJECT_H 30
+#define ELEVATOR_WAIT 33
+// DOS ±2px/f@30Hz (60px/s) -> 2.375px/f@25Hz (59.4px/s, -1% invisible):
+// patró de 8 [3,3,3,2,2,2,2,2] via (anim_tick&7)<3 (barat, sense % ni lib).
+#define ELEVATOR_OBJECT_H 14
+// Alçada de l'objecte 14 = sprite sencer: en Jake va amb els peus a y-14,
+// 1:1 amb DOS (ypos - level_obj_h[7]=15 + 1). Amb 30 flotava 1 tile amunt
+// als dos extrems sense que les parades (triggers 1:1 DOS) tinguessin res.
 #define ELEVATOR_SPR_HALF_W 8
 #define MOVING_CONVEYOR_MAX 32
 
@@ -111,22 +115,26 @@ void moving_update(void) {
         }
 
         row = (u16)(e->y >> 4);
-        if (e->direction < 0) {
-            if (row >= 4 && level_get_tile_type(e->map_col, (u16)(row - 4)) == 10) {
-                e->direction = 1;
-                e->wait = 1;
-                continue;
+        // Pas 2/3 segons patró (mitjana 2.375px/f = DOS 60px/s a 25Hz).
+        {
+            i16 step = (((e->anim_tick & 7) < 3) ? 3 : 2);
+            if (e->direction < 0) {
+                if (row >= 4 && level_get_tile_type(e->map_col, (u16)(row - 4)) == 10) {
+                    e->direction = 1;
+                    e->wait = 1;
+                    continue;
+                }
+                e->y = (i16)(e->y - step);
+                e->delta_y = (i16)-step;
+            } else {
+                if (level_get_tile_type(e->map_col, (u16)(row + 1)) == 10) {
+                    e->direction = -1;
+                    e->wait = 1;
+                    continue;
+                }
+                e->y = (i16)(e->y + step);
+                e->delta_y = step;
             }
-            e->y = (i16)(e->y - ELEVATOR_SPEED);
-            e->delta_y = -ELEVATOR_SPEED;
-        } else {
-            if (level_get_tile_type(e->map_col, (u16)(row + 1)) == 10) {
-                e->direction = -1;
-                e->wait = 1;
-                continue;
-            }
-            e->y = (i16)(e->y + ELEVATOR_SPEED);
-            e->delta_y = ELEVATOR_SPEED;
         }
 
         e->frame = (u8)((e->anim_tick >> 2) & 1);

@@ -29,8 +29,10 @@ INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
 ASM_SOURCES = [
     "engine/cpc_hardware.s",
     "engine/assets_fdc.s",
-    "engine/audio.s",
-    "engine/zx0_decompress.s",
+    # TEMPORALMENT EXCLOSOS (pes mort ~2KB linkat sense cridar;
+    # el Bloc 0 no dona per features + reserva):
+    # - engine/audio.s -> retornar a CP-5 (cablejar audio_init/update+sfx)
+    # - engine/zx0_decompress.s -> retornar a CP-7 (carregador ZX0)
     "engine/video.s",
     "engine/isr.s",
     "engine/sprite.s",

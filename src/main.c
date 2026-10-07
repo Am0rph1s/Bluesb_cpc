@@ -55,6 +55,7 @@ static i16 s_px8, s_py8;
 static i16 s_vx, s_vy;
 static u8  s_on_ground;
 static u8  s_jump_prev;
+static u8  s_climb_prev;
 static i8  s_ground_elevator = -1;
 u8 g_face;
 static u8  s_anim_idx, s_anim_timer;
@@ -110,11 +111,17 @@ static u8 get_tile_op(u16 col, u16 row) {
     return op;
 }
 
-static u8 is_floor_solid(u16 col, u16 row, i16 vy) {
+// Sòls DOS: bidireccionals (peus+cap) 20,21,27,28 (+0,1,2,29,40 altres nivells).
+// One-way DOS (només peus quan vy>=0 + DROP amb avall): 14,15 (+16,22,30,31-39).
+static u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
     u8 op;
     if (row >= 71) return 1;
     op = get_tile_op(col, row);
-    if (op == 20 || op == 14 || op == 15 || op == 21 || op == 27 || op == 28) return 1;
+    if (op == 20 || op == 21 || op == 27 || op == 28) return 1;
+    if (vy >= 0 && (op == 14 || op == 15)) {
+        if (crouch) return 0; // DROP-THROUGH (unk2B DOS): avall travessa
+        return 1;
+    }
     if (op >= 31 && op <= 39 && vy >= 0) return 1;
     return 0;
 }
@@ -123,7 +130,8 @@ static u8 is_ceiling_solid(u16 col, u16 row) {
     u8 op;
     if (row >= 72) return 0;
     op = get_tile_op(col, row);
-    if (op == 20) return 1;
+    // DOS: 20,21,27,28 (+0,1,2,29,40). 14/15 = one-way (cap amunt lliure).
+    if (op == 20 || op == 21 || op == 27 || op == 28) return 1;
     return 0;
 }
 
@@ -228,7 +236,7 @@ void main(void) {
     s_py8 = (i16)(START_PY * SUB);
     s_vx = 0; s_vy = 0;
     s_on_ground = 1; g_face = 0;
-    s_jump_prev = 0;
+    s_jump_prev = 0; s_climb_prev = 0;
     s_anim_idx = 0; s_anim_timer = 0;
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
@@ -243,6 +251,7 @@ void main(void) {
         i8  move_y = 0;
         i8  page_dx, page_dy;
         u8  jump = 0;
+        u8  climbing = 0;
         i16 px, py, effective_vx, belt_push;
         u16 dsx, dsy;
 
@@ -286,6 +295,30 @@ void main(void) {
 
         py = (i16)(s_py8 >> 3);
         px = (i16)(s_px8 >> 3);
+
+        // --- Escala (tile type 7, DOS sprite_type 2) ---
+        // Overlap = climb (fins i tot quiet: hover sense gravetat).
+        // Pujar: -19 dins / -10 sortint; baixar: +19; neutre: manté vy.
+        // Fora de l'escala: física normal (en sortir, cau si hi ha aire).
+        {
+            u16 lcol = (u16)((px + 8) >> 3);
+            u16 lrow = (u16)((py + PH) >> 4);
+            if (level_get_tile_type(lcol, lrow) == 7) {
+                climbing = 1;
+                if (!s_climb_prev) { // snap en entrar (centra a la columna)
+                    px = (i16)((lcol << 3) - 4);
+                    s_px8 = (i16)(px * SUB);
+                }
+                if (jump) {
+                    u16 arow = (u16)((py - 2) >> 4);
+                    s_vy = (level_get_tile_type(lcol, arow) == 7) ? -19 : -10;
+                } else if (crouch) {
+                    s_vy = 19;
+                }
+                s_on_ground = 0;
+                s_ground_elevator = -1;
+            }
+        }
 
         belt_push = 0;
         if (s_on_ground) {
@@ -332,20 +365,25 @@ void main(void) {
         px = (i16)(s_px8 >> 3);
 
         // --- Moviment vertical i gravetat 1:1 ---
+        // En escala: vy ja ve del climb (sense gravetat, sense aterratge,
+        // sense takeoff: la tecla de salt puja). El sostre sí aplica.
         {
             i16 prev_feet = (i16)(py + PH);
-            if (!s_on_ground) {
-                s_vy = (i16)(s_vy + GRAV);
-                if (s_vy > VY_MAX) s_vy = VY_MAX;
-            } else {
-                s_vy = 0;
-            }
-            // Salt per flanc de pujada (com DOS: cal prémer de nou;
-            // mantenir premut no repeteix i no frena les caigudes).
-            if (jump && !s_jump_prev && s_on_ground) {
-                s_vy = JUMP_VY;
-                s_on_ground = 0;
-                s_ground_elevator = -1;
+            u16 prev_head = (u16)(py >> 4);
+            if (!climbing) {
+                if (!s_on_ground) {
+                    s_vy = (i16)(s_vy + GRAV);
+                    if (s_vy > VY_MAX) s_vy = VY_MAX;
+                } else {
+                    s_vy = 0;
+                }
+                // Salt per flanc de pujada (com DOS: cal prémer de nou;
+                // mantenir premut no repeteix i no frena les caigudes).
+                if (jump && !s_jump_prev && s_on_ground) {
+                    s_vy = JUMP_VY;
+                    s_on_ground = 0;
+                    s_ground_elevator = -1;
+                }
             }
             s_jump_prev = jump;
 
@@ -358,7 +396,9 @@ void main(void) {
                 u16 c_mid2 = (u16)((px + 8) >> 3);
                 u8 landed = 0;
 
-                if (s_vy >= 0) {
+                // En escala no s'aterra (DOS: sprite 2 salta el trigger
+                // de peus); el sostre sí aplica (puja per lintels).
+                if (s_vy >= 0 && !climbing) {
                     i16 elevator_top;
                     i8 elevator_id = moving_find_landing(px, prev_feet, curr_feet,
                                                         s_vy, &elevator_top);
@@ -373,7 +413,7 @@ void main(void) {
                     u16 target_row = (u16)(curr_feet >> 4);
                     if (!landed && target_row < 72) {
                         i16 surf = (i16)(target_row << 4);
-                        if (is_floor_solid(c_mid1, target_row, s_vy) || is_floor_solid(c_mid2, target_row, s_vy)) {
+                        if (is_floor_solid(c_mid1, target_row, s_vy, crouch) || is_floor_solid(c_mid2, target_row, s_vy, crouch)) {
                             if (prev_feet <= (surf + 8) && curr_feet >= surf) {
                                 py = (i16)(surf - PH);
                                 s_py8 = (i16)(py * SUB);
@@ -388,7 +428,7 @@ void main(void) {
                         u16 feet_under = (u16)((curr_feet + 1) >> 4);
                         if (feet_under < 72) {
                             i16 surf_u = (i16)(feet_under << 4);
-                            if (is_floor_solid(c_mid1, feet_under, s_vy) || is_floor_solid(c_mid2, feet_under, s_vy)) {
+                            if (is_floor_solid(c_mid1, feet_under, s_vy, crouch) || is_floor_solid(c_mid2, feet_under, s_vy, crouch)) {
                                 if (prev_feet <= (surf_u + 6) && curr_feet >= (surf_u - 2)) {
                                     py = (i16)(surf_u - PH);
                                     s_py8 = (i16)(py * SUB);
@@ -404,9 +444,22 @@ void main(void) {
                         s_on_ground = 0;
                         s_ground_elevator = -1;
                     }
-                } else {
+                } else if (s_vy < 0) {
+                    // Escombrat anti-tunneling (salt -18.75px/f vs files 16px):
+                    // revisa totes les files travessades pel cap i atura a la
+                    // sòlida més propera (la de més avall). Màx ~3 files.
                     u16 head_row = (u16)(py >> 4);
                     u16 c_mid = (u16)((px + 5) >> 3);
+                    u16 r = prev_head;
+                    u8 n = 0;
+                    while (r >= head_row && n < 4) {
+                        if (is_ceiling_solid(c_mid, r)) {
+                            head_row = r;
+                            break;
+                        }
+                        if (r == 0) break;
+                        r--; n++;
+                    }
                     if (is_ceiling_solid(c_mid, head_row)) {
                         py = (i16)((head_row + 1) << 4);
                         s_py8 = (i16)(py * SUB);
@@ -454,7 +507,20 @@ void main(void) {
         //  Una sola comparació sense signe cobreix els dos costats.)
         u8 cur;
         i16 bsy = (i16)(py - (i16)(g_cam_row * 8));
-        if (!s_on_ground || (u16)(bsy + 30) > 160) {
+        if (climbing) {
+            // DOS 00b8 = {9,9,8,8}: puja amb DOS 9/8, quiet amb DOS 8.
+            if (jump || crouch || move != 0) {
+                s_anim_timer++;
+                if (s_anim_timer >= 6) {
+                    s_anim_timer = 0;
+                    s_anim_idx ^= 1;
+                }
+                cur = s_anim_idx ? 5 : 9;
+            } else {
+                cur = 5;
+                s_anim_timer = 0;
+            }
+        } else if (!s_on_ground || (u16)(bsy + 30) > 160) {
             // DOS 1:1 (cyxx case0 / animframe_00ab = {1,0x07}): en aire SEMPRE
             // el salt cames obertes + barret. Mai back-view (DOS 8 = escala 00b8)
             // ni walk: el DOS només usa el frame 0x2C en caiguda extrema (>10).
@@ -556,5 +622,6 @@ void main(void) {
         g_vram_base_hi = (s_back_page == 1) ? 0x80 : 0xC0;
         s_pending_x = move_x;
         s_pending_y = move_y;
+        s_climb_prev = climbing;
     }
 }

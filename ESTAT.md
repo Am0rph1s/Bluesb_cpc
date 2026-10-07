@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-07 — Càmera uniforme 116/32 (fora freeze): segueix baixades, plans 0 tires; trigger cintes provat exacte (telemetria). Marge _CODE +378B.
+Última actualització: 2026-10-07 — Sostres 21/27/28 + escombrat anti-tunneling (salt 18.75px/f); dieta audio/zx0 morts (~1KB). Marge _CODE +997B. PENDENT: retest usuari terra groc/cintes amb aquest build.
 Idioma de treball amb l'usuari: **català**.
 
 ## Estat vigent — Sprites de Jake 16 px Mode 0, camisa blanca i animacions completes

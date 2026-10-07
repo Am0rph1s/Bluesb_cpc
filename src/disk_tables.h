@@ -54,4 +54,9 @@ static const u8 g_pframes_chs[78] = {
 };
 static const DiskFileDesc g_file_pframes = { 12608, 26, g_pframes_chs };
 
+static const u8 g_elev_chs[6] = {
+    0x0D,0x00,0xC8,0x0D,0x00,0xC9,
+};
+static const DiskFileDesc g_file_elev = { 576, 2, g_elev_chs };
+
 #endif

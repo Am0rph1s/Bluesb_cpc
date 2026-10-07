@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-06 — Sprites complets de Jake a 16 px Mode 0 (8 bytes), camisa blanca sòlida (Pen 0) i fons gris recuperat.
+Última actualització: 2026-10-07 — Càmera Y: pujar segueix sempre (sense cota, l'àpex mana), baixar només retorna al takeoff (anti-drift); salts en pla 0 tires (diff ho confirma). Marge shaft = limitació perf. _CODE 0x0100..0x356C marge +308B.
 Idioma de treball amb l'usuari: **català**.
 
 ## Estat vigent — Sprites de Jake 16 px Mode 0, camisa blanca i animacions completes

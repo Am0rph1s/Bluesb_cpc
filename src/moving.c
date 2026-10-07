@@ -3,7 +3,12 @@
 #include "bank.h"
 #include "moving.h"
 #include "sprite.h"
-#include "elevator_frames.h"
+
+// Frames d'ascensor al Banc 7 (ELEV.BIN carregat a 0x78E0, 2x224 B).
+// Abans eren consts a _CODE (448 B); alliberats per a lògica de joc.
+// moving_draw ja commuta a 0xC7 abans de llegir-los (buffers de fons).
+#define ELEVATOR_FRAMES_BASE ((const u8*)0x78E0)
+#define ELEVATOR_FRAME_SIZE  224
 
 #define MAP_PTR  ((const u8*)0x4000)
 #define MAP_MUT  ((u8*)0x4000)
@@ -243,7 +248,8 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
         byte_count = (u8)((clip_x1 - clip_x0) >> 1);
         start_row = (u8)(clip_y0 - world_y);
         row_count = (u8)(clip_y1 - clip_y0);
-        frame = e->frame ? g_elevator_frame_1 : g_elevator_frame_0;
+        frame = e->frame ? (ELEVATOR_FRAMES_BASE + ELEVATOR_FRAME_SIZE)
+                           : ELEVATOR_FRAMES_BASE;
 
         for (y = 0; y < row_count; y++) {
             u8 sprite_row = (u8)(start_row + y);
@@ -277,7 +283,10 @@ i8 moving_find_landing(i16 player_x, i16 previous_feet, i16 current_feet,
         i16 left = (i16)(e->center_x - ELEVATOR_HALF_W);
         i16 right = (i16)(left + ELEVATOR_WIDTH_PX);
         i16 surface = (i16)(e->y - ELEVATOR_OBJECT_H);
-        if ((i16)(player_x + 24) <= left || player_x >= right) continue;
+        // Overlap EXACTE amb l'ample d'en Jake (PW=16): ha de coincidir amb el
+        // test de persistència de main.c (px+PW). Amb +24 hi havia una franja
+        // de 8px on aterrava 1 sol frame (flaix idle en caigudes del shaft).
+        if ((i16)(player_x + 16) <= left || player_x >= right) continue;
         if (previous_feet <= (i16)(surface + 8) && current_feet >= surface) {
             *player_top = (i16)(surface - 30);
             return (i8)i;

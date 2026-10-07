@@ -3,7 +3,7 @@
 
 #include "cpctelera.h"
 
-// Frames aut�ntics de Jake (DOS 16 colors) al Banc 7 - 16 px Mode 0 (8 bytes)
+// Frames aut�ntics de Jake (DOS 16 colors) al Banc 7 - 16 px Mode 0 (8 bytes)
 #define PLAYER_FRAMES_BANK 0xC7
 #define PLAYER_FRAMES_BASE 0x4000
 #define PLAYER_FRAME_SIZE 480
@@ -15,8 +15,10 @@ static const PSprFrame g_player_frames_r[26] = {
     {   480, 8, 30 }, //  1: walk1
     {   960, 8, 30 }, //  2: walk2
     {  1440, 8, 30 }, //  3: walk3
-    {  1920, 8, 30 }, //  4: jump
-    {  2400, 8, 30 }, //  5: fall
+    {  1920, 8, 30 }, //  4: jump (DOS 7, únic frame d'aire - cyxx 00ab)
+    //  5: DOS 8 = Jake d'esquenes (anim d'escala cyxx 00b8 {9,9,8,8}). NO és
+    // fall i NO s'usa en aire. Reservat per al cablejat d'escales.
+    {  2400, 8, 30 }, //  5: ladder_back (DOS 8)
     {  2880, 8, 30 }, //  6: crouch1
     {  3360, 8, 30 }, //  7: crouch2
     {  3840, 8, 30 }, //  8: crouch3

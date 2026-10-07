@@ -27,12 +27,15 @@ extern volatile u8 g_ticks;
 #define PH          30
 #define PW          16
 #define SPR_WB      8
-#define SPEED_MAX   28
-#define SPEED_AIR   14
-#define MOVE_ACC    6
+// Paritat DOS 30Hz -> CPC 25Hz (factor 1.2, distàncies en tiles idèntiques):
+// DOS: xmax=48 (6px/f), grav=2, salt v0=-14 => 56px alt, 84px DOS (=42px M0) llarg.
+// M0 halva X (320->160): 3px/f DOS = 3.6px/f @25Hz => SPEED_MAX 30 (3.75px/f).
+#define SPEED_MAX   30
+#define SPEED_AIR   24
+#define MOVE_ACC    7
 #define VY_MAX      (15 * SUB)
-#define GRAV        22
-#define JUMP_VY     (-136)
+#define GRAV        24
+#define JUMP_VY     (-150)
 
 #define LEVEL_W_PX  (128 * 8)
 #define DEAD_L      48
@@ -47,6 +50,10 @@ extern volatile u8 g_ticks;
 
 static u16 g_cam_x4;
 static u16 g_cam_row;
+// Càmera de takeoff (últim frame tocant terra) per al retorn forçat: en
+// caure, la càmera només torna cap aquí (mai més avall), matant el drift.
+// S'actualitza cada frame grounded (el joc arrenca grounded).
+static u8 s_air_cam;
 
 static i16 s_px8, s_py8;
 static i16 s_vx, s_vy;
@@ -79,14 +86,8 @@ void start(void) {
 #define MAP_PTR   ((const u8*)0x4000)
 #define TRIG_PTR  ((const u8*)0x6400)
 
-static u8 get_tile(u16 col, u16 row) {
-    u8 t;
-    if (col >= 128 || row >= 72) return 0;
-    cpc_bank_set(0xC5);
-    t = MAP_PTR[(row << 7) + col];
-    cpc_bank_restore();
-    return t;
-}
+// NOTA: get_tile() eliminat (mort, mai cridat) per recuperar ~30B de _CODE
+// després del reescalat DOS 30Hz->25Hz. get_tile_flags/op segueixen intactes.
 
 static u8 get_tile_flags(u16 col, u16 row) {
     u8 t, fl;
@@ -151,7 +152,8 @@ static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
     u16 row_before = (u16)(target_row - dy);
 
     // move_x avança un caràcter CRTC (4 px); move_y avança un subtile (8 px).
-    // El buffer altern pot anar un pas més endarrerit: dx/dy són [-2, 2].
+    // dx/dy són la suma del pendent de l'altra pàgina + el pas actual.
+    // El bucle generalitza a |dy|<=4 (el codi només genera ±2 amb move ±1).
     if (dx == 2) {
         render_column((u16)(target_x4 - 1), row_before, 39);
     }
@@ -164,16 +166,18 @@ static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
         render_column(target_x4, row_before, 0);
     }
 
-    if (dy == 2) {
-        render_row(target_x4, (u16)(target_row - 1), 19);
-    }
+    // Files: refresca les tires revelades (slot-absolut). Camina de la més
+    // baixa cap amunt perquè la cantonada quedi amb la dada més nova.
     if (dy > 0) {
-        render_row(target_x4, target_row, 19);
-    } else if (dy == -2) {
-        render_row(target_x4, (u16)(target_row + 1), 0);
-    }
-    if (dy < 0) {
-        render_row(target_x4, target_row, 0);
+        i8 k;
+        for (k = 0; k < dy; k++) {
+            render_row(target_x4, (u16)(target_row - k), 19);
+        }
+    } else if (dy < 0) {
+        i8 k;
+        for (k = 0; k < -dy; k++) {
+            render_row(target_x4, (u16)(target_row + k), 0);
+        }
     }
 }
 
@@ -186,7 +190,8 @@ void main(void) {
         !fdc_load_file(&g_file_map,   0xC5, (void*)0x4000) ||
         !fdc_load_file(&g_file_trig,  0xC5, (void*)0x6400) ||
         !fdc_load_file(&g_file_pframes, PLAYER_FRAMES_BANK,
-                       (void*)PLAYER_FRAMES_BASE)) {
+                       (void*)PLAYER_FRAMES_BASE) ||
+        !fdc_load_file(&g_file_elev, 0xC7, (void*)0x78E0)) {
         while (1) { }
     }
 
@@ -270,7 +275,7 @@ void main(void) {
         {
             i16 max_spd;
             if (!s_on_ground) max_spd = SPEED_AIR;
-            else if (crouch)  max_spd = (SPEED_MAX >> 1);
+            else if (crouch)  max_spd = (SPEED_MAX >> 2); // crawl DOS xmax=8 (1px/f)
             else              max_spd = SPEED_MAX;
 
             if (move > 0)      { s_vx = (i16)(s_vx + MOVE_ACC); if (s_vx >  max_spd) s_vx =  max_spd; }
@@ -413,7 +418,13 @@ void main(void) {
             }
         }
 
-        // --- Camera: seguiment continu de personatge (estil C64 / Amiga) ---
+        // --- Camera: X sempre; Y amb retorn-forçat anti-drift ---
+        // En aire: PUJAR segueix sempre (resposta immediata, sense cota:
+        // un salt puja 59px i tallar-ho amaga l'àpex). BAIXAR només retorna
+        // forçadament cap al takeoff (mata el drift); no es persegueixen
+        // caigudes fondes (15px/f vs 8px/f: pagaries tires sense guanyar
+        // marge — límit de pressupost documentat). Salts en pla típics:
+        // 0 tires; el walk en caiguda segueix sent terra real (off-screen).
         {
             i16 sy = (i16)(py - (i16)(g_cam_row * 8));
             i16 sx = (i16)(px - (i16)(g_cam_x4 * 4));
@@ -425,23 +436,39 @@ void main(void) {
                 move_x = -1;
             }
 
-            if (sy > DEAD_B && g_cam_row < 124) {
-                g_cam_row++;
-                move_y = 1;
-            } else if (sy < DEAD_T && g_cam_row > 0) {
-                g_cam_row--;
-                move_y = -1;
+            if (s_on_ground) {
+                s_air_cam = (u8)g_cam_row;
+                if (sy > DEAD_B && g_cam_row < 124) {
+                    g_cam_row++;
+                    move_y = 1;
+                } else if (sy < DEAD_T && g_cam_row > 0) {
+                    g_cam_row--;
+                    move_y = -1;
+                }
+            } else {
+                // Pujar: zona normal, sense cota (l'àpex mana).
+                if (sy < DEAD_T && g_cam_row > 0) {
+                    g_cam_row--;
+                    move_y = -1;
+                // Baixar: només retorn forçat cap al takeoff.
+                } else if (s_vy > 0 && g_cam_row < s_air_cam) {
+                    g_cam_row++;
+                    move_y = 1;
+                }
             }
         }
 
         // --- Animacio ---
         u8 cur;
         if (!s_on_ground) {
-            cur = 4; // jump: manté cames separades agafant-se el barret a l'aire!
+            // DOS 1:1 (cyxx case0 / animframe_00ab = {1,0x07}): en aire SEMPRE
+            // el salt cames obertes + barret. Mai back-view (DOS 8 = escala 00b8)
+            // ni walk: el DOS només usa el frame 0x2C en caiguda extrema (>10).
+            cur = 4;
         } else if (crouch) {
             if (move != 0) {
                 s_anim_timer++;
-                if (s_anim_timer >= 4) {
+                if (s_anim_timer >= 6) { // crawl DOS 16f@30Hz=533ms -> 12f@25Hz=480ms
                     s_anim_timer = 0;
                     s_anim_idx ^= 1;
                 }
@@ -452,7 +479,7 @@ void main(void) {
             }
         } else if (move != 0) {
             s_anim_timer++;
-            if (s_anim_timer >= 3) {
+            if (s_anim_timer >= 2) { // walk DOS 6f@30Hz=200ms -> 12f@25Hz=480ms fluid M0
                 s_anim_timer = 0;
                 s_anim_idx++;
                 if (s_anim_idx >= 6) s_anim_idx = 0;

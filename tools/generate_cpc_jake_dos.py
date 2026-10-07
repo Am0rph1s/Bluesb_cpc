@@ -98,8 +98,13 @@ GAME_FRAMES = [
     ('walk2', 0),
     ('walk3', 3),
     # 4..5: Salt i caiguda
+    # 4: Salt - ÚNIC frame d'aire (cyxx case0 / animframe_00ab = {1,0x07}).
+    # En aire MAI cap altre frame (ni walk ni back-view). El DOS només usa el
+    # frame 0x2C (=44) en caiguda ràpida extrema (yvelocity > 10).
     ('jump',  7), # agafant-se el barret (32 px DOS complets, sense peus tallats!)
-    ('fall',  8), # caiguda lliure
+    # 5: DOS 8 = Jake d'esquenes, pertany a l'anim d'ESCALA
+    # (cyxx animframe_00b8 = {4, 0x09,0x09,0x08,0x08}). NO és fall!
+    ('ladder_back',  8), # reservat per a escales, no usar en aire
     # 6..8: Ajupit (duck 1, crawl 2, crawl 3 - 32 px DOS complets!)
     ('crouch1', 4),
     ('crouch2', 5),

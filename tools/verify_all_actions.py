@@ -41,8 +41,8 @@ press_key(133, 1); time.sleep(0.05); press_key(50, 1); time.sleep(0.05); press_k
 time.sleep(0.1)
 press_key(129, 1); time.sleep(0.1); press_key(129, 0)
 
-print('Waiting 16s for game to load...')
-time.sleep(16)
+print('Waiting 20s for game to load...')
+time.sleep(20)
 
 # 1. Capture idle standing
 send_cmd(r'save-screen C:\Projects\bluesb_cpc\tools\action_1_idle.bmp', 0.4)

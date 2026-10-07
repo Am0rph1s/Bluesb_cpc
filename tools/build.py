@@ -47,8 +47,7 @@ C_SOURCES = [
 C_HEADERS = {
     "engine/fdc.c": ["engine/fdc.h", "engine/cpctelera.h"],
     "src/render.c": ["engine/cpctelera.h"],
-    "src/moving.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h",
-                     "src/elevator_frames.h"],
+    "src/moving.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h"],
     "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "src/disk_tables.h",
                    "src/sprite.h", "src/moving.h", "src/player_frames.h",
                    "engine/stack_canary.h"],
@@ -66,6 +65,8 @@ DATA_FILES = [
     ("MAP",   "BIN", os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN")),
     ("TRIG",  "BIN", os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN")),
     ("PFRAMES", "BIN", os.path.join(PROJ, "assets", "bbdata", "PFRAMES.BIN")),
+    # ELEV: 2 frames d'ascensor Mode 0 (2x224 B) -> Banc 7 lliure 0x78E0.
+    ("ELEV", "BIN", os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")),
 ]
 
 

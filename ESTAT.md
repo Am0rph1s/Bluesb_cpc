@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-07 — Ascensors DOS 1:1 (op4): OBJECT_H 30->14 (ypos-14, -1 tile als dos extrems), velocitat 2.4px/f (patró 3,3,3,2,2,2,2,2) + wait 33, crawl = walk. Parades telemetrades ±1px. _CODE marge +172B.
+Última actualització: 2026-10-07 — Càmera uniforme 116/32 (fora freeze): segueix baixades, plans 0 tires; trigger cintes provat exacte (telemetria). Marge _CODE +378B.
 Idioma de treball amb l'usuari: **català**.
 
 ## Estat vigent — Sprites de Jake 16 px Mode 0, camisa blanca i animacions completes

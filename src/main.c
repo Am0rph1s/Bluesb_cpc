@@ -50,14 +50,11 @@ extern volatile u8 g_ticks;
 
 static u16 g_cam_x4;
 static u16 g_cam_row;
-// Càmera de takeoff (últim frame tocant terra) per al retorn forçat: en
-// caure, la càmera només torna cap aquí (mai més avall), matant el drift.
-// S'actualitza cada frame grounded (el joc arrenca grounded).
-static u8 s_air_cam;
 
 static i16 s_px8, s_py8;
 static i16 s_vx, s_vy;
 static u8  s_on_ground;
+static u8  s_jump_prev;
 static i8  s_ground_elevator = -1;
 u8 g_face;
 static u8  s_anim_idx, s_anim_timer;
@@ -231,6 +228,7 @@ void main(void) {
     s_py8 = (i16)(START_PY * SUB);
     s_vx = 0; s_vy = 0;
     s_on_ground = 1; g_face = 0;
+    s_jump_prev = 0;
     s_anim_idx = 0; s_anim_timer = 0;
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
@@ -295,10 +293,9 @@ void main(void) {
             u16 col0 = (u16)((px + 3) >> 3);
             u16 col1 = (u16)((px + 8) >> 3);
             belt_push = moving_conveyor_push(col0, col1, row);
-            if (move == 0 && belt_push != 0) {
-                move = belt_push > 0 ? 1 : -1;
-                g_face = belt_push > 0 ? 0 : 1;
-            }
+            // DOS 1:1: la cinta arrossega (unk1C a la velocitat) però NO
+            // força animació ni direcció (direction_lr ve de l'input: quiet
+            // = idle lliscant, mai walk). Abans forçàvem move/g_face aquí.
         }
         effective_vx = (i16)(s_vx + belt_push);
 
@@ -343,11 +340,14 @@ void main(void) {
             } else {
                 s_vy = 0;
             }
-            if (jump && s_on_ground) {
+            // Salt per flanc de pujada (com DOS: cal prémer de nou;
+            // mantenir premut no repeteix i no frena les caigudes).
+            if (jump && !s_jump_prev && s_on_ground) {
                 s_vy = JUMP_VY;
                 s_on_ground = 0;
                 s_ground_elevator = -1;
             }
+            s_jump_prev = jump;
 
             s_py8 = (i16)(s_py8 + s_vy);
             py = (i16)(s_py8 >> 3);
@@ -418,13 +418,14 @@ void main(void) {
             }
         }
 
-        // --- Camera: X sempre; Y amb retorn-forçat anti-drift ---
-        // En aire: PUJAR segueix sempre (resposta immediata, sense cota:
-        // un salt puja 59px i tallar-ho amaga l'àpex). BAIXAR només retorna
-        // forçadament cap al takeoff (mata el drift); no es persegueixen
-        // caigudes fondes (15px/f vs 8px/f: pagaries tires sense guanyar
-        // marge — límit de pressupost documentat). Salts en pla típics:
-        // 0 tires; el walk en caiguda segueix sent terra real (off-screen).
+        // --- Camera: zones uniformes 116/32 en aire i terra ---
+        // Es PUJA (l'àpex mana) i es BAIXA (la caiguda mana): resposta
+        // immediata als dos costats, sense congelar mai. Les zones amples
+        // fan que els salts en pla típics (sy0>=91: àpex>=32, retorn<=116)
+        // siguin 0 tires i sense drift (s'autolimita: provat per construcció).
+        // Les caigudes fondes segueixen amb lag (1 fila/f, transitori lent:
+        // límit de pressupost, perf pendent), però MAI congelades: l'aterratge
+        // ja no passa fora de pantalla en silenci.
         {
             i16 sy = (i16)(py - (i16)(g_cam_row * 8));
             i16 sx = (i16)(px - (i16)(g_cam_x4 * 4));
@@ -436,31 +437,24 @@ void main(void) {
                 move_x = -1;
             }
 
-            if (s_on_ground) {
-                s_air_cam = (u8)g_cam_row;
-                if (sy > DEAD_B && g_cam_row < 124) {
-                    g_cam_row++;
-                    move_y = 1;
-                } else if (sy < DEAD_T && g_cam_row > 0) {
-                    g_cam_row--;
-                    move_y = -1;
-                }
-            } else {
-                // Pujar: zona normal, sense cota (l'àpex mana).
-                if (sy < DEAD_T && g_cam_row > 0) {
-                    g_cam_row--;
-                    move_y = -1;
-                // Baixar: només retorn forçat cap al takeoff.
-                } else if (s_vy > 0 && g_cam_row < s_air_cam) {
-                    g_cam_row++;
-                    move_y = 1;
-                }
+            if (sy > DEAD_B && g_cam_row < 124) {
+                g_cam_row++;
+                move_y = 1;
+            } else if (sy < DEAD_T && g_cam_row > 0) {
+                g_cam_row--;
+                move_y = -1;
             }
         }
 
         // --- Animacio ---
+        // Coherència visual: el walk exigeix terra, però si els peus són
+        // fora del viewport (terra invisible per lag de càmera) no afirmem
+        // groundedness: jump fins que el terra es vegi. Física intacta.
+        // (bsy local curt: el rang de vida llarg embogeix l'assignador.
+        //  Una sola comparació sense signe cobreix els dos costats.)
         u8 cur;
-        if (!s_on_ground) {
+        i16 bsy = (i16)(py - (i16)(g_cam_row * 8));
+        if (!s_on_ground || (u16)(bsy + 30) > 160) {
             // DOS 1:1 (cyxx case0 / animframe_00ab = {1,0x07}): en aire SEMPRE
             // el salt cames obertes + barret. Mai back-view (DOS 8 = escala 00b8)
             // ni walk: el DOS només usa el frame 0x2C en caiguda extrema (>10).

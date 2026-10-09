@@ -76,8 +76,9 @@ _call_banked::
     ld      c, (hl)             ;; C = banc anterior
     push    bc                  ;; desa banc anterior a la pila (C = prev)
     ld      (hl), a             ;; _g_bank = nou banc
-    ld      b, #0x7F
-    out     (c), a              ;; out (0x7F00), a
+    ld      bc, #0x7F00
+    out     (c), a              ;; MCR: el port HA de ser 0x7F00 (C=0); amb
+                                ;; C=prev (0x7FC0) la GA ho ignora i no commuta!
 
     ld      hl, #banked_ret$
     push    hl                  ;; adreça de retorn a la pila
@@ -91,8 +92,8 @@ banked_ret$:
     ld      a, c
     ld      hl, #_g_bank
     ld      (hl), a             ;; restaura _g_bank
-    ld      b, #0x7F
-    out     (c), a              ;; restaura maquinari Gate Array
+    ld      bc, #0x7F00
+    out     (c), a              ;; restaura maquinari Gate Array (port 0x7F00!)
     pop     hl                  ;; restaura retorn HL
     pop     af                  ;; restaura retorn A
     ret
@@ -121,14 +122,15 @@ _cpct_setVideoMode::
 
 ;; ============================================================
 ;; cpct_setBorder(u8 hw_color)
-;; hw_color in L (sdcccall1)
+;; hw_color in A (SDCC sdcccall1: primer arg de 8 bits en A).
 ;; Protocol GA (firmware): out ink(16) -> out 0x40|color
 ;; ============================================================
 _cpct_setBorder::
+    push    af                  ;; desa color (A = hw_color)
     ld      bc, #0x7F00
     ld      a, #0x10            ;; ink 16 = border
     out     (c), a
-    ld      a, l
+    pop     af
     or      #0x40
     out     (c), a
     ret

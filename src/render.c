@@ -7,6 +7,7 @@
 // ============================================================
 
 #include "cpctelera.h"
+#include "bank.h"
 
 #define TILESET    ((const u8*)0x4000)
 #define GMAP       ((const u8*)0x4000)
@@ -38,8 +39,9 @@ void render_tile_world(u8 tile_index, u16 col, u16 row,
     u16 cy = (u16)(row << 1);
     u16 ma;
     i16 sx, sy;
+    u8 prev_b;
 
-    cpc_bank_set(0xC4);
+    prev_b = bank_set(0xC4);
 
     sy = (i16)cy - (i16)cam_row;
     sx = (i16)cx - (i16)cam_x4;
@@ -68,7 +70,7 @@ void render_tile_world(u8 tile_index, u16 col, u16 row,
         }
     }
 
-    cpc_bank_restore();
+    bank_restore(prev_b);
 }
 
 // Llegeix una tira de 4 px: un caràcter CRTC d'ample per cada fila de tile.

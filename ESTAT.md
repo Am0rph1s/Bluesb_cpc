@@ -447,3 +447,141 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - El monitor remot de text bloqueja mentre VICE corre en warp; preferir binary monitor.
 - L'assistent va quedar encallat en bucle generant comandes (tool calls) diverses vegades;
   per això part de la feina es va fer amb comandes manuals de l'usuari. Un xat nou hauria d'anar bé.
+
+## Sessio CP-2.2 + SugarBoxV2 (2026-10-08)
+- Objectiu: alliberar Bloc 0 (logica moving.* al Banc 5 via call_banked + slots 0x6E00+3k).
+- Estat: boot (loads FDC, video, init/draw bankejats, render) OK intermitent;
+  loop principal inestable (freeze amb vora verda / corrupcio creixent / reboot a BASIC).
+- Bugs reals trobats i arreglats:
+  1. cpct_setBorder llegia L en comptes de A (sdcccall1 passa u8 en A).
+  2. render_tile_world, level_get_tile_type, get_tile_flags/op, world_set_tile
+     feien cpc_bank_restore() cec (->C0) fins i tot cridats des del banc:
+     ara prev=bank_set(...); ...; bank_restore(prev).
+  3. moving_bank_push: eliminat set/restore (C5 garantit a l’entrada).
+  4. stack_canary a 0x37E0 col-lisionava amb _DATA (ara a 0x3900).
+  5. build.py: convergencia 3 iteracions (disk_tables.h <-> DSK); no matar-lo a la meitat.
+- ZEsarUX ZRCP amb canals trencats (read-memory/save-binary retornen un buffer fix,
+  breakpoints no disparen mai, CRTC dubtos). Fiables: screenshots, FDC track/motor, PC, border.
+- SugarBoxV2 v2.1.1 instal-lat a tools/SugarboxV2 (TCP DebugServer JSON port 1234):
+  getState/readRegisters/readMemory(ok, amb roundtrip)/writeMemory/disassemble/
+  breakpoints/step/getScreen(PNG)/getGateArrayState(border,mode,ROMs,ramcfg,finestres)/
+  getCrtcState/getFdcState(motor,pistes,sectors,CRC)/insertDisk/sendKey(line,bit).
+  Llancament: Sugarbox.exe --cfg CPC6128UK [--hide] [-d] --ds 1234. ULL: connectar
+  ATURA l’emulacio (cal continue); LimitSpeed=T per teclejar al 100%.
+- sendKey: lletres simples OK pero amb perdues (~1/3 arriba); SHIFT trencat.
+  Boot fiable = teclejar manualment a la finestra.
+- Client: sb.py + scripts sb*.py (fora del repo, temp opencode).
+- PENDENT: validar boot verd + loop (elevators DOS 60px/s, cintes, Jake amb input),
+  treure marcadors DIAG TEMP, restaurar waits 12ticks+vsync per 25Hz reals.
+
+## Sessio 2026-10-08 tarda: init DATA + validacio SugarBox
+- TROBALLA CLAU: el start propi (LD SP + JP main) salta el CRT: _DATA (BSS)
+  i _INITIALIZED (s_belts, taules belt, etc.) queden amb brossa de power-on.
+  A SugarBox la RAM s’inicia amb patro 41 98 -> s_belts salvatge -> tiles
+  salvatges per pantalla (franges) + crash. A ZEsarUX la RAM surt a zero
+  (per aixo alla funcionava).
+- FIX: CRT manual al principi de main() (memset BSS 0x36A0 398B + memcpy
+  INITIALIZED 30B de 0x3850 a 0x382E). ATENCIO: adreces hardcoded del mapa
+  actual; si creix _DATA/_CODE cal revisar (millor: simbols del linker).
+- AMB waits restaurats (12 ticks + vsync) per test real a 25Hz (SugarBox VSYNC ok).
+- PENDENT: boot verd + loop (validar amb sbvalidate.py quan l’usuari teclegi).
+
+## Sessio 2026-10-08 nit: imatge truncada + build ranci + morts SugarBox
+- TROBALLA 1: obj/bluesb.bin nomes cobria _CODE; _DATA/_INITIALIZED/_INITIALIZER
+  (0x36A0..0x386D) MAI al DSK. FIX build.py: image_length() fins a fi de
+  _INITIALIZER (bin 14190 B, BLUESB 14 blocs) + src/crt_addrs.h generat del mapa.
+- TROBALLA 2 (build ranci): newer() per mtime saltava recompilar main.c ->
+  binari amb descs {3903,8} vells vs taules {4259,10} -> spin de fail (PC 0x195B).
+  FIX: clean total + force rebuild + frescor per hash (mtime O hash). Verificat:
+  stale fora, fresh dins, start=0x13AF, marges OK (code 2947 B, pila 2000 B).
+- PROVAT: firmware carrega 14190 B amb 0 mismatches; transfer a start OK (bp);
+  teclejat automatic via chords sendKey (SHIFT-hold + tecla).
+- OBERT: SugarBox DESAPAREIX (sense crash-log) durant el boot (~25 s dins el
+  nostre loader, fase TILES/MAP), 4 cops. Sense determinar: crash app vs tancament.
+- PENDENT: (a) datar mort / color marc per fitxer; (b) si cal revert (stash) a HEAD;
+  (c) treure DIAG TEMP (BANK5-first, marcadors).
+
+## Sessio 2026-10-09: BLUESB-first + DAT.BIN + ZEsarUX verd
+- HEAD aa8acd0 arrenca SEMPRE a ZEsarUX (joc visible T+25/50/80). Saga no -> regressio nostra.
+- CAUSA: posicio BLUESB al DSK (pistes 15-18 = reboot <8 s; pistes 0-2 = boot).
+  FIX build.py: package() posa BLUESB PRIMER (blocs 2-12). Comprovat: saga boota (Jake idle T+25/50/80).
+- DAT.BIN (30 B plantilla _INITIALIZER de l'ihx) com a fitxer DSK; main el carrega
+  a scratch 0x3000 i fa memcpy a _INITIALIZED (fi del hardcode 0x3850 i de la imatge completa).
+- Neteja DIAG: fora toggle per-frame i marcadors boot/bank (nomes alarma canari).
+- SugarBox: FDC flaky (Exp1 0 mismatches vs 10262/10781 despres, mateix DSK) +
+  lectures memType bancs incoherents. No es culpa del nostre codi (mateix DSK boota a ZEsarUX).
+  Plataforma de test: ZEsarUX.
+- PENDENT: retest boot DAT.BIN + estabilitat + input; valors START_PX/PY test (616/642).
+
+## Sessio 2026-10-09 (2): starter reubicable + boot verificat fins al joc
+- DISSENY: BLUESB = starter ~2 KB (load 0x3000) + GAME.BIN 14 KB (imatge 0x100..0x3869).
+  DAT.BIN eliminat (la imatge completa porta _INITIALIZER).
+- BUG 1 (auto-trepetjament): GAME [0x100..0x3869] cobreix l'starter [0x3000..0x37FF];
+  al 91% el CALL final quedava corromput (PC 0x136C/0x0C06 -> BASIC). FIX: s_start
+  PIC es copia a VRAM 0xC000 i salta a _s_main reubicat (exec hdr = 0x3000+offset).
+- BUG 2 (ROM alta): a 0xC000 la CPU llegeix la ROM del BASIC (upper ROM ON al boot);
+  la copia era invisible (JP a brossa ROM -> carry). FIX: s_start fa DI + RMR 0x8C
+  (Mode 0 + ROMs OFF) ABANS de copiar. Lower ROM ja ve OFF de RUN (in-place funcionava).
+- BUG 3 (RST 0x38): l'FDC fa EI intern amb ROMs OFF i sense ISR -> VSYNC = salt a
+  brossa = reboot net (T+2.6->3.7). FIX: stub RET (0xC9) a 0x0038 a s_start (el joc
+  instal-la la seva ISR despres). MCR (bank_set 0xC0-0xC7) NO toca ROMs (son RMR).
+- Verificacio: CRC16-CCITT de GAME.BIN (build.py -> starter_tables.h GAME_LEN/CRC);
+  starter: blau=s_main, groc=FDC ok, verd=CRC ok, vermell=corrupte (spin).
+- Build robust: is_stale/mark_fresh (hash DESPRES de compilar; abans un kill
+  enverinava i el seguent build enllacava ranci), placeholders nomes si falten
+  (+ sentinella GAME_CRC), 3 iteracions convergeixen. NO matar builds a la meitat;
+  correr en background (Start-Process) + sondejar (els logs per redirect perden la cua).
+- ZEsarUX ZRCP après de debò: send-keys-string 250ms + chords SHIFT (").
+  send-keys-string PERD els chars +&() (cal chord o evitar-los); '"' = SHIFT+50,
+  ENTER esdeveniment 129. Breakpoints: enable-breakpoints PRIMER, despres set
+  (index 1+; l'index 0 dona error); es perden amb cada restart; get-breakpoints/
+  get-breakpointspasscount llegeixen, pero MAI s'ha vist un tret (dubtosos).
+  read-memory/save-binary retornen brossa fixa (inservibles). Fiables: PC/SP,
+  screenshots (save-screen BMP 800x544), vora per pixels. FDC: motor/pistes no exposats.
+- `load"bluesb` dona `Memory full` (binari a 0x3000 sota HIMEM): cal RUN (els usuaris!).
+- BOOT VERIFICAT: RUN -> firmware -> starter (verd) -> FDC (blau/groc) -> CRC (verd)
+  -> joc (vora negra, nivell 1 dibuixat T+30). PENDENT: el joc es congela despres
+  del primer render (PC 0xBA55/0xC07x, SP=(0xCD05), sense resposta a input);
+  marcadors 0x41-46 a init per trobar la crida que ho penja (build en curs).
+- Fitxers: engine/starter.c (DI/stub/RMR/copia/PIC + CRC + semafors),
+  tools/build.py (ST_LOAD/RUN/DATA/WIN, exec=load+offset, GAME_LEN/CRC, crc16_ccitt,
+  is_stale/mark_fresh, llavors nomes si falten), src/starter_tables.h (generat).
+
+## Sessio 2026-10-09 (3): CP-2.2b + JOC JUGABLE (input, scroll, ascensors)
+- Símptoma: boot perfecte (starter, CRC, loads, video, renders) pero el joc moria
+  als primers frames (PC errant per 0xB8xx-0xC0xx, SP esclafat, canari tret,
+  de vegades reboot net a BASIC). Determinista per build, variable entre builds.
+- TROBALLA (disciplina bancs): el codi bancat MAI pot niuar a un ALTRE banc.
+  En commutar C5->C7 des de moving_bank_draw/restore, la CPU continua llegint
+  0x4000-0x7FFF: el propi codi (a 0x6E00+) desapareix i s'executen dades
+  (ELEV.BIN/PFRAMES) -> salt salvatge -> canari + reboot/congelat. Només el
+  codi CENTRAL pot commutar bancs (el seu codi a 0x0100-0x38xx no es desmapeja).
+  C5-noop (mateix banc) sí és segur. PROVAT: niat C7 en init -> reboot;
+  sense niat -> spin correcte.
+- FIX: moving_bank_draw/restore TRASLLADATS a moving.c (residents, amb els
+  mateixos bank_set(C7) segurs des de central). bank5_table slots 1-2 queden
+  RETs morts (es conserven adreces). moving_bank_init/update/conveyor/push/find
+  segueixen bancats (C5 o sense niat). ELEVATOR_OBJECT_H/SPR_HALF_W -> moving.h.
+- TROBALLA 2 (bonus, mateixa sessió): l'SDCC genera epílegs desequilibrats
+  (POP HL/POP AF + JP(HL)/caiguda, sense PUSH previs) als wrappers C de 3+ args
+  (draw/conveyor/push/find). Els de 0-2 args (init/update/restore) fan cua JP
+  neta i funcionen. FIX: wrappers void + bloc bc_* (com init); call sites
+  posen bc_a..e i llegeixen bc_r. Verificat al binari (cues C3/JP).
+- FIX 3 (mateixa sessió): call_banked feia OUT al port 0x7F00|prev (0x7FC0)
+  en comptes de 0x7F00 (com bank_set/RMR). Ara LD BC,0x7F00 als dos OUTs
+  (switch + restore). No era l'arrel (la GA ignora el byte baix) pero queda bé.
+- Robustesa FDC (troballa paral·lela): el FDC de vegades llegeix un sector
+  malament (mateix DSK: un boot carrega bé, un altre no). FIX: cada fitxer de
+  dades es carrega amb CRC16 + fins a 3 reintents (taula CRC_* a disk_tables.h
+  generada per build.py; falla total = vora 0x40+i + spin). GAME CRC ja hi era.
+  DSK verificat byte a byte (GAME+8 fitxers OK) i CHS del starter verificat
+  (14185/14185) abans de buscar el bug lògic.
+- VERIFICAT JUGABLE a ZEsarUX: RUN"BLUESB -> starter (verd/blau/groc) -> joc
+  (vora negra) -> nivell 1 + Jake idle; dreta 3 s (camina + scroll + zona nova
+  amb ascensor), esquerra (torna), 30 s idle + 2 min totals sense crash
+  (PC/SP sans, ISR/bancs corrents). Jump no provat (tecla curta al test).
+- PENDENT USUARI: jugar de debò (escales, cintes, caure/dany, portes, nivells
+  2+); el so encara exclòs (audio.s) i el títol és Mode 1 (TITLE.BIN).
+- Nota ZEsarUX: breakpoints ZRCP es programen (enable primer, índex 1+) pero
+  MAI s'ha vist un tret (passcount sempre 0; un bp a 0xBA00 va aturar la CPU
+  en idle BASIC). read-memory retorna brossa fixa. PC/SP + screenshots sí fiables.

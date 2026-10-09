@@ -8,6 +8,11 @@
 #define PLAYER_FRAMES_BASE 0x4000
 #define PLAYER_FRAME_SIZE 480
 #define PLAYER_FRAMES_COUNT 26
+// EXTRA.BIN al Banc 7 lliure (gen_extra_frames.py): DOS 39 braç amunt
+// (globus/paraigua) + BOX caixa volant opaca (tile 19, 4B x 16 = 128 B).
+#define EXTRA_BASE 0x79A0
+#define JAKE_BALLOON_FRAME ((const u8*)0x79A0)
+#define CRATE_FLY_FRAME ((const u8*)(0x79A0 + 480))
 
 typedef struct { u16 offset; u8 wb; u8 h; } PSprFrame;
 static const PSprFrame g_player_frames_r[26] = {

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Genera assets/bbdata/EXTRA.BIN: frames extra al Banc 7 (0x79A0).
+"""Genera assets/bbdata/EXTRA.BIN: frames extra al Banc 7 (0x7AA0).
 - DOS 39 (SPRITE.SQV #39, 32x31): pose braç amunt (globus/paraigua), 480 B.
-- BOX (tile 19, 8x16 Mode 0 = 4B x 16): caixa volant opaca [inv=0,img]
-  64 parells = 128 B.
-Total 608 B (lliures 1120 -> en queden 512). Format = PFRAMES (blitter ASM).
+- BOX (tile 19, 8x16 Mode 0 = 4B x 16): caixa volant opaca [inv=0,img], 128 B.
+- BALLOON (SPRITE.SQV #103, 16x28): globus vermell amb cordill [inv,img], 224 B.
+Total 832 B al Banc 7 a 0x7AA0..0x7DDF (sense col·lidir amb ELEV a 0x78E0..0x7AA0).
 Regenerar: py -3 tools/gen_extra_frames.py && git add -f assets/bbdata/EXTRA.BIN
 """
 import os
@@ -81,13 +81,41 @@ def pack_box(tile_idx):
     return bytes(raw)
 
 
+def pack_balloon():
+    frames = load_sqv_frames(SQV)
+    w, h, px = frames[103]
+    assert w == 16 and h == 28
+    raw = bytearray()
+    for y in range(28):
+        m0_pens = []
+        for xm in range(8):
+            p0 = px[y][xm * 2]
+            p1 = px[y][xm * 2 + 1]
+            val = p0 if p0 != 0 else p1
+            if p0 != 0 and p1 != 0:
+                if p0 in (13, 15, 8): val = p0
+                elif p1 in (13, 15, 8): val = p1
+                else: val = p0
+            pen = dos_to_cpc_pen.get(val)
+            m0_pens.append(pen)
+        for xb in range(4):
+            inv_mask, img = encode_pair(m0_pens[xb * 2], m0_pens[xb * 2 + 1])
+            raw.append(inv_mask)
+            raw.append(img)
+    assert len(raw) == 224
+    return bytes(raw)
+
+
 def main():
     dos39 = pack_frame(39)
     assert len(dos39) == 480, len(dos39)
     box = pack_box(19)
     assert len(box) == 128, len(box)
-    open(OUT_BIN, "wb").write(dos39 + box)
-    print("escrit %s: %d bytes (DOS39 480 + BOX 128)" % (OUT_BIN, 480 + 128))
+    balloon = pack_balloon()
+    assert len(balloon) == 224, len(balloon)
+    data = dos39 + box + balloon
+    open(OUT_BIN, "wb").write(data)
+    print("escrit %s: %d bytes (DOS39 480 + BOX 128 + BALLOON 224)" % (OUT_BIN, len(data)))
 
 
 if __name__ == "__main__":

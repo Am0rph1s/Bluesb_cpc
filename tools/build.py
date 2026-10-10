@@ -85,7 +85,7 @@ DATA_FILES = [
     ("MAP",   "BIN", os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN")),
     ("TRIG",  "BIN", os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN")),
     ("PFRAMES", "BIN", os.path.join(PROJ, "assets", "bbdata", "PFRAMES.BIN")),
-    # EXTRA: DOS 39 (480 B) + BOX (128 B) -> Banc 7 lliure 0x79A0.
+    # EXTRA: DOS 39 (480 B) + BOX (128 B) + BALLOON (224 B) -> Banc 7 lliure 0x7AA0.
     ("EXTRA", "BIN", os.path.join(PROJ, "assets", "bbdata", "EXTRA.BIN")),
     # ELEV: 2 frames d'ascensor Mode 0 (2x224 B) -> Banc 7 lliure 0x78E0.
     ("ELEV", "BIN", os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")),

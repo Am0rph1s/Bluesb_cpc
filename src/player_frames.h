@@ -8,11 +8,17 @@
 #define PLAYER_FRAMES_BASE 0x4000
 #define PLAYER_FRAME_SIZE 480
 #define PLAYER_FRAMES_COUNT 26
-// EXTRA.BIN al Banc 7 lliure (gen_extra_frames.py): DOS 39 braç amunt
-// (globus/paraigua) + BOX caixa volant opaca (tile 19, 4B x 16 = 128 B).
-#define EXTRA_BASE 0x79A0
-#define JAKE_BALLOON_FRAME ((const u8*)0x79A0)
-#define CRATE_FLY_FRAME ((const u8*)(0x79A0 + 480))
+// EXTRA.BIN al Banc 7 lliure (gen_extra_frames.py) a 0x7AA0 (després d'ELEV 0x78E0..0x7AA0):
+// - DOS 39 braç amunt (globus/paraigua): 480 B
+// - BOX caixa volant opaca (tile 19): 128 B
+// - BALLOON globus vermell autèntic (DOS 103, 16x28 Mode 0 4Bx28): 224 B
+// Total EXTRA.BIN = 832 B (0x7AA0..0x7DDF)
+#define EXTRA_BASE           0x7AA0
+#define JAKE_BALLOON_FRAME   ((const u8*)0x7AA0)
+#define CRATE_FLY_FRAME      ((const u8*)(0x7AA0 + 480))
+#define BALLOON_SPRITE_FRAME ((const u8*)(0x7AA0 + 480 + 128))
+#define BLOON_BG_PAGE0       0x7DE0
+#define BLOON_BG_PAGE1       0x7E50
 
 typedef struct { u16 offset; u8 wb; u8 h; } PSprFrame;
 static const PSprFrame g_player_frames_r[26] = {

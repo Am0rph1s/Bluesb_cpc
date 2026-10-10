@@ -42,8 +42,8 @@ extern volatile u8 g_ticks;
 #define DEAD_R      88
 #define DEAD_T      32
 #define DEAD_B      116
-#define START_PX 32
-#define START_PY 1106
+#define START_PX 184
+#define START_PY 860
 #define CAM0_X4     0
 #define CAM0_ROW    124
 #define PLAY_CHARS  40
@@ -66,6 +66,13 @@ static i16 s_carry_vx;           // SUB/f (±154 = DOS ±128 @30Hz)
 static u8  s_carry_drawn[2];
 static i16 s_carry_dx[2], s_carry_dy[2]; // world px dibuixats (restore), PER PAGINA
 static u8  s_crate_bg[2][64];      // fons 4B x 16 linies x 2 pagines
+// Globus portat (visual DOS obj37): sobre 8x16 del TILESET (cella 156)
+// convertit a parells [inv=0,img] al grab; segueix en Jake a (px+4,py-17).
+// El fons fa servir s_crate_bg (excloent amb la caixa volant: kind es unic).
+// Globus portat (visual DOS obj37, frame 103 a EXTRA.BIN):
+// globus vermell amb cordill 8x28 Mode 0. Fons a Banc 7 BLOON_BG (0x7DE0).
+static u8  s_bloon_drawn[2];
+static i16 s_bloon_dx[2], s_bloon_dy[2];
 // Seqüència caminar amb caixa DOS 00cd = [15,13,14,16] -> índexs nostres.
 static const u8 g_crate_walk[4] = { 14, 12, 13, 15 };
 static i8  s_ground_elevator = -1;
@@ -108,6 +115,7 @@ extern void render_tile_world(u8 tile_index, u16 col, u16 row,
                               u16 cam_x4, u16 cam_row);
 
 static void world_set_tile(u16 col, u16 row, u8 tile); // definit a sota
+static void bloon_restore(u8 page); // definit a sota
 
 // Llegeix el NUMERO de tile actual (veu mutacions: forats, portes).
 static u8 get_tile_num(u16 col, u16 row) {
@@ -348,7 +356,47 @@ static void carry_fly_draw(u8 page) {
 static void carry_abort(void) {
     carry_restore(s_back_page);
     carry_restore((u8)(s_back_page ^ 1));
+    bloon_restore(s_back_page);
+    bloon_restore((u8)(s_back_page ^ 1));
     s_carry_kind = 0; s_carry_state = 0;
+}
+
+// Restore del globus vermell (8x28 Mode 0, fons al Banc 7 BLOON_BG).
+static void bloon_restore(u8 page) {
+    u8 r, prev_b;
+    if (!s_bloon_drawn[page]) return;
+    prev_b = bank_set(0xC7);
+    for (r = 0; r < 28; r++) {
+        g_moving_dst = (u16)ring_address(page, s_bloon_dx[page], (i16)(s_bloon_dy[page] + r));
+        g_moving_background = (u16)((page ? BLOON_BG_PAGE1 : BLOON_BG_PAGE0) + ((u16)r << 2));
+        g_moving_span = 4;
+        moving_restore_span();
+    }
+    bank_restore(prev_b);
+    s_bloon_drawn[page] = 0;
+}
+
+// Dibuixa el globus vermell autèntic (DOS 103) a (px+4, py-27), flotant
+// per sobre del braç alçat d'en Jake. Fons desat a BLOON_BG (Banc 7).
+static void bloon_draw(u8 page) {
+    i16 bx, by, sy0;
+    u8 r, prev_b;
+    if (s_carry_kind != 2) return;
+    bloon_restore(page);
+    bx = (i16)((s_px8 >> 3) + 4);
+    by = (i16)((s_py8 >> 3) - 27);
+    sy0 = (i16)(by - (i16)(g_cam_row * 8));
+    if (sy0 < 0 || sy0 + 28 > 160) return;
+    prev_b = bank_set(0xC7);
+    for (r = 0; r < 28; r++) {
+        g_moving_dst = (u16)ring_address(page, bx, (i16)(by + r));
+        g_moving_background = (u16)((page ? BLOON_BG_PAGE1 : BLOON_BG_PAGE0) + ((u16)r << 2));
+        g_moving_sprite = (u16)(BALLOON_SPRITE_FRAME + ((u16)r << 3));
+        g_moving_span = 4;
+        moving_blit_span();
+    }
+    bank_restore(prev_b);
+    s_bloon_drawn[page] = 1; s_bloon_dx[page] = bx; s_bloon_dy[page] = by;
 }
 
 void main(void) {
@@ -366,8 +414,8 @@ void main(void) {
     // Falla total = vora 0x40+i + spin (net).
     {
         static const u8 v_bank[7] = { 0xC4, 0xC5, 0xC5, 0xC7, 0xC7, 0xC7, 0xC5 };
-        static const u16 v_addr[7] = { 0x4000, 0x4000, 0x6400, 0x4000, 0x79A0, 0x78E0, 0x6E00 };
-        static const u16 v_len[7] = { 16384, 9216, 2560, 12480, 608, 448, 4096 };
+        static const u16 v_addr[7] = { 0x4000, 0x4000, 0x6400, 0x4000, 0x7AA0, 0x78E0, 0x6E00 };
+        static const u16 v_len[7] = { 16384, 9216, 2560, 12480, 832, 448, 4096 };
         static const u16 v_crc[7] = { CRC_TILES, CRC_MAP, CRC_TRIG, CRC_PFRAMES, CRC_EXTRA, CRC_ELEV, CRC_BANK5 };
         static const DiskFileDesc* const v_desc[7] = { &g_file_tiles, &g_file_map, &g_file_trig, &g_file_pframes, &g_file_extra, &g_file_elev, &g_file_bank5 };
         u8 i, t;
@@ -433,6 +481,7 @@ void main(void) {
     s_jump_prev = 0; s_climb_prev = 0;
     s_carry_kind = 0; s_grab_prev = 0;
     s_carry_state = 0; s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
+    s_bloon_drawn[0] = 0; s_bloon_drawn[1] = 0;
     s_anim_idx = 0; s_anim_timer = 0;
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
@@ -525,33 +574,38 @@ void main(void) {
 
         belt_push = 0;
         // --- Grab / release (DOS) ---
-        // ADQUIRIR: AJUPIT a TERRA (crouch + s_on_ground) + flanc SPACE.
+        // GLOBUS/PARAIGUA: AUTOMATICS en tocar (DOS: _si==8/9 sense
+        // carry_crate_flag). CAIXA: AJUPIT a TERRA + flanc SPACE.
         // Mostreig DOS 1:1 (xpos16,ypos16, ypos=snap peus-1): fila peus-1
-        // al centre del Jake. Des del terra (peus fila 71) la fila 70 es la
-        // de les caixes: solapat amb la caixa (flags 0, s'hi entra caminant),
-        // l'agafa. Mai des de sobre (peus-1 = aire fila 69).
-        // Forat = reset_tiles DOS (veí dret, mai tile 0 blau).
+        // al centre del Jake. Forat = reset_tiles DOS (veí dret, mai blau).
         // LLENÇAR/ALLIBERAR: nomes flanc SPACE.
+        if (!s_carry_kind && !climbing) {
+            u16 gcol = (u16)((px + 8) >> 3);
+            u16 grow = (u16)((py + PH - 1) >> 4); // DOS ypos = peus-1
+            u8 gtype = level_get_tile_type(gcol, grow);
+            if (gtype == 8 || gtype == 9) {
+                world_reset_tile(gcol, grow);
+                if (grow > 0) world_reset_tile(gcol, (u16)(grow - 1));
+                s_carry_kind = (gtype == 8) ? 2 : 8;
+            }
+        }
         if (grab && !s_grab_prev && !climbing) {
             if (s_carry_kind == 1 && !s_carry_state) {
                 // LLANÇAR (DOS throw): vol recte ±154, sense gravetat.
-                s_carry_state = 1;
                 s_carry_x = s_px8;
                 s_carry_y = (i16)(s_py8 - 20 * SUB);
                 s_carry_vx = (g_face == 0) ? 154 : -154;
                 s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
+                s_carry_state = 1;
             } else if (s_carry_kind == 2 || s_carry_kind == 8) {
+                bloon_restore(s_back_page);
+                bloon_restore((u8)(s_back_page ^ 1));
                 s_carry_kind = 0; // allibera globus/paraigua (pop)
             } else if (!s_carry_kind && crouch && s_on_ground) {
-                // ADQUIRIR (només ajupit a terra): globus/paraigua/caixa.
+                // ADQUIRIR caixa (només ajupit a terra).
                 u16 gcol = (u16)((px + 8) >> 3);
-                u16 grow = (u16)((py + PH - 1) >> 4); // DOS ypos = peus-1
-                u8 gtype = level_get_tile_type(gcol, grow);
-                if (gtype == 8 || gtype == 9) {
-                    world_reset_tile(gcol, grow);
-                    if (grow > 0) world_reset_tile(gcol, (u16)(grow - 1));
-                    s_carry_kind = (gtype == 8) ? 2 : 8;
-                } else if (gtype == 5) {
+                u16 grow = (u16)((py + PH - 1) >> 4);
+                if (level_get_tile_type(gcol, grow) == 5) {
                     world_reset_tile(gcol, grow);
                     s_carry_kind = 1; s_carry_state = 0;
                     s_anim_idx = 0; s_anim_timer = 0;
@@ -729,6 +783,23 @@ void main(void) {
             u16 wrow = (u16)((py + PH) >> 4);
             if (get_tile_op(wcol, wrow) == 23) carry_abort();
         }
+        // Globus: POP de sostre DOS (obj37 toca type>5 2 files amunt o y<32):
+        // el sobre peta (sense anim: vanish) i en Jake cau.
+        if (s_carry_kind == 2) {
+            i16 bb = (i16)((s_py8 >> 3) - 1); // fons del sobre (DOS obj37 ypos)
+            u8 pop = (bb < 32);
+            if (!pop) {
+                u16 bcol = (u16)(((s_px8 >> 3) + 8) >> 3);
+                u16 brow = (u16)((bb >> 4) - 2);
+                pop = (level_get_tile_type(bcol, brow) > 5);
+            }
+            if (pop) {
+                bloon_restore(s_back_page);
+                bloon_restore((u8)(s_back_page ^ 1));
+                s_carry_kind = 0;
+                s_vy = 0;
+            }
+        }
 
         // --- Camera: zones uniformes 116/32 en aire i terra ---
         // Es PUJA (l'àpex mana) i es BAIXA (la caiguda mana): resposta
@@ -844,6 +915,7 @@ void main(void) {
         }
         moving_restore(s_back_page, (move_x != 0 || move_y != 0));
         carry_restore(s_back_page);
+        bloon_restore(s_back_page);
         world_flush_repaints(); // forats post-restore (el stale no els tapa)
 
         // Dibuixar les tires noves al ring buffer, sense copiar la pantalla.
@@ -892,6 +964,7 @@ void main(void) {
             bank_restore(prev_b);
         }
         s_have_drawn[s_back_page] = 1;
+        bloon_draw(s_back_page); // sobre del globus (si en porta)
 
         // --- Sincronització fixa a 25 Hz (12 ticks = 40 ms) i canvi de pàgina ---
         while ((u8)(g_ticks - last_ticks) < 12) {

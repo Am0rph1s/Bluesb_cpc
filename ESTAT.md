@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-07 — Sostres 21/27/28 + escombrat anti-tunneling (salt 18.75px/f); dieta audio/zx0 morts (~1KB). Marge _CODE +997B. PENDENT: retest usuari terra groc/cintes amb aquest build.
+Última actualització: 2026-10-10 — Globus auto-grab + vol OK (validat usuari); sobre NO visible + revert experiments. Marge _CODE 219 B.
 Idioma de treball amb l'usuari: **català**.
 
 ## Estat vigent — Sprites de Jake 16 px Mode 0, camisa blanca i animacions completes
@@ -613,7 +613,7 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
   Flake FDC: 2 boots fallits (vora vermella/verda + brossa, PC=C4xx) amb DSK
   bons; retest amb DSK fresc OK.
 - PENDENT: globus (2)/paraigua (8) agafar/volar/pop; walk-carry llarg; enemics/
-  portes/transicions; so; t�tol Mode 1.
+  portes/transicions; so; t�tol Mode 1.
 
 ## Sessio 2026-10-10 (2): CAIXES FIDELS DOS (crouch+terra, reset gris, repaint post-restore)
 - Mecanica corregida segons usuari+DOS (level.c:1227 _si=(xpos16,ypos16), ypos=snap peus-1; op14 unk2B):? agafar AJUPIT A TERRA (peus-1=fila caixa), MAI des de sobre; DOWN travessa one-ways incloses caixes (drop); caixa=plataforma (dret a sobre OK).
@@ -621,3 +621,34 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - FIX forat invisible (bug real): world_set_tile pintava a l'input pero sprite_restore_player (fons stale amb caixes) ho Ressuscitava cada frame. Prova: marcador blau temporal OK, caixa intacta. Solucio: cua s_rep_* (3) + world_flush_repaints() post-restore pre-save+draw, amb camera fresca; MAP logic immediat.
 - Verificat: control vs grab (mateixa banda: 848 vs 424 px vermells = 1 caixa menys), forat GRIS vei (tile20, mai blau), persisteix amb scroll (h_00 vs h_02 diff 0), vol+vanish nets (tl_f0 caixa volant, tl_f1 net).
 - Spawn hack 180/1050 REVERTIT a 32/1106. Build final: GAME.BIN 14203 B (0x0100..0x3418), marge 648 B, pila 1983 B. Sanity spawn real: carrer + 4 s dreta fins teatre BLUE BROTHERS, PC sans.
+
+## Sessio 2026-10-10 (3): GLOBUS AUTO-GRAB + VOL OK; SOBRE NO VISIBLE (obert) + REVERT EXPERIMENTS
+- Referencia DOS (tools/blues_dos/bb/level.c:1227,1269-1287,934,1521-1528): `_si=type(xpos16,ypos16)` amb ypos=peus; globus (8)/paraigua (9) AUTOMATICS sense flag (nomes caixa demana carry_crate_flag); reset 2 files (obj + -1); unk3D=2 pujada yacc=-1 (~1px/f), unk3D=1 paraigua caiguda lenta; pop si type>5 2 files sobre l'obj37 o y<32.
+- Implementat (src/main.c, NO commit): auto-grab `if(!carry && !climbing)` mostra (px+8,py+PH-1) -> 8/9, reset 2 files, kind=2/8 (caixa queda AJUPIT+TERRA+flanc SPACE); rise vy=-8 (kind 2); paraigua clamp vy<=8; pop DOS (bb=py-1, brow=fila-2, type>5 o bb<32 -> kind=0, vy=0); alliberar amb SPACE.
+- Visual: `s_bloon_frame[128]` = cella 156 TILESET (banc 4) a parells [inv=0,img] (build 1 cop al grab); `bloon_draw` a (px+4,py-17) despres sprite (ultim); save/restore per pagina amb `s_crate_bg` compartit (estalvi 128 B); sprite jugador DOS 39 brac amunt (EXTRA_BASE) quan kind 2/8.
+- Mapa: trio cols 23-25, fila 54 = 155 cordill (type 0) + fila 55 = 156 sobre (type 8); terra fila 56-57. Dempeus la mostra cau a 56 (terra) -> el trio S'AGAFA SALTANT (peus travessen 55), igual que DOS. Spawn hack 184/860 (cau a col 24).
+- VALIDAT USUARI: auto-grab + vol sostingut OK (Jake puja, camera segueix, cordill mapa al costat).
+- BUG OBERT (report usuari): el sobre vermell MAI apareix al cap; el que es veu es plataforma hazard estatica del fons ("ascensor"). Verificat en captures netes (cel obert, kind==2 estable a la fisica).
+- Dades dures acumulades: cella 156 = sobre vermell (hexdump: fons CC + motiu files 1-12; res de groc/negre); blitter span4=8px opacs OK; ring_address amb mon OK (mateix patro carry_fly/elevadors); paleta: 0xFF = blanc pen15; type = TRIG0[tile*10]; cel columna pujada te tiles type 10 (132/17/230) -> pop hi peta (legitim si DOS te mateixos types; per verificar).
+- Via d'investigacio (massa llarga, sense conclusio): mostreig/pop/gate/unitats SUB/paleta/adreces, tot correcte sobre el paper. Unica peca no verificada: contingut real de `s_bloon_frame` (lectura runtime banc C4) vs blit/restore.
+- EXPERIMENTS REVERTITS (ordre usuari, glitches nous): marcadors blancs cantonada + blit forcat + tile 156 forcat a la cantonada cada frame (AQUEST embrutava el mapa = glitches); un overflow _CODE (-24B) pel cami; trail debug (19 si llegeix 8) ELIMINAT per fer lloc i NO restaurat (dormant, nomes podia pintar graffiti; declarat a l'usuari).
+- Estat final: bloon_draw original + auto-grab + pop + spawn 184/860; cap resta DIAGNOSTIC/DEBUG/TRAIL (grep net); build GAME.BIN 14341 B, marge 219 B, pila 1845 B, DSK regenerat. Sense commit, sense test (aturat per parlar).
+- PENDENT: (1) un sol experiment net: pintar `s_bloon_frame` aillat amb pipeline de tiles (que funciona) -> vermell = frame bo (bug al blit/restore) vs brossa = bug lectura banc; (2) tema separat aparcat: des de l'spawn quiet UP no salta fins que camines (s_on_ground/climbing?); (3) verificar type 132 en DOS per decidir si el pop al cel es fidel.
+
+## Sessió 2026-10-10 (4): RESOLT BUG DEL GLOBUS (SPRITE AUTÈNTIC DOS 103 + JAKE 39 + COL·LISIÓ MEMÒRIA BANC 7 RESOLTA)
+- **Diagnosi del bug de l'ascensor i mida gegant**:
+  1. *Col·lisió de memòria al Banc 7*: `ELEV.BIN` (448 B) es carregava a `0x78E0`, acabant a `0x7AA0`. Però `EXTRA.BIN` (Jake braç amunt) es carregava a `0x79A0`. Per tant, `ELEV.BIN` sobreescrivia els primers 256 bytes d'`EXTRA.BIN`! Quan en Jake agafava el globus i demanava `EXTRA_BASE`, el personatge es convertia en l'ascensor!
+  2. *Sprite i posició incorrecta*: Abans es copiava la cella estàtica 156 del tileset a `py - 17`, tapant 11 línies de la cara/pit d'en Jake.
+- **Solució implementada**:
+  1. *Sprite autèntic de DOS*: Extret el frame 103 de `SPRITE.SQV` de DOS (16 DOS px / 8 Mode 0 px = 4 bytes $\times$ 28 línies d'alçada), un globus vermell rodó amb reflex blanc, nus i cordill blanc que arriba just a la mà alçada d'en Jake.
+  2. *Reorganització del Banc 7 (`0xC7`)*:
+     - `0x78E0 .. 0x7A9F`: `ELEV.BIN` (448 B)
+     - `0x7AA0 .. 0x7DDF`: `EXTRA.BIN` (832 B) [Jake frame 39 braç amunt: 480 B + Caixa: 128 B + Globus frame 103: 224 B]
+     - `0x7DE0 .. 0x7EBF`: Buffers fons globus (`BLOON_BG_PAGE0` 112 B + `BLOON_BG_PAGE1` 112 B)
+     - `0x7F00 .. 0x7FFF`: H-FLIP LUT (256 B)
+  3. *Optimització de RAM*: Eliminat l'array `s_bloon_frame[128]` de `_DATA` i el codi de construcció de frame a `main.c`.
+  4. *Posicionament*: El globus es dibuixa a `(px + 4, py - 27)`.
+- **Verificació a ZEsarUX**:
+  - Validat en execució real (`scratch/trace_game.py`):
+  - Captures reals preses durant el vol (`trace_float1.png`, `trace_float2.png`): en Jake puja agafant el cordill d'un globus vermell rodó perfecte, camisa blanca impecable, corbata, ulleres de sol, fons net sense rastre d'ascensors ni corrupció visual.
+

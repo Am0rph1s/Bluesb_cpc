@@ -12,6 +12,10 @@
 
     .globl _sprite_blit_player
     .globl _sprite_restore_player
+    .globl _sprite_balloon_init
+    .globl _sprite_blit_balloon
+    .globl _sprite_restore_balloon
+    .globl _sprite_abort_balloon
     .globl _g_spr_y
     .globl _g_spr_x
     .globl _g_vram_base_hi
@@ -51,9 +55,22 @@ s_bg_read_ptr:      .dw 0
 s_addr_segment:     .db 0
 s_byte_cnt:         .db 0
 
+_s_bloon_drawn_c0:  .db 0
+_s_bloon_drawn_80:  .db 0
+_s_bloon_old_y_c0:  .db 0
+_s_bloon_old_x_c0:  .db 0
+_s_bloon_old_y_80:  .db 0
+_s_bloon_old_x_80:  .db 0
+s_bloon_cur_x:      .db 0
+
 ;; Buffers de restauració de fons d'en Jake reubicats al Banc 7 (0x7520..0x76FF)
 _s_player_bg_c0 = 0x7520
 _s_player_bg_80 = 0x7610
+
+;; Buffers de fons del globus al Banc 7 (0x7DE0..0x7EBF, 112 B per pàgina)
+_s_bloon_bg_c0  = 0x7DE0
+_s_bloon_bg_80  = 0x7E50
+
 
 
     ;; ============================================================
@@ -455,6 +472,214 @@ _grate_lut:
     .db #0x11, #0x00, #0x11, #0x00, #0x11, #0x00, #0x11, #0x00  ;; y=7, phase=0 vals
     .db #0xFF, #0xAA, #0xFF, #0xAA, #0xFF, #0xAA, #0xFF, #0xAA  ;; y=7, phase=1 masks
     .db #0x00, #0x11, #0x00, #0x11, #0x00, #0x11, #0x00, #0x11  ;; y=7, phase=1 vals
+
+
+;; ============================================================
+;; void sprite_balloon_init(void)
+;;   Inicialitza els flags de globus dibuixat a 0
+;; ============================================================
+_sprite_balloon_init::
+    xor     a
+    ld      (_s_bloon_drawn_c0), a
+    ld      (_s_bloon_drawn_80), a
+    ret
+
+
+;; ============================================================
+;; void sprite_restore_balloon(void)
+;;   Restaura el fons del globus per a la pàgina actual
+;; ============================================================
+_sprite_restore_balloon::
+    ld      a, (_g_vram_base_hi)
+    cp      #0x80
+    jr      z, 1$
+    ld      a, (_s_bloon_drawn_c0)
+    or      a
+    ret     z
+    xor     a
+    ld      (_s_bloon_drawn_c0), a
+    ld      a, (_s_bloon_old_y_c0)
+    ld      (s_cur_y), a
+    ld      a, (_s_bloon_old_x_c0)
+    ld      (s_bloon_cur_x), a
+    ld      hl, #_s_bloon_bg_c0
+    jr      2$
+1$:
+    ld      a, (_s_bloon_drawn_80)
+    or      a
+    ret     z
+    xor     a
+    ld      (_s_bloon_drawn_80), a
+    ld      a, (_s_bloon_old_y_80)
+    ld      (s_cur_y), a
+    ld      a, (_s_bloon_old_x_80)
+    ld      (s_bloon_cur_x), a
+    ld      hl, #_s_bloon_bg_80
+2$:
+    ld      (s_bg_read_ptr), hl
+
+    ld      a, (_g_bank)
+    push    af
+    ld      a, #0xC7
+    call    _bank_set
+
+    ld      b, #28              ;; 28 linies d'alcada
+bloon_rst_line_loop:
+    push    bc
+
+    ld      a, (s_cur_y)
+    ld      l, a
+    ld      h, #0
+    add     hl, hl              ;; y * 2
+    ld      de, #_scr_addr_table
+    add     hl, de
+    ld      e, (hl)
+    inc     hl
+    ld      d, (hl)
+    call    sprite_map_line
+
+    ld      a, (s_bloon_cur_x)
+    add     a, e
+    ld      e, a
+    ld      a, d
+    adc     a, #0
+    and     #0x07
+    ld      d, a
+    ld      a, (s_addr_segment)
+    or      d
+    ld      d, a
+    ld      hl, (s_bg_read_ptr)
+
+    .rept 4
+    ld      a, (hl)
+    ld      (de), a
+    inc     hl
+    inc     de
+    .endm
+
+    ld      (s_bg_read_ptr), hl
+
+    ld      hl, #s_cur_y
+    inc     (hl)
+
+    pop     bc
+    djnz    bloon_rst_line_loop
+
+    pop     af
+    call    _bank_restore
+    ret
+
+
+;; ============================================================
+;; void sprite_blit_balloon(void)
+;;   Dibuixa el globus vermell autèntic (0x7D00 al Banc 7)
+;;   a (g_spr_x + 2, g_spr_y - 27) i desa el fons net.
+;; ============================================================
+_sprite_blit_balloon::
+    ld      a, (_g_spr_y)
+    cp      #28
+    ret     c                   ;; si g_spr_y < 28, fora per dalt
+    sub     #28
+    ld      (s_cur_y), a
+
+    ld      a, (_g_spr_x)
+    add     a, #2               ;; centrat (+2 bytes = +4 px Mode 0)
+    ld      (s_bloon_cur_x), a
+
+    ld      a, (_g_bank)
+    push    af
+    ld      a, #0xC7
+    call    _bank_set
+
+    ld      hl, #0x7D00         ;; BALLOON_SPRITE_FRAME al Banc 7
+    ld      (s_spr_ptr), hl
+
+    ld      a, (_g_vram_base_hi)
+    cp      #0x80
+    jr      z, 1$
+    ld      a, (s_cur_y)
+    ld      (_s_bloon_old_y_c0), a
+    ld      a, (s_bloon_cur_x)
+    ld      (_s_bloon_old_x_c0), a
+    ld      a, #1
+    ld      (_s_bloon_drawn_c0), a
+    ld      bc, #_s_bloon_bg_c0
+    jr      2$
+1$:
+    ld      a, (s_cur_y)
+    ld      (_s_bloon_old_y_80), a
+    ld      a, (s_bloon_cur_x)
+    ld      (_s_bloon_old_x_80), a
+    ld      a, #1
+    ld      (_s_bloon_drawn_80), a
+    ld      bc, #_s_bloon_bg_80
+2$:
+
+    ld      a, #28              ;; 28 linies
+    ld      (s_line_cnt), a
+
+bloon_blit_line:
+    push    bc
+
+    ld      a, (s_cur_y)
+    ld      l, a
+    ld      h, #0
+    add     hl, hl
+    ld      de, #_scr_addr_table
+    add     hl, de
+    ld      e, (hl)
+    inc     hl
+    ld      d, (hl)
+    call    sprite_map_line
+
+    ld      a, (s_bloon_cur_x)
+    add     a, e
+    ld      e, a
+    ld      a, d
+    adc     a, #0
+    and     #0x07
+    ld      d, a
+    ld      a, (s_addr_segment)
+    or      d
+    ld      d, a
+
+    ld      hl, (s_spr_ptr)
+    pop     bc                  ;; BC = bg_write_ptr
+
+    .rept 4
+    ld      a, (de)             ;; llegeix fons net
+    ld      (bc), a             ;; desa a buffer de fons
+    inc     bc
+    and     (hl)                ;; aplica inv_mask
+    inc     hl
+    or      (hl)                ;; aplica img_masked
+    inc     hl
+    ld      (de), a             ;; escriu a VRAM
+    inc     de
+    .endm
+
+    ld      (s_spr_ptr), hl
+
+    ld      hl, #s_cur_y
+    inc     (hl)
+
+    ld      a, (s_line_cnt)
+    dec     a
+    ld      (s_line_cnt), a
+    jr      nz, bloon_blit_line
+
+    pop     af
+    call    _bank_restore
+    ret
+
+
+;; ============================================================
+;; void sprite_abort_balloon(void)
+;;   Restaura el globus de manera natural en els dos cicles de backbuffer
+;; ============================================================
+_sprite_abort_balloon::
+    ret
+
 
 
 ;; ============================================================

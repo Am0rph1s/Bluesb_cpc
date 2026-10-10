@@ -1,7 +1,24 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-10 — Globus auto-grab + vol OK (validat usuari); sobre NO visible + revert experiments. Marge _CODE 219 B.
+Última actualització: 2026-10-10 — Vol en globus vermell 100% corregit i validat: eliminat rastre blanc (fix clobber registre BC en ASM) i frame d'Elwood substituït pel Jake de salt autèntic. 25 Hz i Bloc 0 estables.
 Idioma de treball amb l'usuari: **català**.
+
+## Estat vigent — Vol en globus vermell 100% ASM i sprites autèntics
+
+- **Eliminació del rastre / rectangle blanc del globus**:
+  - **Causa arrel**: A `_sprite_blit_balloon` (`engine/sprite.s`), la commutació `_bank_set(0xC7)` es realitzava *després* de carregar el punter de destinació del buffer de fons al registre `BC`. Com que `_bank_set` utilitza internament `ld bc, #0x7F00; out (c), a`, **destruïa `BC` fixant-lo a `0x7F00`**.
+  - **Conseqüències**: El fons net del globus s'escrivia sobre `0x7F00` (corrompent la taula LUT d'H-flip), mentre que el buffer real `_s_bloon_bg_c0` / `_s_bloon_bg_80` al Banc 7 quedava a 0x00. En cridar `_sprite_restore_balloon`, es copiaven zeros a VRAM, que en la paleta Mode 0 corresponen al **Pen 0 (blanc sòlid de la camisa)**, deixant un rectangle blanc de 4 bytes d'amplada a cada posició prèvia.
+  - **Solució**: `_bank_set(0xC7)` es crida *abans* de carregar `BC`. El fons es desa i es restaura de manera 100% transparent i neta sobre el Banc 7 (`0x7DE0` i `0x7E50`).
+- **Eliminació del frame d'ascensor/rodes d'Elwood (Frame DOS 39)**:
+  - S'ha analitzat el banc de sprites original de DOS (`SPRITE.SQV`, 147 frames). Els frames de Jake corresponen exclusivament a `0..29`. El frame 39 (`EXTRA_BASE`) pertany a Elwood corrent/bufant (amb les seves característiques rodes).
+  - S'ha eliminat la substitució forçada per `EXTRA_BASE` a `src/main.c`. Durant el vol amb globus, en Jake empra el frame autèntic de salt (`g_player_frames_r[cur]`, frame 4/7) subjectant-se el barret, centrat amb el fil del globus vermell a sobre seu.
+- **Rendiment i Codi 100% ASM**:
+  - Tota la rutina de dibuix (`_sprite_blit_balloon`) i restauració (`_sprite_restore_balloon`) està escrita en **ASM Z80 natiu** a `engine/sprite.s`, aprofitant bucles desenrotllats `.rept 4` i taules d'adreces de pantalla (`_scr_addr_table`).
+  - Cap bucle ni sobrecost en C; taxa d'imatges perfectament sincronitzada a **25 Hz constants** sense parpalleig.
+- **Pressupost de Memòria**:
+  - `_CODE`: `0x0100 .. 0x352A` (13.354 B, 374 B lliures).
+  - `_DATA`: `0x36A0 .. 0x3846` (422 B, 1.976 B de pila lliure).
+
 
 ## Estat vigent — Sprites de Jake 16 px Mode 0, camisa blanca i animacions completes
 

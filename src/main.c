@@ -69,10 +69,6 @@ static u8  s_crate_bg[2][64];      // fons 4B x 16 linies x 2 pagines
 // Globus portat (visual DOS obj37): sobre 8x16 del TILESET (cella 156)
 // convertit a parells [inv=0,img] al grab; segueix en Jake a (px+4,py-17).
 // El fons fa servir s_crate_bg (excloent amb la caixa volant: kind es unic).
-// Globus portat (visual DOS obj37, frame 103 a EXTRA.BIN):
-// globus vermell amb cordill 8x28 Mode 0. Fons a Banc 7 BLOON_BG (0x7DE0).
-static u8  s_bloon_drawn[2];
-static i16 s_bloon_dx[2], s_bloon_dy[2];
 // Seqüència caminar amb caixa DOS 00cd = [15,13,14,16] -> índexs nostres.
 static const u8 g_crate_walk[4] = { 14, 12, 13, 15 };
 static i8  s_ground_elevator = -1;
@@ -115,7 +111,6 @@ extern void render_tile_world(u8 tile_index, u16 col, u16 row,
                               u16 cam_x4, u16 cam_row);
 
 static void world_set_tile(u16 col, u16 row, u8 tile); // definit a sota
-static void bloon_restore(u8 page); // definit a sota
 
 // Llegeix el NUMERO de tile actual (veu mutacions: forats, portes).
 static u8 get_tile_num(u16 col, u16 row) {
@@ -356,47 +351,8 @@ static void carry_fly_draw(u8 page) {
 static void carry_abort(void) {
     carry_restore(s_back_page);
     carry_restore((u8)(s_back_page ^ 1));
-    bloon_restore(s_back_page);
-    bloon_restore((u8)(s_back_page ^ 1));
+    sprite_abort_balloon();
     s_carry_kind = 0; s_carry_state = 0;
-}
-
-// Restore del globus vermell (8x28 Mode 0, fons al Banc 7 BLOON_BG).
-static void bloon_restore(u8 page) {
-    u8 r, prev_b;
-    if (!s_bloon_drawn[page]) return;
-    prev_b = bank_set(0xC7);
-    for (r = 0; r < 28; r++) {
-        g_moving_dst = (u16)ring_address(page, s_bloon_dx[page], (i16)(s_bloon_dy[page] + r));
-        g_moving_background = (u16)((page ? BLOON_BG_PAGE1 : BLOON_BG_PAGE0) + ((u16)r << 2));
-        g_moving_span = 4;
-        moving_restore_span();
-    }
-    bank_restore(prev_b);
-    s_bloon_drawn[page] = 0;
-}
-
-// Dibuixa el globus vermell autèntic (DOS 103) a (px+4, py-27), flotant
-// per sobre del braç alçat d'en Jake. Fons desat a BLOON_BG (Banc 7).
-static void bloon_draw(u8 page) {
-    i16 bx, by, sy0;
-    u8 r, prev_b;
-    if (s_carry_kind != 2) return;
-    bloon_restore(page);
-    bx = (i16)((s_px8 >> 3) + 4);
-    by = (i16)((s_py8 >> 3) - 27);
-    sy0 = (i16)(by - (i16)(g_cam_row * 8));
-    if (sy0 < 0 || sy0 + 28 > 160) return;
-    prev_b = bank_set(0xC7);
-    for (r = 0; r < 28; r++) {
-        g_moving_dst = (u16)ring_address(page, bx, (i16)(by + r));
-        g_moving_background = (u16)((page ? BLOON_BG_PAGE1 : BLOON_BG_PAGE0) + ((u16)r << 2));
-        g_moving_sprite = (u16)(BALLOON_SPRITE_FRAME + ((u16)r << 3));
-        g_moving_span = 4;
-        moving_blit_span();
-    }
-    bank_restore(prev_b);
-    s_bloon_drawn[page] = 1; s_bloon_dx[page] = bx; s_bloon_dy[page] = by;
 }
 
 void main(void) {
@@ -481,10 +437,10 @@ void main(void) {
     s_jump_prev = 0; s_climb_prev = 0;
     s_carry_kind = 0; s_grab_prev = 0;
     s_carry_state = 0; s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
-    s_bloon_drawn[0] = 0; s_bloon_drawn[1] = 0;
     s_anim_idx = 0; s_anim_timer = 0;
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
+    sprite_balloon_init();
     u8 last_ticks = g_ticks;
 
     while (1) {
@@ -598,8 +554,7 @@ void main(void) {
                 s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
                 s_carry_state = 1;
             } else if (s_carry_kind == 2 || s_carry_kind == 8) {
-                bloon_restore(s_back_page);
-                bloon_restore((u8)(s_back_page ^ 1));
+                sprite_abort_balloon();
                 s_carry_kind = 0; // allibera globus/paraigua (pop)
             } else if (!s_carry_kind && crouch && s_on_ground) {
                 // ADQUIRIR caixa (només ajupit a terra).
@@ -794,8 +749,7 @@ void main(void) {
                 pop = (level_get_tile_type(bcol, brow) > 5);
             }
             if (pop) {
-                bloon_restore(s_back_page);
-                bloon_restore((u8)(s_back_page ^ 1));
+                sprite_abort_balloon();
                 s_carry_kind = 0;
                 s_vy = 0;
             }
@@ -908,14 +862,14 @@ void main(void) {
         g_vram_start = camera_ma((u16)(g_cam_x4 - page_dx),
                                  (u16)(g_cam_row - page_dy));
 
-        // --- Restaurar el fons del personatge al BACKBUFFER ---
+        // --- Restaurar el fons del personatge al BACKBUFFER (LIFO) ---
+        sprite_restore_balloon();
         if (s_have_drawn[s_back_page]) {
             sprite_restore_player();
             s_have_drawn[s_back_page] = 0;
         }
         moving_restore(s_back_page, (move_x != 0 || move_y != 0));
         carry_restore(s_back_page);
-        bloon_restore(s_back_page);
         world_flush_repaints(); // forats post-restore (el stale no els tapa)
 
         // Dibuixar les tires noves al ring buffer, sense copiar la pantalla.
@@ -943,18 +897,10 @@ void main(void) {
         }
 
         {
-            // Globus/paraigua: sempre DOS 39 braç amunt (EXTRA.BIN).
-            const u8* fr_addr;
-            u16 spr_addr;
-            u8 prev_b;
-            if (s_carry_kind == 2 || s_carry_kind == 8) {
-                spr_addr = EXTRA_BASE;
-            } else {
-                const PSprFrame* frame = &g_player_frames_r[cur];
-                spr_addr = (u16)(PLAYER_FRAMES_BASE + frame->offset);
-            }
-            fr_addr = (const u8*)spr_addr;
-            prev_b = bank_set(PLAYER_FRAMES_BANK);
+            const PSprFrame* frame = &g_player_frames_r[cur];
+            u16 spr_addr = (u16)(PLAYER_FRAMES_BASE + frame->offset);
+            const u8* fr_addr = (const u8*)spr_addr;
+            u8 prev_b = bank_set(PLAYER_FRAMES_BANK);
             if (g_face == 0) {
                 sprite_blit_player(fr_addr);
             } else {
@@ -964,7 +910,7 @@ void main(void) {
             bank_restore(prev_b);
         }
         s_have_drawn[s_back_page] = 1;
-        bloon_draw(s_back_page); // sobre del globus (si en porta)
+        if (s_carry_kind == 2) sprite_blit_balloon();
 
         // --- Sincronització fixa a 25 Hz (12 ticks = 40 ms) i canvi de pàgina ---
         while ((u8)(g_ticks - last_ticks) < 12) {

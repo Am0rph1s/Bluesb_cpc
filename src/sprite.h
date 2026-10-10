@@ -12,6 +12,10 @@ extern u16 g_vram_start;
 // Rutines ASM Z80
 void sprite_blit_player(const u8* spr);
 void sprite_restore_player(void);
+void sprite_balloon_init(void);
+void sprite_blit_balloon(void);
+void sprite_restore_balloon(void);
+void sprite_abort_balloon(void);
 void cpc_wait_vsync_start(void);
 void sprite_hflip_init_lut(u8* lut_256_aligned);
 void sprite_hflip(const u8* src, u8* dst);

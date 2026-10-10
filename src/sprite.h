@@ -15,6 +15,8 @@ void sprite_restore_player(void);
 void sprite_balloon_init(void);
 void sprite_blit_balloon(void);
 void sprite_restore_balloon(void);
+void sprite_blit_umbrella(void);
+void sprite_restore_umbrella(void);
 void sprite_abort_balloon(void);
 void cpc_wait_vsync_start(void);
 void sprite_hflip_init_lut(u8* lut_256_aligned);

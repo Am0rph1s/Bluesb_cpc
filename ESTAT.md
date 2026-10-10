@@ -1,23 +1,30 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-10 — Vol en globus vermell 100% corregit i validat: eliminat rastre blanc (fix clobber registre BC en ASM) i frame d'Elwood substituït pel Jake de salt autèntic. 25 Hz i Bloc 0 estables.
+Última actualització: 2026-10-11 — Vol en globus i paraigües 100% integrats i validats: sprite del paraigües (DOS frame 107), animació de Jake autèntica de carry (DOS frame 39 braços amunt i carry walk), eliminat completament el rastre visual (fix clobber registre BC en blitters ASM). 25 Hz i Bloc 0 estables (148 B lliures).
 Idioma de treball amb l'usuari: **català**.
 
-## Estat vigent — Vol en globus vermell 100% ASM i sprites autèntics
+## Estat vigent — Vol en globus vermell i Paraigües 100% ASM i sprites autèntics
 
-- **Eliminació del rastre / rectangle blanc del globus**:
-  - **Causa arrel**: A `_sprite_blit_balloon` (`engine/sprite.s`), la commutació `_bank_set(0xC7)` es realitzava *després* de carregar el punter de destinació del buffer de fons al registre `BC`. Com que `_bank_set` utilitza internament `ld bc, #0x7F00; out (c), a`, **destruïa `BC` fixant-lo a `0x7F00`**.
-  - **Conseqüències**: El fons net del globus s'escrivia sobre `0x7F00` (corrompent la taula LUT d'H-flip), mentre que el buffer real `_s_bloon_bg_c0` / `_s_bloon_bg_80` al Banc 7 quedava a 0x00. En cridar `_sprite_restore_balloon`, es copiaven zeros a VRAM, que en la paleta Mode 0 corresponen al **Pen 0 (blanc sòlid de la camisa)**, deixant un rectangle blanc de 4 bytes d'amplada a cada posició prèvia.
-  - **Solució**: `_bank_set(0xC7)` es crida *abans* de carregar `BC`. El fons es desa i es restaura de manera 100% transparent i neta sobre el Banc 7 (`0x7DE0` i `0x7E50`).
-- **Eliminació del frame d'ascensor/rodes d'Elwood (Frame DOS 39)**:
-  - S'ha analitzat el banc de sprites original de DOS (`SPRITE.SQV`, 147 frames). Els frames de Jake corresponen exclusivament a `0..29`. El frame 39 (`EXTRA_BASE`) pertany a Elwood corrent/bufant (amb les seves característiques rodes).
-  - S'ha eliminat la substitució forçada per `EXTRA_BASE` a `src/main.c`. Durant el vol amb globus, en Jake empra el frame autèntic de salt (`g_player_frames_r[cur]`, frame 4/7) subjectant-se el barret, centrat amb el fil del globus vermell a sobre seu.
-- **Rendiment i Codi 100% ASM**:
-  - Tota la rutina de dibuix (`_sprite_blit_balloon`) i restauració (`_sprite_restore_balloon`) està escrita en **ASM Z80 natiu** a `engine/sprite.s`, aprofitant bucles desenrotllats `.rept 4` i taules d'adreces de pantalla (`_scr_addr_table`).
-  - Cap bucle ni sobrecost en C; taxa d'imatges perfectament sincronitzada a **25 Hz constants** sense parpalleig.
-- **Pressupost de Memòria**:
-  - `_CODE`: `0x0100 .. 0x352A` (13.354 B, 374 B lliures).
-  - `_DATA`: `0x36A0 .. 0x3846` (422 B, 1.976 B de pila lliure).
+- **Visualització del Paraigües (`s_carry_kind == 8`)**:
+  - **Sprite autèntic de DOS**: Extret de `SPRITE.SQV` frame 107 (48×32 px DOS = 12 bytes × 16 línies en Mode 0 + 12B màscara = 640 B empaquetats a `EXTRA.BIN`).
+  - **Animació i poses d'en Jake**:
+    - **En repòs o a l'aire**: Utilitza el frame 20 (`carry_float`, frame 39 de DOS), amb ambdós braços alçats subjectant el mànec del paraigües i les cames enrere.
+    - **En moviment/caminar**: Utilitza l'animació de carregar objectes de DOS (`g_crate_walk` = frames 14, 12, 13, 15).
+  - **Renderització ASM**: Implementat `_sprite_blit_umbrella` (12 bytes/línia) i restauració unificada a `_sprite_restore_umbrella` / `_sprite_restore_carry`.
+
+- **Vol en Globus vermell (`s_carry_kind == 2`)**:
+  - Utilitza l'sprite del globus (DOS frame 103) i en Jake utilitza estrictament el frame 20 (`carry_float`, frame 39 de DOS) amb els dos braços amunt agafant la corda.
+
+- **Eliminació definitiva del rastre visual (Bug del registre BC en ASM)**:
+  - **Causa arrel**: A `_sprite_blit_balloon` i `_sprite_blit_umbrella` (`engine/sprite.s`), la commutació `_bank_set` es realitzava després de carregar `BC = #_s_carry_bg_c0`. Com que `_bank_set` utilitza internament `ld bc, #0x7F00; out (c), a`, destruïa `BC` fixant-lo a `0x7F00`.
+  - El fons net es guardava a `0x7F00` (corrompent la taula LUT d'H-flip), mentre el buffer real quedava a `0x00` (Pen 0 = Blanc). En restaurar, deixava un rastre permanent.
+  - **Solució**: L'assignació de `BC` s'executa estrictament DESPRÉS de `call _bank_set`. El fons es restaura de forma 100% neta i transparent.
+
+- **Rendiment i Pressupost de Memòria**:
+  - Codi ASM optimitzat, taxa de refresc fixa a **25 Hz**.
+  - `_CODE`: `0x0100 .. 0x360C` (13.580 B), **148 bytes lliures** abans de `_DATA` (`0x36A0`).
+  - `_DATA`: `0x36A0 .. 0x3AC6` (1.062 B), pila lliure de 1.336 B.
+  - Verificat i validat a ZEsarUX mitjançant `tools/verify_balloon_umbrella_live.py`.
 
 
 ## Estat vigent — Sprites de Jake 16 px Mode 0, camisa blanca i animacions completes

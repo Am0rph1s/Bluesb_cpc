@@ -71,6 +71,9 @@ static u8  s_crate_bg[2][64];      // fons 4B x 16 linies x 2 pagines
 // El fons fa servir s_crate_bg (excloent amb la caixa volant: kind es unic).
 // Seqüència caminar amb caixa DOS 00cd = [15,13,14,16] -> índexs nostres.
 static const u8 g_crate_walk[4] = { 14, 12, 13, 15 };
+#define CRATE_FLY_FRAME ((const u8*)0x7AA0)
+#define BALLOON_FRAME   ((const u8*)0x7B20)
+#define UMBRELLA_FRAME  ((const u8*)0x7C00)
 static i8  s_ground_elevator = -1;
 u8 g_face;
 static u8  s_anim_idx, s_anim_timer;
@@ -371,7 +374,7 @@ void main(void) {
     {
         static const u8 v_bank[7] = { 0xC4, 0xC5, 0xC5, 0xC7, 0xC7, 0xC7, 0xC5 };
         static const u16 v_addr[7] = { 0x4000, 0x4000, 0x6400, 0x4000, 0x7AA0, 0x78E0, 0x6E00 };
-        static const u16 v_len[7] = { 16384, 9216, 2560, 12480, 832, 448, 4096 };
+        static const u16 v_len[7] = { 16384, 9216, 2560, 12480, 992, 448, 4096 };
         static const u16 v_crc[7] = { CRC_TILES, CRC_MAP, CRC_TRIG, CRC_PFRAMES, CRC_EXTRA, CRC_ELEV, CRC_BANK5 };
         static const DiskFileDesc* const v_desc[7] = { &g_file_tiles, &g_file_map, &g_file_trig, &g_file_pframes, &g_file_extra, &g_file_elev, &g_file_bank5 };
         u8 i, t;
@@ -816,6 +819,24 @@ void main(void) {
                 }
                 cur = g_crate_walk[s_anim_idx];
             } else cur = 13;
+        } else if (s_carry_kind == 2) {
+            // Vol amb globus (DOS unk3D=2 / animframe_00c1): SEMPRE DOS 39 (pose braç amunt)!
+            cur = 20;
+        } else if (s_carry_kind == 8) {
+            // Amb paraigua (DOS unk3D=1 / grab_type 8):
+            // Si es mou (aire o terra): camina portant objecte (DOS animframe_00cd)
+            // Si quiet: braç amunt agafant el mànec (DOS 39)
+            if (move != 0) {
+                s_anim_timer++;
+                if (s_anim_timer >= 2) {
+                    s_anim_timer = 0;
+                    s_anim_idx++;
+                    if (s_anim_idx >= 4) s_anim_idx = 0;
+                }
+                cur = g_crate_walk[s_anim_idx];
+            } else {
+                cur = 20;
+            }
         } else if (!s_on_ground || (u16)(bsy + 30) > 160) {
             // DOS 1:1 (cyxx case0 / animframe_00ab = {1,0x07}): en aire SEMPRE
             // el salt cames obertes + barret. Mai back-view (DOS 8 = escala 00b8)
@@ -863,6 +884,7 @@ void main(void) {
                                  (u16)(g_cam_row - page_dy));
 
         // --- Restaurar el fons del personatge al BACKBUFFER (LIFO) ---
+        sprite_restore_umbrella();
         sprite_restore_balloon();
         if (s_have_drawn[s_back_page]) {
             sprite_restore_player();
@@ -911,6 +933,7 @@ void main(void) {
         }
         s_have_drawn[s_back_page] = 1;
         if (s_carry_kind == 2) sprite_blit_balloon();
+        else if (s_carry_kind == 8) sprite_blit_umbrella();
 
         // --- Sincronització fixa a 25 Hz (12 ticks = 40 ms) i canvi de pàgina ---
         while ((u8)(g_ticks - last_ticks) < 12) {

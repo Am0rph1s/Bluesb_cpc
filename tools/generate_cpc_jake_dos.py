@@ -56,7 +56,7 @@ def pack_standard_frame(idx):
     # Ample Mode 0 complet: 16 píxels Mode 0 = 32 píxels DOS = 8 bytes
     w_m0 = 16
     x_shift = (w_m0 - ((w + 1) // 2)) // 2
-    y_shift = 30 - h
+    y_shift = 0 if idx == 39 else (30 - h)
     
     box = [[None] * 16 for _ in range(30)]
     for y in range(h):
@@ -123,8 +123,9 @@ GAME_FRAMES = [
     # 18..19: Empènyer, llançar
     ('crate_throw', 18),
     ('crate_push',  20),
-    # 20..22: Diari / objecte
-    ('item1', 21),
+    # 20: Vol amb globus / paraigües (DOS 39)
+    ('carry_float', 39),
+    # 21..22: Diari / objecte
     ('item2', 22),
     ('item3', 23),
     # 23..25: Danys / hurt / hit

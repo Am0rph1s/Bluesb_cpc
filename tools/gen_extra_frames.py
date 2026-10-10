@@ -106,16 +106,43 @@ def pack_balloon():
     return bytes(raw)
 
 
+def pack_umbrella():
+    frames = load_sqv_frames(SQV)
+    w, h, px = frames[107]
+    assert w == 48 and h == 32
+    # 40 px DOS (x=4..43) = 20 px Mode 0 = 10 bytes d'amplada
+    raw = bytearray()
+    for y in range(32):
+        m0_pens = []
+        for xm in range(20):
+            xdos = 4 + xm * 2
+            p0 = px[y][xdos] if xdos < w else 0
+            p1 = px[y][xdos + 1] if (xdos + 1) < w else 0
+            val = p0 if p0 != 0 else p1
+            if p0 != 0 and p1 != 0:
+                if p0 in (15, 8): val = p0
+                elif p1 in (15, 8): val = p1
+            pen = dos_to_cpc_pen.get(val)
+            m0_pens.append(pen)
+        for xb in range(10):
+            inv_mask, img = encode_pair(m0_pens[xb * 2], m0_pens[xb * 2 + 1])
+            raw.append(inv_mask)
+            raw.append(img)
+    assert len(raw) == 640
+    return bytes(raw)
+
+
 def main():
-    dos39 = pack_frame(39)
-    assert len(dos39) == 480, len(dos39)
     box = pack_box(19)
     assert len(box) == 128, len(box)
     balloon = pack_balloon()
     assert len(balloon) == 224, len(balloon)
-    data = dos39 + box + balloon
+    umbrella = pack_umbrella()
+    assert len(umbrella) == 640, len(umbrella)
+    data = box + balloon + umbrella
+    assert len(data) == 992
     open(OUT_BIN, "wb").write(data)
-    print("escrit %s: %d bytes (DOS39 480 + BOX 128 + BALLOON 224)" % (OUT_BIN, len(data)))
+    print("escrit %s: %d bytes (BOX 128 + BALLOON 224 + UMBRELLA 640)" % (OUT_BIN, len(data)))
 
 
 if __name__ == "__main__":

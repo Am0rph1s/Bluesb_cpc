@@ -15,6 +15,8 @@
     .globl _sprite_balloon_init
     .globl _sprite_blit_balloon
     .globl _sprite_restore_balloon
+    .globl _sprite_blit_umbrella
+    .globl _sprite_restore_umbrella
     .globl _sprite_abort_balloon
     .globl _g_spr_y
     .globl _g_spr_x
@@ -67,9 +69,10 @@ s_bloon_cur_x:      .db 0
 _s_player_bg_c0 = 0x7520
 _s_player_bg_80 = 0x7610
 
-;; Buffers de fons del globus al Banc 7 (0x7DE0..0x7EBF, 112 B per pàgina)
-_s_bloon_bg_c0  = 0x7DE0
-_s_bloon_bg_80  = 0x7E50
+;; Buffers de restauració de fons per a objectes portats (globus i paraigües)
+;; 10 bytes x 32 linies = 320 bytes per pagina a _DATA resident
+_s_carry_bg_c0:     .ds 320
+_s_carry_bg_80:     .ds 320
 
 
 
@@ -487,46 +490,82 @@ _sprite_balloon_init::
 
 ;; ============================================================
 ;; void sprite_restore_balloon(void)
-;;   Restaura el fons del globus per a la pàgina actual
+;; void sprite_restore_umbrella(void)
+;; void sprite_restore_carry(void)
+;;   Restaura el fons del globus (1) o paraigua (2) segons estigui actiu
 ;; ============================================================
+_sprite_restore_umbrella::
 _sprite_restore_balloon::
+_sprite_restore_carry::
     ld      a, (_g_vram_base_hi)
     cp      #0x80
     jr      z, 1$
     ld      a, (_s_bloon_drawn_c0)
     or      a
     ret     z
+    ld      c, a                ;; C = 1 (globus) o 2 (paraigua)
     xor     a
     ld      (_s_bloon_drawn_c0), a
     ld      a, (_s_bloon_old_y_c0)
     ld      (s_cur_y), a
     ld      a, (_s_bloon_old_x_c0)
     ld      (s_bloon_cur_x), a
-    ld      hl, #_s_bloon_bg_c0
+    ld      hl, #_s_carry_bg_c0
     jr      2$
 1$:
     ld      a, (_s_bloon_drawn_80)
     or      a
     ret     z
+    ld      c, a
     xor     a
     ld      (_s_bloon_drawn_80), a
     ld      a, (_s_bloon_old_y_80)
     ld      (s_cur_y), a
     ld      a, (_s_bloon_old_x_80)
     ld      (s_bloon_cur_x), a
-    ld      hl, #_s_bloon_bg_80
+    ld      hl, #_s_carry_bg_80
 2$:
     ld      (s_bg_read_ptr), hl
 
-    ld      a, (_g_bank)
-    push    af
-    ld      a, #0xC7
-    call    _bank_set
+    dec     c
+    jr      nz, umbr_rst_start
 
-    ld      b, #28              ;; 28 linies d'alcada
+    ;; Ballon restore: 28 linies, 4 bytes
+    ld      b, #28
 bloon_rst_line_loop:
     push    bc
+    call    carry_calc_vram
+    ld      hl, (s_bg_read_ptr)
+    ldi
+    ldi
+    ldi
+    ldi
+    ld      (s_bg_read_ptr), hl
+    ld      hl, #s_cur_y
+    inc     (hl)
+    pop     bc
+    djnz    bloon_rst_line_loop
+    ret
 
+umbr_rst_start:
+    ;; Umbrella restore: 32 linies, 10 bytes
+    ld      b, #32
+umbr_rst_line_loop:
+    push    bc
+    call    carry_calc_vram
+    ld      hl, (s_bg_read_ptr)
+    ld      bc, #10
+    ldir
+    ld      (s_bg_read_ptr), hl
+    ld      hl, #s_cur_y
+    inc     (hl)
+    pop     bc
+    djnz    umbr_rst_line_loop
+    ret
+
+
+;; Rutina auxiliar comuna per calcular l'adreca VRAM (DE) d'una linia de carry
+carry_calc_vram:
     ld      a, (s_cur_y)
     ld      l, a
     ld      h, #0
@@ -548,51 +587,25 @@ bloon_rst_line_loop:
     ld      a, (s_addr_segment)
     or      d
     ld      d, a
-    ld      hl, (s_bg_read_ptr)
-
-    .rept 4
-    ld      a, (hl)
-    ld      (de), a
-    inc     hl
-    inc     de
-    .endm
-
-    ld      (s_bg_read_ptr), hl
-
-    ld      hl, #s_cur_y
-    inc     (hl)
-
-    pop     bc
-    djnz    bloon_rst_line_loop
-
-    pop     af
-    call    _bank_restore
     ret
 
 
 ;; ============================================================
 ;; void sprite_blit_balloon(void)
-;;   Dibuixa el globus vermell autèntic (0x7D00 al Banc 7)
-;;   a (g_spr_x + 2, g_spr_y - 27) i desa el fons net.
+;;   Dibuixa el globus vermell autèntic (0x7B20 al Banc 7)
+;;   a (g_spr_x + 2, g_spr_y - 28) i desa el fons net (4B x 28 linies).
 ;; ============================================================
 _sprite_blit_balloon::
     ld      a, (_g_spr_y)
-    cp      #28
-    ret     c                   ;; si g_spr_y < 28, fora per dalt
     sub     #28
+    jr      nc, 4$
+    xor     a
+4$:
     ld      (s_cur_y), a
 
     ld      a, (_g_spr_x)
     add     a, #2               ;; centrat (+2 bytes = +4 px Mode 0)
     ld      (s_bloon_cur_x), a
-
-    ld      a, (_g_bank)
-    push    af
-    ld      a, #0xC7
-    call    _bank_set
-
-    ld      hl, #0x7D00         ;; BALLOON_SPRITE_FRAME al Banc 7
-    ld      (s_spr_ptr), hl
 
     ld      a, (_g_vram_base_hi)
     cp      #0x80
@@ -603,7 +616,6 @@ _sprite_blit_balloon::
     ld      (_s_bloon_old_x_c0), a
     ld      a, #1
     ld      (_s_bloon_drawn_c0), a
-    ld      bc, #_s_bloon_bg_c0
     jr      2$
 1$:
     ld      a, (s_cur_y)
@@ -612,37 +624,29 @@ _sprite_blit_balloon::
     ld      (_s_bloon_old_x_80), a
     ld      a, #1
     ld      (_s_bloon_drawn_80), a
-    ld      bc, #_s_bloon_bg_80
 2$:
+
+    ld      a, (_g_bank)
+    push    af
+    ld      a, #0xC7
+    call    _bank_set
+
+    ld      a, (_g_vram_base_hi)
+    cp      #0x80
+    ld      bc, #_s_carry_bg_c0
+    jr      nz, 3$
+    ld      bc, #_s_carry_bg_80
+3$:
+
+    ld      hl, #0x7B20         ;; BALLOON_SPRITE_FRAME al Banc 7 (0x7AA0+128)
+    ld      (s_spr_ptr), hl
 
     ld      a, #28              ;; 28 linies
     ld      (s_line_cnt), a
 
 bloon_blit_line:
     push    bc
-
-    ld      a, (s_cur_y)
-    ld      l, a
-    ld      h, #0
-    add     hl, hl
-    ld      de, #_scr_addr_table
-    add     hl, de
-    ld      e, (hl)
-    inc     hl
-    ld      d, (hl)
-    call    sprite_map_line
-
-    ld      a, (s_bloon_cur_x)
-    add     a, e
-    ld      e, a
-    ld      a, d
-    adc     a, #0
-    and     #0x07
-    ld      d, a
-    ld      a, (s_addr_segment)
-    or      d
-    ld      d, a
-
+    call    carry_calc_vram
     ld      hl, (s_spr_ptr)
     pop     bc                  ;; BC = bg_write_ptr
 
@@ -674,10 +678,109 @@ bloon_blit_line:
 
 
 ;; ============================================================
-;; void sprite_abort_balloon(void)
-;;   Restaura el globus de manera natural en els dos cicles de backbuffer
+;; void sprite_blit_umbrella(void)
+;;   Dibuixa el paraigües obert autèntic (0x7C00 al Banc 7)
+;;   a (g_spr_x - 1, g_spr_y - 31) i desa el fons net (10B x 32 linies).
 ;; ============================================================
+_sprite_blit_umbrella::
+    ld      a, (_g_spr_y)
+    sub     #31
+    jr      nc, 4$
+    xor     a
+4$:
+    ld      (s_cur_y), a
+
+    ld      a, (_g_spr_x)
+    or      a
+    jr      z, 5$
+    dec     a                   ;; centrat: Jake=8B, Umbrella=10B -> x-1
+5$:
+    ld      (s_bloon_cur_x), a
+
+    ld      a, (_g_vram_base_hi)
+    cp      #0x80
+    jr      z, 1$
+    ld      a, (s_cur_y)
+    ld      (_s_bloon_old_y_c0), a
+    ld      a, (s_bloon_cur_x)
+    ld      (_s_bloon_old_x_c0), a
+    ld      a, #2               ;; 2 = paraigua
+    ld      (_s_bloon_drawn_c0), a
+    jr      2$
+1$:
+    ld      a, (s_cur_y)
+    ld      (_s_bloon_old_y_80), a
+    ld      a, (s_bloon_cur_x)
+    ld      (_s_bloon_old_x_80), a
+    ld      a, #2               ;; 2 = paraigua
+    ld      (_s_bloon_drawn_80), a
+2$:
+
+    ld      a, (_g_bank)
+    push    af
+    ld      a, #0xC7
+    call    _bank_set
+
+    ld      a, (_g_vram_base_hi)
+    cp      #0x80
+    ld      bc, #_s_carry_bg_c0
+    jr      nz, 6$
+    ld      bc, #_s_carry_bg_80
+6$:
+
+    ld      hl, #0x7C00         ;; UMBRELLA_FRAME al Banc 7 (0x7AA0+128+224)
+    ld      (s_spr_ptr), hl
+
+    ld      a, #32              ;; 32 linies
+    ld      (s_line_cnt), a
+
+umbr_blit_line:
+    push    bc
+    call    carry_calc_vram
+    ld      hl, (s_spr_ptr)
+    pop     bc                  ;; BC = bg_write_ptr
+
+    ld      a, #10
+1$:
+    ex      af, af'
+    ld      a, (de)             ;; llegeix fons net
+    ld      (bc), a             ;; desa a buffer de fons
+    inc     bc
+    and     (hl)                ;; aplica inv_mask
+    inc     hl
+    or      (hl)                ;; aplica img_masked
+    inc     hl
+    ld      (de), a             ;; escriu a VRAM
+    inc     de
+    ex      af, af'
+    dec     a
+    jr      nz, 1$
+
+    ld      (s_spr_ptr), hl
+
+    ld      hl, #s_cur_y
+    inc     (hl)
+
+    ld      a, (s_line_cnt)
+    dec     a
+    ld      (s_line_cnt), a
+    jr      nz, umbr_blit_line
+
+    pop     af
+    call    _bank_restore
+    ret
+
+
+;; ============================================================
+;; void sprite_abort_balloon(void)
+;; void sprite_abort_carry(void)
+;;   Restaura els flags de dibuix en avortar carry
+;; ============================================================
+_sprite_abort_carry::
 _sprite_abort_balloon::
+    xor     a
+    ld      (_s_bloon_drawn_c0), a
+    ld      (_s_bloon_drawn_80), a
     ret
 
 

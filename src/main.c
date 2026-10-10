@@ -42,8 +42,8 @@ extern volatile u8 g_ticks;
 #define DEAD_R      88
 #define DEAD_T      32
 #define DEAD_B      116
-#define START_PX    32
-#define START_PY    1106
+#define START_PX 32
+#define START_PY 1106
 #define CAM0_X4     0
 #define CAM0_ROW    124
 #define PLAY_CHARS  40
@@ -63,8 +63,8 @@ static u8  s_grab_prev;
 static u8  s_carry_state;
 static i16 s_carry_x, s_carry_y; // SUB
 static i16 s_carry_vx;           // SUB/f (±154 = DOS ±128 @30Hz)
-static u8  s_carry_drawn;
-static i16 s_carry_dx, s_carry_dy; // world px dibuixats (restore)
+static u8  s_carry_drawn[2];
+static i16 s_carry_dx[2], s_carry_dy[2]; // world px dibuixats (restore), PER PAGINA
 static u8  s_crate_bg[2][64];      // fons 4B x 16 linies x 2 pagines
 // Seqüència caminar amb caixa DOS 00cd = [15,13,14,16] -> índexs nostres.
 static const u8 g_crate_walk[4] = { 14, 12, 13, 15 };
@@ -74,6 +74,12 @@ static u8  s_anim_idx, s_anim_timer;
 
 static u8  s_have_drawn[2];
 static i8  s_pending_x, s_pending_y;
+// Repintats pendents de tiles mutats (forats de reset): el restore del
+// fons de l'sprite (stale) taparia el repintat si es fes a l'input; per
+// aixo s'encua i es pinta DESPRES del restore, abans del save+draw.
+// (max 2/frame: globus/paraigua; 3 per marge). pages = bitmask 0b11.
+static u8  s_rep_n;
+static u8  s_rep_col[3], s_rep_row[3], s_rep_tile[3], s_rep_pages[3];
 
 static u8 s_back_page = 1;  // 1 -> pàgina B; 0 -> pàgina A
 
@@ -101,21 +107,85 @@ void start(void) {
 extern void render_tile_world(u8 tile_index, u16 col, u16 row,
                               u16 cam_x4, u16 cam_row);
 
-// Repinta una casella del mapa (MAP_MUT) a les DUES pàgines VRAM.
-// (render_tile_world només pinta la pàgina activa g_vram_base_hi.)
+static void world_set_tile(u16 col, u16 row, u8 tile); // definit a sota
+
+// Llegeix el NUMERO de tile actual (veu mutacions: forats, portes).
+static u8 get_tile_num(u16 col, u16 row) {
+    u8 t, prev_b;
+    if (col >= 128 || row >= 72) return 0;
+    prev_b = bank_set(0xC5);
+    t = MAP_PTR[(row << 7) + col];
+    bank_restore(prev_b);
+    return t;
+}
+
+// DOS do_level_reset_tiles: el forat NO va a tile 0 (blau lleig); s'omple
+// amb el primer tile de la dreta amb next-num diferent (amb next-nums
+// identitat = primer numero diferent: el fons gris s'esten sobre el forat).
+static void world_reset_tile(u16 col, u16 row) {
+    u8 n, m = 0;
+    u16 c;
+    if (col >= 128 || row >= 72) return;
+    n = get_tile_num(col, row);
+    c = (u16)(col + 1);
+    while (c < 128) {
+        m = get_tile_num(c, row);
+        if (m != n) break;
+        c++;
+    }
+    if (c >= 128) return; // sense veí: no tocar (DOS llegiria fora fila)
+    world_set_tile(col, row, m);
+}
+
+// Marca una casella del mapa (MAP_MUT, logic immediat) i encua el seu
+// repintat a les DUES pagines VRAM. El repintat es fa a la fase de draw
+// (world_flush_repaints, despres del restore d'sprites, amb camera fresca)
+// perque el fons desat (stale, amb la caixa) no el Ressusciti.
 static void world_set_tile(u16 col, u16 row, u8 tile) {
-    u8 save_hi;
     u8 prev_b;
     if (col >= 128 || row >= 72) return;
     prev_b = bank_set(0xC5);
     MAP_MUT[(row << 7) + col] = tile;
     bank_restore(prev_b);
-    save_hi = g_vram_base_hi;
-    g_vram_base_hi = 0xC0;
-    render_tile_world(tile, col, row, g_cam_x4, g_cam_row);
-    g_vram_base_hi = 0x80;
-    render_tile_world(tile, col, row, g_cam_x4, g_cam_row);
-    g_vram_base_hi = save_hi;
+    if (s_rep_n < 3) {
+        s_rep_col[s_rep_n] = (u8)col;
+        s_rep_row[s_rep_n] = (u8)row;
+        s_rep_tile[s_rep_n] = tile;
+        s_rep_pages[s_rep_n] = 3;
+        s_rep_n++;
+    } else {
+        // Ple (no hauria de passar: max 2/frame): repintat immediat antic.
+        u8 save_hi = g_vram_base_hi;
+        g_vram_base_hi = 0xC0;
+        render_tile_world(tile, col, row, g_cam_x4, g_cam_row);
+        g_vram_base_hi = 0x80;
+        render_tile_world(tile, col, row, g_cam_x4, g_cam_row);
+        g_vram_base_hi = save_hi;
+    }
+}
+
+// Pinta els repintats pendents de la pagina back (g_vram_base_hi ja hi
+// apunta). Crida despres dels restores i abans del save+draw d'sprites.
+static void world_flush_repaints(void) {
+    u8 i = 0;
+    while (i < s_rep_n) {
+        if (s_rep_pages[i] & (u8)((u8)1 << s_back_page)) {
+            render_tile_world(s_rep_tile[i], s_rep_col[i], s_rep_row[i],
+                              g_cam_x4, g_cam_row);
+            s_rep_pages[i] &= (u8)~((u8)1 << s_back_page);
+        }
+        if (s_rep_pages[i] == 0) {
+            s_rep_n--;
+            if (i != s_rep_n) {
+                s_rep_col[i] = s_rep_col[s_rep_n];
+                s_rep_row[i] = s_rep_row[s_rep_n];
+                s_rep_tile[i] = s_rep_tile[s_rep_n];
+                s_rep_pages[i] = s_rep_pages[s_rep_n];
+            }
+        } else {
+            i++;
+        }
+    }
 }
 
 // NOTA: get_tile() eliminat (mort, mai cridat) per recuperar ~30B de _CODE
@@ -145,6 +215,8 @@ static u8 get_tile_op(u16 col, u16 row) {
     return op;
 }
 
+u8 level_get_tile_type(u16 col, u16 row); // definit a sota (usat per is_floor_solid)
+
 // Sòls DOS: bidireccionals (peus+cap) 20,21,27,28 (+0,1,2,29,40 altres nivells).
 // One-way DOS (només peus quan vy>=0 + DROP amb avall): 14,15 (+16,22,30,31-39).
 static u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
@@ -153,8 +225,10 @@ static u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
     op = get_tile_op(col, row);
     if (op == 20 || op == 21 || op == 27 || op == 28) return 1;
     if (vy >= 0 && (op == 14 || op == 15)) {
-        if (crouch) return 0; // DROP-THROUGH (unk2B DOS): avall travessa
-        return 1;
+        // DROP-THROUGH (unk2B DOS): avall travessa TOTES les one-way,
+        // caixes incloses (s'agafen des de terra, mai des de sobre).
+        if (crouch) return 0;
+        return 1; // caixa = plataforma (s'hi pot estar dret)
     }
     if (op >= 31 && op <= 39 && vy >= 0) return 1;
     return 0;
@@ -224,14 +298,14 @@ static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
 // (després sync). Caixa 8x16 opaca (BOX a EXTRA): 4B/fila x 16, span 4.
 static void carry_restore(u8 page) {
     u8 r;
-    if (!s_carry_drawn) return;
+    if (!s_carry_drawn[page]) return;
     for (r = 0; r < 16; r++) {
-        g_moving_dst = (u16)ring_address(page, s_carry_dx, (i16)(s_carry_dy + r));
+        g_moving_dst = (u16)ring_address(page, s_carry_dx[page], (i16)(s_carry_dy[page] + r));
         g_moving_background = (u16)(s_crate_bg[page] + ((u16)r << 2));
         g_moving_span = 4;
         moving_restore_span();
     }
-    s_carry_drawn = 0;
+    s_carry_drawn[page] = 0;
 }
 
 static void carry_fly_draw(u8 page) {
@@ -243,6 +317,7 @@ static void carry_fly_draw(u8 page) {
     sx = (i16)((cx - (i16)(g_cam_x4 * 4)) >> 1);
     sy = (i16)(cy - (i16)(g_cam_row * 8));
     if (sx < 0 || sx > 72 || sy < 0 || sy > 144) {
+        carry_restore(page); carry_restore((u8)(page ^ 1));
         s_carry_kind = 0; s_carry_state = 0; // vora pantalla: vanish (DOS)
         return;
     }
@@ -251,6 +326,7 @@ static void carry_fly_draw(u8 page) {
         u16 ncol = (u16)(((s_carry_vx > 0) ? (cx + 8) : (cx - 1)) >> 3);
         u16 nrow = (u16)((cy + 8) >> 4);
         if (is_floor_solid(ncol, nrow, 0, 0)) {
+            carry_restore(page); carry_restore((u8)(page ^ 1));
             s_carry_kind = 0; s_carry_state = 0;
             return;
         }
@@ -264,7 +340,15 @@ static void carry_fly_draw(u8 page) {
         moving_blit_span();
     }
     bank_restore(prev);
-    s_carry_drawn = 1; s_carry_dx = cx; s_carry_dy = cy;
+    s_carry_drawn[page] = 1; s_carry_dx[page] = cx; s_carry_dy[page] = cy;
+}
+
+// Avorta qualsevol carry (inclòs vol): restaura les DUES pàgines i neteja.
+// Crides quan en Jake puja a l'escala o toca aigua amb caixa volant.
+static void carry_abort(void) {
+    carry_restore(s_back_page);
+    carry_restore((u8)(s_back_page ^ 1));
+    s_carry_kind = 0; s_carry_state = 0;
 }
 
 void main(void) {
@@ -348,7 +432,7 @@ void main(void) {
     s_on_ground = 1; g_face = 0;
     s_jump_prev = 0; s_climb_prev = 0;
     s_carry_kind = 0; s_grab_prev = 0;
-    s_carry_state = 0; s_carry_drawn = 0;
+    s_carry_state = 0; s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
     s_anim_idx = 0; s_anim_timer = 0;
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
@@ -387,12 +471,15 @@ void main(void) {
             cpct_isKeyPressed(Joy0_Left))  { move = -1; g_face = 1; }
         if (cpct_isKeyPressed(Key_CursorRight) || cpct_isKeyPressed(Key_S) ||
             cpct_isKeyPressed(Joy0_Right)) { move = +1; g_face = 0; }
+        // Controls DOS 1:1: SPACE = acció (agafar/llençar), UP = salt.
+        // X extra + Fire1/Fire2 = acció (comoditat CPC/joystick).
+        if (cpct_isKeyPressed(Key_Space) || cpct_isKeyPressed(Key_X) ||
+            cpct_isKeyPressed(Joy0_Fire1) || cpct_isKeyPressed(Joy0_Fire2)) { grab = 1; }
         if (cpct_isKeyPressed(Key_CursorDown) || cpct_isKeyPressed(Key_Z) ||
             cpct_isKeyPressed(Joy0_Down))  { crouch = 1; }
-        if (cpct_isKeyPressed(Key_Space) || cpct_isKeyPressed(Key_CursorUp) ||
-            cpct_isKeyPressed(Joy0_Fire1)) { jump = 1; }
-        // GRAB (acció DOS): X del teclat o Fire2. Separat del salt.
-        if (cpct_isKeyPressed(Key_X) || cpct_isKeyPressed(Joy0_Fire2)) { grab = 1; }
+        // Salt inhibit amb SPACE aguantat (DOS: inp_key_up && !inp_key_space).
+        if ((cpct_isKeyPressed(Key_CursorUp) || cpct_isKeyPressed(Joy0_Up)) &&
+            !grab) { jump = 1; }
 
         {
             i16 max_spd;
@@ -420,7 +507,7 @@ void main(void) {
             u16 lrow = (u16)((py + PH) >> 4);
             if (level_get_tile_type(lcol, lrow) == 7) {
                 climbing = 1;
-                if (s_carry_kind) s_carry_kind = 0; // DOS: a l'escala es deixa anar
+                if (s_carry_kind) carry_abort(); // DOS: a l'escala es deixa anar
                 if (!s_climb_prev) { // snap en entrar (centra a la columna)
                     px = (i16)((lcol << 3) - 4);
                     s_px8 = (i16)(px * SUB);
@@ -437,8 +524,14 @@ void main(void) {
         }
 
         belt_push = 0;
-        // --- Grab / release (flanc GRAB, tecles X / Fire2) ---
-        // DOS: tile type 8 globus / 9 paraigua als peus (5 caixa = proper torn).
+        // --- Grab / release (DOS) ---
+        // ADQUIRIR: AJUPIT a TERRA (crouch + s_on_ground) + flanc SPACE.
+        // Mostreig DOS 1:1 (xpos16,ypos16, ypos=snap peus-1): fila peus-1
+        // al centre del Jake. Des del terra (peus fila 71) la fila 70 es la
+        // de les caixes: solapat amb la caixa (flags 0, s'hi entra caminant),
+        // l'agafa. Mai des de sobre (peus-1 = aire fila 69).
+        // Forat = reset_tiles DOS (veí dret, mai tile 0 blau).
+        // LLENÇAR/ALLIBERAR: nomes flanc SPACE.
         if (grab && !s_grab_prev && !climbing) {
             if (s_carry_kind == 1 && !s_carry_state) {
                 // LLANÇAR (DOS throw): vol recte ±154, sense gravetat.
@@ -446,32 +539,20 @@ void main(void) {
                 s_carry_x = s_px8;
                 s_carry_y = (i16)(s_py8 - 20 * SUB);
                 s_carry_vx = (g_face == 0) ? 154 : -154;
-                s_carry_drawn = 0;
+                s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
             } else if (s_carry_kind == 2 || s_carry_kind == 8) {
                 s_carry_kind = 0; // allibera globus/paraigua (pop)
-            } else if (!s_carry_kind) {
+            } else if (!s_carry_kind && crouch && s_on_ground) {
+                // ADQUIRIR (només ajupit a terra): globus/paraigua/caixa.
                 u16 gcol = (u16)((px + 8) >> 3);
-                u16 grow = (u16)((py + PH) >> 4);
+                u16 grow = (u16)((py + PH - 1) >> 4); // DOS ypos = peus-1
                 u8 gtype = level_get_tile_type(gcol, grow);
                 if (gtype == 8 || gtype == 9) {
-                    u8 r2 = (u8)(grow - 1);
-                    world_set_tile(gcol, grow, 0);
-                    world_set_tile(gcol, r2, 0);
+                    world_reset_tile(gcol, grow);
+                    if (grow > 0) world_reset_tile(gcol, (u16)(grow - 1));
                     s_carry_kind = (gtype == 8) ? 2 : 8;
                 } else if (gtype == 5) {
-                    // Caixes: esborra la filera contigua (max 8) -> 0.
-                    u8 cc = (u8)gcol;
-                    u8 n = 0;
-                    while (n < 8 && level_get_tile_type(cc, grow) == 5) {
-                        world_set_tile(cc, grow, 0);
-                        if (cc == 0) break;
-                        cc--; n++;
-                    }
-                    cc = (u8)(gcol + 1); n = 0;
-                    while (n < 8 && level_get_tile_type(cc, grow) == 5) {
-                        world_set_tile(cc, grow, 0);
-                        cc++; n++;
-                    }
+                    world_reset_tile(gcol, grow);
                     s_carry_kind = 1; s_carry_state = 0;
                     s_anim_idx = 0; s_anim_timer = 0;
                 }
@@ -646,7 +727,7 @@ void main(void) {
         if (s_carry_kind) {
             u16 wcol = (u16)((px + 8) >> 3);
             u16 wrow = (u16)((py + PH) >> 4);
-            if (get_tile_op(wcol, wrow) == 23) s_carry_kind = 0;
+            if (get_tile_op(wcol, wrow) == 23) carry_abort();
         }
 
         // --- Camera: zones uniformes 116/32 en aire i terra ---
@@ -763,6 +844,7 @@ void main(void) {
         }
         moving_restore(s_back_page, (move_x != 0 || move_y != 0));
         carry_restore(s_back_page);
+        world_flush_repaints(); // forats post-restore (el stale no els tapa)
 
         // Dibuixar les tires noves al ring buffer, sense copiar la pantalla.
         sync_backbuffer(page_dx, page_dy, g_cam_x4, g_cam_row);

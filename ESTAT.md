@@ -585,3 +585,39 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - Nota ZEsarUX: breakpoints ZRCP es programen (enable primer, índex 1+) pero
   MAI s'ha vist un tret (passcount sempre 0; un bp a 0xBA00 va aturar la CPU
   en idle BASIC). read-memory retorna brossa fixa. PC/SP + screenshots sí fiables.
+
+## Sessio 2026-10-10: CAIXES THROWING (grab/carry/throw + controls DOS)
+- Triat per usuari: Caixes throwing. Referencia DOS tools/blues_dos/bb/level.c:
+  SPACE=accio (agafar/llencar), UP=salt (SPACE+UP=canvi jugador); caixa _si==5,
+  vol recte xvelocity +-128 sense gravetat, vanish vora/mur, erase UN tile.
+- FIX 1 controls (src/main.c): SPACE/X/Fire1/Fire2=GRAB, salt nomes CursorUp/
+  Joy0_Up inhibit amb SPACE (DOS inp_key_up && !inp_key_space). Abans SPACE
+  saltava i bloquejava el test de caixes. Verificat: UP salta (3728), SPACE
+  agafa (1032), sense interferencies.
+- FIX 2 erase: filera (max 8 tiles) -> UN tile world_set_tile(gcol,grow,0)
+  (paritat DOS do_level_reset_tiles). Forat 1 tile confirmat en captura.
+- FIX 3 vol (bug real): s_carry_drawn/dx/dy compartits entre les 2 pagines
+  (restore a posicio/pagina equivocada + slot BSS zero = QUADRAT BLANC 0x4B +
+  parpelleig + resta congelada). Patro ascensors: drawn[2]/dx[2]/dy[2] per
+  pagina; vanish restaura LES DUES pagines; carry_abort() (escala/aigua) idem.
+  Resultat: vol recte +-154 SUB/f, vanish mur/vora, restore pixel-perfect
+  (12 frames post-throw estatics, diff 0).
+- Carry visual = frames jugador amb caixa (quiet 14, camina 15/13/14/16, aire
+  16, salt feble -96); intent carry_held_draw separat REVERTIT (doble/brossa).
+- Harness: settle 3 s post-boot OBLIGATORI (spawn 180/1050 cau ~2 s; taps en
+  caiguda es perden: feet != caixa). Spawn hack 180/1050 REVERTIT a 32/1106.
+- Build final: GAME.BIN 14190 B (0x0100..0x3208), marge 1176 B, pila 1996 B.
+  Boot sanity des de spawn real: 4 s dreta fins al teatre (marquesina BLUE
+  BROTHERS), scroll OK, PC/SP sans. Nota: build.py triga ~10-15 min (SDCC
+  --max-allocs 200000); no matar-lo (un kill va deixar un DSK que no bootava).
+  Flake FDC: 2 boots fallits (vora vermella/verda + brossa, PC=C4xx) amb DSK
+  bons; retest amb DSK fresc OK.
+- PENDENT: globus (2)/paraigua (8) agafar/volar/pop; walk-carry llarg; enemics/
+  portes/transicions; so; t�tol Mode 1.
+
+## Sessio 2026-10-10 (2): CAIXES FIDELS DOS (crouch+terra, reset gris, repaint post-restore)
+- Mecanica corregida segons usuari+DOS (level.c:1227 _si=(xpos16,ypos16), ypos=snap peus-1; op14 unk2B):? agafar AJUPIT A TERRA (peus-1=fila caixa), MAI des de sobre; DOWN travessa one-ways incloses caixes (drop); caixa=plataforma (dret a sobre OK).
+- FIX mostreig: grow=(py+PH-1)>>4 (era py+PH: agafava dret a sobre). Revertida exempcio drop en caixes.
+- FIX forat invisible (bug real): world_set_tile pintava a l'input pero sprite_restore_player (fons stale amb caixes) ho Ressuscitava cada frame. Prova: marcador blau temporal OK, caixa intacta. Solucio: cua s_rep_* (3) + world_flush_repaints() post-restore pre-save+draw, amb camera fresca; MAP logic immediat.
+- Verificat: control vs grab (mateixa banda: 848 vs 424 px vermells = 1 caixa menys), forat GRIS vei (tile20, mai blau), persisteix amb scroll (h_00 vs h_02 diff 0), vol+vanish nets (tl_f0 caixa volant, tl_f1 net).
+- Spawn hack 180/1050 REVERTIT a 32/1106. Build final: GAME.BIN 14203 B (0x0100..0x3418), marge 648 B, pila 1983 B. Sanity spawn real: carrer + 4 s dreta fins teatre BLUE BROTHERS, PC sans.

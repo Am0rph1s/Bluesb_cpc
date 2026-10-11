@@ -33,29 +33,36 @@ typedef struct {
 } MovingElevator;
 
 #define ELEVATOR_BG_BASE 0x70C0
-
-static inline u8* elevator_bg_ptr(u8 idx, u8 page) {
-    return (u8*)(ELEVATOR_BG_BASE + (((u16)idx << 1) + page) * ELEVATOR_BG_SIZE);
-}
+#define elevator_bg_ptr(idx, page) ((u8*)(ELEVATOR_BG_BASE + (((u16)(idx) << 1) + (page)) * ELEVATOR_BG_SIZE))
 
 extern MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
 
-typedef struct {
-    u8 row;
-    u8 col_start;
-    u8 col_end;
-    u8 op;
-} MagConveyorBelt;
-
-// Estat compartit resident (llegit/escribible des del banc):
-extern MagConveyorBelt s_belts[4];
-extern u8 s_belt_right_body[3];
-extern u8 s_belt_right_roller[3];
-extern u8 s_belt_left_body[3];
-extern u8 s_belt_left_roller[3];
+// Estat compartit resident (llegit/escribible des del Banc 5):
 extern u8 s_conveyor_phase;
 extern u8 s_conveyor_tick;
 extern u8 s_page_conveyor_phase[2];
+
+// Estat del jugador i càmera resident (Bloc 0), actualitzat des del Banc 5:
+extern u16 g_cam_x4;
+extern u16 g_cam_row;
+extern i16 s_px8, s_py8;
+extern i16 s_vx, s_vy;
+extern u8  s_on_ground;
+extern u8  s_jump_prev;
+extern u8  s_climb_prev;
+extern u8  s_carry_kind;
+extern u8  s_grab_prev;
+extern u8  s_carry_state;
+extern i16 s_carry_x, s_carry_y;
+extern i16 s_carry_vx;
+extern u8  s_carry_drawn[2];
+extern i8  s_ground_elevator;
+extern u8  g_face;
+extern u8  s_anim_idx, s_anim_timer;
+extern u8  s_rep_n;
+extern u8  s_rep_col[3], s_rep_row[3], s_rep_tile[3], s_rep_pages[3];
+
+void carry_abort(void);
 
 // Bloc de paràmetres per crides bankades amb args/retorn (CP-2.2).
 extern u16 bc_a, bc_b, bc_c, bc_d, bc_e;
@@ -73,7 +80,6 @@ void moving_init(void);
 void moving_update(void);
 void moving_restore(u8 page, u8 force);
 void moving_draw(u8 page, u16 cam_x4, u16 cam_row);
-u8 level_get_tile_type(u16 col, u16 row);
 i8 moving_find_landing(void);
 i16 moving_conveyor_push(void);
 void moving_draw_conveyor_tiles(void);

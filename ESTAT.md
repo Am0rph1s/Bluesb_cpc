@@ -1,9 +1,34 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-11 — Vol en globus i paraigües 100% integrats i validats: sprite del paraigües (DOS frame 107), animació de Jake autèntica de carry (DOS frame 39 braços amunt i carry walk), eliminat completament el rastre visual (fix clobber registre BC en blitters ASM). 25 Hz i Bloc 0 estables (148 B lliures).
+Última actualització: 2026-10-11 — Arquitectura de Paquet de Nivell al Banc 5 (`tools/pack_level.py` → `src/level_pkg.h` + `src/moving_bank.c`), Peixeres amb natació i superfície d'aigua animada 100% basades en `TRIG0.BIN` i `SPRITE.SQV`, reixes de primer pla data-driven i correcció definitiva del border vermell (`CANARY_ADDR = 0x3B40`). **1.143 B lliures** al Bloc 0 i **512 B de marge** al Banc 5.
 Idioma de treball amb l'usuari: **català**.
 
-## Estat vigent — Vol en globus vermell i Paraigües 100% ASM i sprites autèntics
+## Estat vigent — Paquet de Nivell Data-Driven al Banc 5, Peixeres (Natació + Aigua Animada) i Fix del Border Vermell
+
+- **Arquitectura desacoblada Motor Resident (Bloc 0) vs. Paquet de Nivell (Banc 5)**:
+  - **Empaquetador automàtic (`tools/pack_level.py` → `src/level_pkg.h`)**: Extreu de les dades originals de DOS (`tools/blues_dos/bb/staticres.c`, `MAP0.BIN`, `TRIG0.BIN`) les dimensions del nivell, coordenades d'inici i càmera, posicions dels ascensors i els **18 trams de tiles animats (`s_level_anim_spans`)** amb les seves **7 seqüències de 6 fases (`s_level_anim_seqs`, MCM de 2 i 3)**.
+  - **Mòdul de Nivell al Banc 5 (`src/moving_bank.c`, `0x6E00..0x7DFF`)**: Com que al Banc 5 (`0xC5`) tant `MAP0.BIN` (`0x4000`) com `TRIG0.BIN` (`0x6400`) hi estan mapejats directament, s'hi executen sense commutació de bancs l'actualització d'entitats, l'animació dels 18 spans a `MAP_MUT`, el repintat d'spans visibles al backbuffer, l'empenta de cintes (`op == 27/28`), els efectes dels tiles sobre en Jake (escala `tt==7`, aigua `tt==11`, recollida de globus `tt==8`, paraigua `tt==9`, caixa `tt==5`, pop del globus al sostre `tt > 5`) i la màscara de reixes de primer pla (`TRIG_PTR` byte 9 `avt_num` 12..17).
+  - **Motor Genèric Resident (`src/main.c`, Bloc 0)**: Sense cap coordenada ni tile ID hardcodejat del Nivell 1; conté únicament el bucle de doble buffer a 25 Hz, la física genèrica de col·lisió sòlida i la màquina d'estats d'animació d'en Jake.
+
+- **Peixeres i Natació fidel a DOS**:
+  - **5 Frames autèntics de natació (`PFRAMES.BIN`, índexs `21..25`)**: Extrets de `SPRITE.SQV` amb `tools/generate_cpc_jake_dos.py`:
+    - `21`: `swim_idle` (DOS frame 48) — flotant a l'aigua.
+    - `22, 23`: `swim_stroke1`, `swim_stroke2` (DOS frames 46, 47) — braçada horitzontal (cicle `21 -> 22 -> 23`).
+    - `24`: `swim_vert` (DOS frame 49) — impuls vertical amunt/avall (alterna `21 <-> 24`).
+    - `25`: `swim_floor` (DOS frame 45) — estirat al fons de grava de la peixera quan `s_on_ground == 1`.
+  - **Física d'aigua (`tile_type == 11`, `climbing == 2`)**: Enfonsament suau (`s_vy = +8`), ascens fins a la superfície (`s_vy = -12` mentre el tile superior sigui `11`), descens ràpid (`s_vy = +16`) i despresa automàtica d'objectes en entrar a l'aigua.
+  - **Animació de la superfície de l'aigua i vores de les peixeres**: Dirigida automàticament pel byte 4 (`anim_idx`) de `TRIG0.BIN` a través de `s_level_anim_spans` (fila 30, columnes 46..58 i 68..80: superfície `131 <-> 199`, vora dreta `149 <-> 217`, vora esquerra `170 <-> 247`).
+
+- **Correcció del Border Vermell (`CANARY_ADDR`)**:
+  - `CANARY_ADDR` a `engine/stack_canary.h` s'ha reubicat de `0x3900` (on l'àrea `_DATA`, que arriba fins a `0x3AC6`, el sobreescrivia legítimament disparant l'alarma `cpct_setBorder(0x4C)`) a `0x3B40` (per sobre de `_DATA` i per sota de `SP = 0x3FFE`). El border es manté 100% negre (`RGB=(0,0,0)`).
+
+- **Pressupost de Memòria i Compilació**:
+  - Temps de compilació reduït a **~30 segons** (`--max-allocs-per-node 15000`).
+  - **Bloc 0 (`_CODE`)**: `0x0100 .. 0x3229` (12.585 B), **1.143 bytes lliures** abans de `_DATA` (`0x36A0`).
+  - **Bloc 0 (`_DATA`)**: `0x36A0 .. 0x3AC6` (1.062 B), **1.336 bytes lliures** de pila fins a `0x3FFE`.
+  - **Banc 5 (`BANK5.BIN`)**: `0x6E00 .. 0x7DFF` (4.096 B carregats, **512 B de marge** a la finestra i >1.000 B lliures de codi intern).
+
+## Històric recent — Vol en globus vermell i Paraigües 100% ASM i sprites autèntics
 
 - **Visualització del Paraigües (`s_carry_kind == 8`)**:
   - **Sprite autèntic de DOS**: Extret de `SPRITE.SQV` frame 107 (48×32 px DOS = 12 bytes × 16 línies en Mode 0 + 12B màscara = 640 B empaquetats a `EXTRA.BIN`).
@@ -19,12 +44,6 @@ Idioma de treball amb l'usuari: **català**.
   - **Causa arrel**: A `_sprite_blit_balloon` i `_sprite_blit_umbrella` (`engine/sprite.s`), la commutació `_bank_set` es realitzava després de carregar `BC = #_s_carry_bg_c0`. Com que `_bank_set` utilitza internament `ld bc, #0x7F00; out (c), a`, destruïa `BC` fixant-lo a `0x7F00`.
   - El fons net es guardava a `0x7F00` (corrompent la taula LUT d'H-flip), mentre el buffer real quedava a `0x00` (Pen 0 = Blanc). En restaurar, deixava un rastre permanent.
   - **Solució**: L'assignació de `BC` s'executa estrictament DESPRÉS de `call _bank_set`. El fons es restaura de forma 100% neta i transparent.
-
-- **Rendiment i Pressupost de Memòria**:
-  - Codi ASM optimitzat, taxa de refresc fixa a **25 Hz**.
-  - `_CODE`: `0x0100 .. 0x360C` (13.580 B), **148 bytes lliures** abans de `_DATA` (`0x36A0`).
-  - `_DATA`: `0x36A0 .. 0x3AC6` (1.062 B), pila lliure de 1.336 B.
-  - Verificat i validat a ZEsarUX mitjançant `tools/verify_balloon_umbrella_live.py`.
 
 
 ## Estat vigent — Sprites de Jake 16 px Mode 0, camisa blanca i animacions completes

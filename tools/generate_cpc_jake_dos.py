@@ -55,17 +55,38 @@ def pack_standard_frame(idx):
     w, h, px = frames[idx]
     # Ample Mode 0 complet: 16 píxels Mode 0 = 32 píxels DOS = 8 bytes
     w_m0 = 16
+    
+    # Comprovar bounding box per a frames més amples de 32 px (ex: natació)
+    min_x, max_x = w, 0
+    for y in range(h):
+        for x in range(w):
+            if px[y][x] != 0:
+                if x < min_x: min_x = x
+                if x > max_x: max_x = x
+    bw = max_x - min_x + 1 if max_x >= min_x else 0
+
+    if idx in (45, 46, 47, 48, 49):
+        y_shift = (30 - h) // 2
+    elif idx == 39:
+        y_shift = 0
+    else:
+        y_shift = 30 - h
+        
     x_shift = (w_m0 - ((w + 1) // 2)) // 2
-    y_shift = 0 if idx == 39 else (30 - h)
     
     box = [[None] * 16 for _ in range(30)]
     for y in range(h):
         out_y = y + y_shift
         if 0 <= out_y < 30:
             for xm in range(16):
-                xdos = (xm - x_shift) * 2
-                p0 = px[y][xdos] if 0 <= xdos < w else 0
-                p1 = px[y][xdos + 1] if 0 <= (xdos + 1) < w else 0
+                if bw > 32 and idx in (45, 46, 47, 48):
+                    xdos0 = min_x + (xm * bw) // 16
+                    xdos1 = min_x + ((xm * 2 + 1) * bw) // 32
+                else:
+                    xdos0 = (xm - x_shift) * 2
+                    xdos1 = xdos0 + 1
+                p0 = px[y][xdos0] if 0 <= xdos0 < w else 0
+                p1 = px[y][xdos1] if 0 <= xdos1 < w else 0
                 
                 # Seleccionar color prioritari (prioritzar camisa/detalls sobre contorns)
                 val = 0
@@ -89,8 +110,8 @@ def pack_standard_frame(idx):
             raw.append(img)
     return bytes(raw)
 
-# 26 frames complets de gameplay (sense natació ni concert)
-# 26 frames x 480 bytes = 12.480 bytes (caben amb comoditat al Banc 7)
+# 26 frames complets de gameplay (amb natació DOS completa)
+# 26 frames x 480 bytes = 12.480 bytes (caben exactament al Banc 7)
 GAME_FRAMES = [
     # 0..3: Caminar i aturat
     ('idle',  1),
@@ -98,12 +119,7 @@ GAME_FRAMES = [
     ('walk2', 0),
     ('walk3', 3),
     # 4..5: Salt i caiguda
-    # 4: Salt - ÚNIC frame d'aire (cyxx case0 / animframe_00ab = {1,0x07}).
-    # En aire MAI cap altre frame (ni walk ni back-view). El DOS només usa el
-    # frame 0x2C (=44) en caiguda ràpida extrema (yvelocity > 10).
     ('jump',  7), # agafant-se el barret (32 px DOS complets, sense peus tallats!)
-    # 5: DOS 8 = Jake d'esquenes, pertany a l'anim d'ESCALA
-    # (cyxx animframe_00b8 = {4, 0x09,0x09,0x08,0x08}). NO és fall!
     ('ladder_back',  8), # reservat per a escales, no usar en aire
     # 6..8: Ajupit (duck 1, crawl 2, crawl 3 - 32 px DOS complets!)
     ('crouch1', 4),
@@ -125,13 +141,12 @@ GAME_FRAMES = [
     ('crate_push',  20),
     # 20: Vol amb globus / paraigües (DOS 39)
     ('carry_float', 39),
-    # 21..22: Diari / objecte
-    ('item2', 22),
-    ('item3', 23),
-    # 23..25: Danys / hurt / hit
-    ('hurt1', 27),
-    ('hurt2', 28),
-    ('hurt3', 29),
+    # 21..25: Natació a les peixeres (DOS 48, 46, 47, 49, 45)
+    ('swim_idle',    48), # surant diagonal / quiet (DOS 48 / animframe_017e)
+    ('swim_stroke1', 46), # braçada 1 (DOS 46 / animframe_016d)
+    ('swim_stroke2', 47), # braçada 2 (DOS 47 / animframe_016d)
+    ('swim_vert',    49), # nedar vertical amunt/avall (DOS 49 / animframe_0182)
+    ('swim_floor',   45), # fons de la peixera (DOS 45 / animframe_0180)
 ]
 
 out_bin = r'assets/bbdata/PFRAMES.BIN'
@@ -147,20 +162,17 @@ print(f'Generat {out_bin}: {total_bytes} bytes ({len(GAME_FRAMES)} frames x 480 
 
 hdr = ['#ifndef PLAYER_FRAMES_H', '#define PLAYER_FRAMES_H', '',
        '#include "cpctelera.h"', '',
-       '// Frames autèntics de Jake (DOS 16 colors) al Banc 7 - 16 px Mode 0 (8 bytes)',
+       '// Frames autèntics de Jake (DOS 16 colors) al Banc 7 - 16 px Mode 0 (8 bytes x 30 = 480 B)',
        '#define PLAYER_FRAMES_BANK 0xC7',
        '#define PLAYER_FRAMES_BASE 0x4000',
        '#define PLAYER_FRAME_SIZE 480',
-       f'#define PLAYER_FRAMES_COUNT {len(GAME_FRAMES)}', '',
-       'typedef struct { u16 offset; u8 wb; u8 h; } PSprFrame;',
-       'static const PSprFrame g_player_frames_r[%d] = {' % len(GAME_FRAMES)]
+       f'#define PLAYER_FRAMES_COUNT {len(GAME_FRAMES)}']
 
 for k, (name, _) in enumerate(GAME_FRAMES):
-    hdr.append('    { %5d, 8, 30 }, // %2d: %s' % (k * 480, k, name))
-hdr.append('};')
+    hdr.append('// %2d (%5d): %s' % (k, k * 480, name))
 hdr.append('')
 hdr.append('#endif')
 
-with open('src/player_frames.h', 'w') as f:
+with open('src/player_frames.h', 'w', encoding='utf-8') as f:
     f.write('\n'.join(hdr) + '\n')
 print('Actualitzat src/player_frames.h!')

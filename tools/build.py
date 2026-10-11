@@ -22,7 +22,7 @@ from dskutil import DskPatcher, create_empty_cpc_dsk, amsdos_header  # noqa: E40
 SDCC    = r"C:\Program Files\SDCC\bin\sdcc.exe"
 SDASZ80 = r"C:\Program Files\SDCC\bin\sdasz80.exe"
 
-CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "200000",
+CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "15000",
              "--disable-warning", "110"]
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
              "--code-loc", "0x0100", "--data-loc", "0x36A0", "-Wl-x"]
@@ -55,7 +55,7 @@ C_HEADERS = {
     "src/moving.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h"],
     "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "src/disk_tables.h",
                    "src/sprite.h", "src/moving.h", "src/player_frames.h",
-                   "engine/stack_canary.h", "src/crt_addrs.h"],
+                   "engine/stack_canary.h", "src/crt_addrs.h", "src/level_pkg.h"],
 }
 
 PROGNAME = "bluesb"
@@ -70,7 +70,7 @@ BANK_C_SOURCES = ["src/moving_bank.c"]
 BANK_ASM_SOURCES = ["engine/bank5_table.s"]
 BANK_C_HEADERS = {
     "src/moving_bank.c": ["engine/cpctelera.h", "engine/bank.h",
-                          "src/moving.h", "src/sprite.h"],
+                          "src/moving.h", "src/sprite.h", "src/level_pkg.h"],
 }
 
 # Fitxers de dades al DSK (es carregaran per FDC raw). Ordre = ordre al disc.

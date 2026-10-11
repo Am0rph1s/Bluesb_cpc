@@ -23,13 +23,6 @@ void cpct_setPALColour(u8 pen, u8 hw_color);
 void cpc_bank_set(u8 bank_val);
 void cpc_bank_restore(void);
 
-static inline void cpct_setPalette(const u8* pal, u8 count) {
-    u8 i;
-    for (i = 0; i < count; ++i) {
-        cpct_setPALColour(i, pal[i]);
-    }
-}
-
 // Sincronisme VSYNC
 void cpct_waitVSYNC(void);
 

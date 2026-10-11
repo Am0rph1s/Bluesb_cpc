@@ -1,19 +1,16 @@
 // ============================================================
 // moving.c - Part RESIDENT del mòdul d'objectes mòbils (CP-2.2)
 // ------------------------------------------------------------
-// La lògica (init/update/restore/draw/conveyor/push/find) viu al
-// Banc 5 (src/moving_bank.c, 0x6E00) i s'hi crida via call_banked()
-// amb el bloc de paràmetres bc_* (args/retorn). Aquí queden:
-// dades compartides, taules, ring_address, wrappers i res més.
+// La lògica (init/update/conveyor/push/find + efectes de tiles
+// i física de nivell) viu al Banc 5 (src/moving_bank.c, 0x6E00)
+// i s'hi crida via call_banked() amb el bloc de paràmetres bc_*.
+// Aquí queden únicament les dades residents, ring_address i el
+// restore/draw d'ascensors que accedeixen al Banc 7 (0xC7).
 // ============================================================
 #include "cpctelera.h"
 #include "bank.h"
 #include "moving.h"
 #include "sprite.h"
-
-#define MAP_PTR  ((const u8*)0x4000)
-#define MAP_MUT  ((u8*)0x4000)
-#define TRIG_PTR ((const u8*)0x6400)
 
 // Slots fixos de la taula de salts del Banc 5 (engine/bank5_table.s).
 #define BC_UPDATE ((void*)0x6E00)
@@ -22,13 +19,6 @@
 #define BC_PUSH   ((void*)0x6E09)
 #define BC_FIND   ((void*)0x6E0C)
 #define BC_INIT   ((void*)0x6E0F)
-
-MagConveyorBelt s_belts[4] = {
-    { 36, 84, 86, 27 },
-    { 39, 83, 89, 28 },
-    { 42, 80, 86, 27 },
-    { 45, 84, 89, 28 }
-};
 
 MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
 u16 g_moving_dst;
@@ -40,17 +30,9 @@ u8 g_moving_span;
 u16 bc_a, bc_b, bc_c, bc_d, bc_e;
 i16 bc_r;
 
-u8 s_belt_right_body[3]   = { 248, 249, 250 };
-u8 s_belt_right_roller[3] = { 253, 252, 251 };
-u8 s_belt_left_body[3]    = { 239, 238, 237 };
-u8 s_belt_left_roller[3]  = { 240, 241, 242 };
-
 u8 s_conveyor_phase;
 u8 s_conveyor_tick;
 u8 s_page_conveyor_phase[2];
-
-extern void render_tile_world(u8 tile, u16 col, u16 row,
-                              u16 cam_x4, u16 cam_row);
 
 u8* ring_address(u8 page, i16 x, i16 y) {
     u16 x_byte = (u16)(x >> 1);
@@ -123,9 +105,6 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
         if (e->drawn[page]) continue;
         world_x = (i16)(e->center_x - ELEVATOR_SPR_HALF_W);
         world_y = (i16)(e->y - ELEVATOR_OBJECT_H);
-        // The ring contains only the viewport-sized working set. Off-screen
-        // world positions alias into visible VRAM after the CRTC wrap, so
-        // never blit an elevator unless its sprite intersects this viewport.
         clip_x0 = world_x > view_x ? world_x : view_x;
         clip_x1 = world_x + ELEVATOR_SPR_WIDTH_PX < view_x + 160 ?
                   (i16)(world_x + ELEVATOR_SPR_WIDTH_PX) : (i16)(view_x + 160);

@@ -20,15 +20,17 @@ El joc s'executa en mode bare-metal (sense firmware AMSDOS en temps de joc) apro
 |                              RAM BASE (64 KB)                           |
 +-------------------+-----------------------------------------------------+
 | 0x0000 - 0x00FF   | Vectors del sistema Z80 (ISR IM 1 a 0x0038)        |
-| 0x0100 - 0x32EE   | Codi executable (_CODE: C + ASM + taules constants) |
-| 0x3300 - 0x39CB   | Variables globals i dades estàtiques (_DATA)        |
-| 0x39CC - 0x3FFE   | PILA CPU (SP=0x3FFE; ~1,6 KB disponibles)            |
+| 0x0100 - 0x3229   | Codi resident (_CODE: motor genèric + ASM, 12.585 B)|
+| 0x322A - 0x369F   | Marge lliure de codi al Bloc 0 (1.143 bytes)        |
+| 0x36A0 - 0x3AC6   | Variables globals i dades estàtiques (_DATA, 1.062B)|
+| 0x3B40 - 0x3B41   | Canari de pila (CANARY_ADDR = 0x3B40, valor 0xA55A) |
+| 0x3B42 - 0x3FFE   | PILA CPU (SP=0x3FFE; 1.336 bytes disponibles)       |
 +-------------------+-----------------------------------------------------+
 | 0x4000 - 0x7FFF   | Finestra de Bank Switching (Bancs 4..7 de 16 KB)   |
 |                   | - En descans (0xC0): RAM Base Bloc 1               |
-|                   | - Si es commuta 0xC4: Banc 4 visible (TILESET)      |
-|                   | - Si es commuta 0xC5: Banc 5 visible (MAP + TRIG)   |
-|                   | - Si es commuta 0xC7: Banc 7 visible (frames Jake)   |
+|                   | - Si es commuta 0xC4: Banc 4 visible (TILESET0.BIN) |
+|                   | - Si es commuta 0xC5: Banc 5 visible (MAP+TRIG+B5)  |
+|                   | - Si es commuta 0xC7: Banc 7 visible (Sprites/LUT)  |
 +-------------------+-----------------------------------------------------+
 | 0x8000 - 0xBFFF   | PÀGINA DE VRAM 'B' (anell circular de 16 KB)        |
 |                   | Base CRTC MA = 0x2000 + offset de càmera            |
@@ -44,15 +46,24 @@ El joc s'executa en mode bare-metal (sense firmware AMSDOS en temps de joc) apro
 +-------------------------------------------------------------------------+
 |                            RAM ESTESA (64 KB)                           |
 +-------------------+-----------------------------------------------------+
-| Banc 4 (0xC4)     | TILESET0.BIN (16.384 bytes = 256 tiles de 8x16 Mode0|
+| Banc 4 (0xC4)     | 0x4000..0x7FFF: TILESET0.BIN (16.384 B = 256 tiles) |
 +-------------------+-----------------------------------------------------+
 | Banc 5 (0xC5)     | 0x4000..0x63FF: MAP0.BIN (9.216 B = 128x72 índexs)  |
 |                   | 0x6400..0x6DFF: TRIG0.BIN (2.560 B = 256×10)        |
-|                   | 0x6E00..0x7FFF: Espai lliure per a nivells / dades  |
+|                   | 0x6E00..0x7DFF: BANK5.BIN (Paquet de nivell + codi  |
+|                   |                 d'entitats/spans/efectes, 4.096 B)  |
 +-------------------+-----------------------------------------------------+
 | Banc 6 (0xC6)     | Reservat (futur: cançons AKG / dades dels enemics)   |
 +-------------------+-----------------------------------------------------+
-| Banc 7 (0xC7)     | PFRAMES.BIN (2.880 B; frames masked de Jake 12x30 px) |
+| Banc 7 (0xC7)     | 0x4000..0x70BF: PFRAMES.BIN (12.480 B; 26 frames de |
+|                   |                 Jake 16x30 px Mode 0 = 480 B/frame) |
+|                   | 0x70C0..0x751F: Buffers fons 5 ascensors (1.120 B)  |
+|                   | 0x7520..0x76FF: Buffers fons Jake C0/80 (2x240 B)   |
+|                   | 0x7700..0x78DF: Buffer gir horitzontal H-Flip (480B)|
+|                   | 0x78E0..0x7A9F: ELEV.BIN (448 B; 2 frames ascensor) |
+|                   | 0x7AA0..0x7E7F: EXTRA.BIN (992 B; caixa 128B +      |
+|                   |                 globus 224B + paraigües 640B)       |
+|                   | 0x7F00..0x7FFF: Taula LUT H-Flip Mode 0 (256 B)     |
 +-------------------+-----------------------------------------------------+
 ```
 
@@ -68,13 +79,11 @@ Per garantir estabilitat absoluta:
    ld sp, #0x3FFE
    ```
    Això ubica la pila al cim del **Bloc 0** (`0x0000..0x3FFF`). Com que el Bloc 0 mai es commuta, qualsevol interrupció IM 1 o crida `CALL`/`RET` és 100% segura mentre s'accedeix a la memòria estesa.
-2. **Localització de `_DATA`**: Al script `tools/build.py`, s'indica a l'enllaçador:
+2. **Localització de `_DATA` i Canari de Pila**: Al script `tools/build.py`, s'indica a l'enllaçador:
    ```python
-   LINKARGS = ["-mz80", "--no-std-crt0", "-Wl-u", "--code-loc", "0x0100", "--data-loc", "0x3200", "-Wl-x"]
+   LINKARGS = ["-mz80", "--no-std-crt0", "-Wl-u", "--code-loc", "0x0100", "--data-loc", "0x36A0", "-Wl-x"]
    ```
-   Les dades globals se situen a partir de `0x3200`; al build actual `_CODE`
-   acaba a `0x2C87` i les dades inicialitzades a `0x3A2A`, sense codi executable dins la finestra
-   commutable de `0x4000..0x7FFF`.
+   Les dades globals se situen a `0x36A0..0x3AC6` (1.062 B), deixant 1.143 bytes de marge per a `_CODE` (`0x0100..0x3229`) i situant el canari de pila (`CANARY_ADDR` a `engine/stack_canary.h`) a `0x3B40`, just entre el final de `_DATA` i la pila (`0x3FFE`).
 
 ---
 
@@ -147,65 +156,52 @@ a cadascun dels cinc ascensors.
 `cam_x4` avança una paraula MA (4 px) per pas horitzontal; dues paraules són un
 subtile complet de 8 px. Verticalment l'offset avança 40 paraules per subtile.
 
-### 4.1 Ascensors i cintes transportadores (`src/moving.c`)
+### 4.1 Mòdul de Nivell al Banc 5 (`src/moving_bank.c` + `src/level_pkg.h`)
 
-`moving.c` implementa els cinc ascensors dels slots 19–23 de les dades de
-*Magasin*. Les posicions d'origen es converteixen a píxels Mode 0 halvant X
-(320 px originals a 160 px CPC) i mantenint Y. Cada ascensor espera 40
-fotogrames als extrems, es mou 2 px per fotograma i canvia de direcció quan
-troba el `tile_type == 10` de parada: `ypos16 - 4` en pujar i `ypos16 + 1`
-en baixar. Les dues pàgines desen/restauren el fons independentment.
-El blitter només els dibuixa si intersecten el viewport de 160×160 px i retalla
-les files/bytes que en queden fora; així cap píxel de l'ascensor pot aliasar a
-l'altra banda del ring CRTC. `engine/moving_blit.s` bliteja i restaura cada fila
-amb una rutina Z80, reutilitzant l'adreça inicial de la fila.
+Per evitar que les particularitats de cada nivell creixin dins del motor resident al Bloc 0, les dades i regles del nivell s'empaqueten automàticament amb `tools/pack_level.py` a `src/level_pkg.h` i es compilen dins del mòdul bancat `src/moving_bank.c` (`BANK5.BIN`, carregat a `0x6E00` al Banc 5 `0xC5`). Com que `MAP0.BIN` (`0x4000`) i `TRIG0.BIN` (`0x6400`) viuen al mateix Banc 5, totes les consultes s'executen sense commutació de bancs:
 
-Jake pot aterrar-hi i queda transportat pel delta vertical de la plataforma;
-les cintes es detecten pels `op_func` 27 (dreta) i 28 (esquerra), i hi afegeixen
-2 px/fotograma a la velocitat horitzontal mentre és a terra. Els sprites dels
-ascensors provenen dels frames 0 i 1 de `ENEMI1.SQV`, convertits amb
-`tools/gen_elevator_frames.py` a Mode 0 masked (`src/elevator_frames.h`).
+- **Inicialització (`moving_bank_init`)**: Carrega les coordenades d'inici del jugador (`LEVEL_START_PX`, `LEVEL_START_PY`), la càmera (`LEVEL_CAM0_X4`, `LEVEL_CAM0_ROW`) i els ascensors magnètics (`s_bank_start_x`, `s_bank_start_y`, `s_bank_map_col`).
+- **Actualització d'entitats i efectes de tiles (`moving_bank_update`)**:
+  - Mou els ascensors magnètics (frenant en `tile_type == 10`) i el delta de plataforma.
+  - Avança les 6 fases d'animació de tots els trams animats del nivell (`s_level_anim_spans`) a `MAP_MUT`.
+  - Resol els efectes dels tiles del mapa sobre en Jake: escales (`tile_type == 7`), aigua/peixeres amb natació (`tile_type == 11`), recollida d'objectes (caixes `5`, globus `8`, paraigües `9`) i arrossegament de cintes (`op == 27/28`).
+- **Repintat d'spans, pop del globus i reixes de primer pla (`moving_bank_conveyor`)**:
+  - Repinta al backbuffer només els trams animats visibles a càmera.
+  - Comprova el sostre del globus (`tile_type > 5`) i les reixes de primer pla llegint el byte 9 de `TRIG0.BIN` (`avt_num` entre 12 i 17).
+- **Render d'ascensors (`src/moving.c`)**: Les rutines `moving_restore` i `moving_draw` viuen al Bloc 0 perquè commuten al Banc 7 (`0xC7`) on resideixen `ELEV.BIN` (`0x78E0`) i els buffers de fons (`0x70C0`).
 
 ---
 
-## 5. El Blitter d'Sprites (`engine/sprite.s`)
+## 5. El Blitter d'Sprites (`engine/sprite.s` i `engine/sprite_hflip.s`)
 
-El jugador (Jake) té una mida de **12x30 píxels Mode 0** (en bytes: **6 bytes d'amplada per 30 línies d'alçada** = 1,5 rajoles), amb proporcions visuals 1:1 respecte a les versions C64 i Atari ST.
+El jugador (Jake) té una mida de **16×30 píxels Mode 0** (**8 bytes d'amplada per 30 línies d'alçada** = 240 bytes d'imatge + 240 bytes de màscara = **480 bytes/frame**).
 
-### 5.1 Format de les Dades
-Els frames es generen amb `tools/compose_m0.py` i `tools/gen_player.py` a `assets/bbdata/PFRAMES.BIN` (2.880 bytes per a 4 frames dreta + 4 frames esquerra) i es carreguen al banc 7 a `0x4000`. `src/player_frames.h` conté només els offsets i les dimensions (`PLAYER_FRAME_SIZE = 360`, `wb = 6`, `h = 30`). Cada píxel té la màscara invertida i les dades acolorides combinades:
-- `inv_mask`: bits a 0 on hi ha sprite, bits a 1 on es preserva el fons.
-- `img_masked`: píxels Mode 0 del personatge (Pen 1 carn, Pen 4 blau marí, Pen 15 blanc, Pen 0 negre).
+### 5.1 Format de les Dades (`PFRAMES.BIN` i `EXTRA.BIN`)
+- **`PFRAMES.BIN` (12.480 B a `0x4000` del Banc 7)**: Generat per `tools/generate_cpc_jake_dos.py` a partir de `SPRITE.SQV` (DOS), conté **26 frames** orientats a la dreta:
+  - `0..3`: idle i cicle de caminar.
+  - `4`: salt a l'aire; `5, 9`: escala; `6..8`: ajupit i gateig.
+  - `12..16`: carregar i caminar/saltar amb caixa o paraigües (`g_crate_walk`).
+  - `20`: `carry_float` (DOS frame 39, braços alçats subjectant globus o paraigües).
+  - `21..25`: els **5 frames autèntics de natació de DOS** (`swim_idle` 48, `swim_stroke1/2` 46–47, `swim_vert` 49, `swim_floor` 45).
+- **Gir horitzontal en temps real (`engine/sprite_hflip.s`)**: En mirar a l'esquerra (`g_face == 1`), el frame es reflecteix horitzontalment cap a `0x7700` usant la taula LUT de 256 B a `0x7F00`.
+- **`EXTRA.BIN` (992 B a `0x7AA0` del Banc 7)**: Conté els sprites en Mode 0 masked de la caixa (`128 B`), el globus vermell (`224 B`, 8×14) i el paraigües obert (`640 B`, 12×16).
 
 ### 5.2 Estructura Dual del Buffer de Fons
-Com que tenim dues pàgines de VRAM físiques independents (`0xC000` i `0x8000`), el fons que tapa el personatge a la pàgina A no és el mateix que a la pàgina B (degut a l'scroll i al moviment entre fotogrames). Per tant, el mòdul ASM manté **dos buffers de restauració de fons independents**:
-- `_s_player_bg_c0`: 180 bytes (6x30) per a la pàgina `0xC000`.
-- `_s_player_bg_80`: 180 bytes (6x30) per a la pàgina `0x8000`.
-- Coordenades anteriors separades (`_s_old_x_c0`/`_s_old_y_c0` i `_s_old_x_80`/`_s_old_y_80`).
+Com que tenim dues pàgines de VRAM físiques independents (`0xC000` i `0x8000`), el mòdul ASM manté buffers independents per pàgina al Banc 7 (`_s_player_bg_c0` i `_s_player_bg_80`, de 240 bytes cadascun) i a `_DATA` per a l'objecte portat (`_s_carry_bg_c0` i `_s_carry_bg_80`, de 192 bytes cadascun, capaços d'allotjar tant el globus de 8×14 com el paraigües de 12×16).
 
-### 5.3 Adreçament sobre el ring CRTC
-
-La taula `_scr_addr_table` conté les adreces de línia de base CPC. `sprite_map_line`
-hi suma `_g_vram_start` i conserva els bits de pàgina/trama. El blitter resol el
-wrap de 2 KB quan la línia de Jake creua el límit físic del ring; el camí comú
-no-wrap es manté desenrotllat per reduir el cost per fotograma.
-
-### 5.4 Algorisme del Blitter
-El camí habitual bliteja 6 bytes per línia desenrotllats amb `.rept 6`, combinant
-la màscara i desant el fons alhora en només **~10.500 T-states (~2,6 ms)**:
+### 5.3 Adreçament sobre el ring CRTC i Algorisme del Blitter
+La taula `_scr_addr_table` conté les adreces de línia base CPC; `sprite_map_line` hi suma `_g_vram_start` i conserva els bits de pàgina/trama. El camí comú no-wrap bliteja 8 bytes per línia desenrotllats amb `.rept 8` (o `.rept 12` per al paraigües), combinant màscara i desat de fons simultàniament:
 ```z80
     ld   a, (de)             ; Llegeix el fons existent a VRAM
     ld   (bc), a             ; Desa el fons original al buffer de restauració
     inc  bc
-    and  (hl)                ; Aplica la màscara (forat negre per al personatge)
+    and  (hl)                ; Aplica la màscara invertida
     inc  hl
-    or   (hl)                ; Afegeix els colors del sprite
+    or   (hl)                ; Afegeix els píxels del sprite
     inc  hl
-    ld   (de), a             ; Escriu el resultat final a la pantalla oculta!
-    inc  de                  ; el camí de wrap es tracta separadament
+    ld   (de), a             ; Escriu el resultat final al backbuffer
+    inc  de
 ```
-El camí ràpid evita comprovacions de wrap per byte; només les línies que
-travessen el límit de 2 KB fan servir el camí de còpia byte a byte.
 
 ---
 
@@ -243,34 +239,24 @@ el display actiu a les 160 línies del viewport.
 - La pàgina que s'acaba de mostrar queda al dia; la que passa a oculta renderitza
   les tires pendents abans del següent flip.
 
-El CRTC mou la finestra actualitzant R12/R13 al VSYNC. No es copia la finestra
-de 12 KB per pàgina: el cost de cada pas de càmera queda reduït a renderitzar la
-tira entrant.
+### 6.3 Spans de Tiles Animats (Cintes + Peixeres) i Reixes Data-Driven
 
-### 6.3 Cintes Transportadores i Reixa Transparent (Magasin)
-
-- **Cintes transportadores animades (`src/moving.c`, `src/render.c`)**:
-  - Les 4 cintes del magatzem estan definides en la taula estàtica `s_belts[4]` a ROM (`_CODE`).
-  - Animació cíclica de 3 fases cada 4 fotogrames (160 ms a 25 Hz).
-  - La funció `moving_draw_conveyor_tiles` només actualitza la pàgina de VRAM si `s_page_conveyor_phase[page] != s_conveyor_phase`.
-  - A més, s'actualitza `MAP_MUT` al Banc 5 (`0xC5`) perquè qualsevol tira entrant revelada per l'scroll circular (`sync_backbuffer`) es dibuixi directament en la fase d'animació activa sense desincronització.
-  - Els sentits visuals coincideixen amb la física:
-    - Arrossegament dreta (op 27): superfície `248 -> 249 -> 250`, corrons `253 -> 252 -> 251` (gir horari).
-    - Arrossegament esquerra (op 28): superfície `239 -> 238 -> 237`, corrons `240 -> 241 -> 242` (gir antihorari).
-- **Efecte de reixa transparent per sobre d'en Jake (`engine/sprite.s`)**:
-  - Quan en Jake es troba a les zones de reixa del magatzem, el blitter d'sprites aplica la taula de màscares i trames periòdiques `_grate_lut` directament a sobre dels píxels de l'sprite dins del mateix cicle de blit, preservant el fons original sense corrompre la VRAM ni requerir passades addicionals.
+- **Sistema unificat d'animació de tiles (`src/level_pkg.h`, `src/moving_bank.c`)**:
+  - `tools/pack_level.py` escaneja el byte 4 (`anim_idx`) de `TRIG0.BIN` sobre `MAP0.BIN` i genera `s_level_anim_seqs[7][6]` (6 fases, MCM de les seqüències de 3 fases de les cintes i de 2 fases de l'aigua) i `s_level_anim_spans[18]`.
+  - Cada 4 fotogrames (160 ms a 25 Hz), `moving_bank_update` actualitza els 18 spans a `MAP_MUT` i `moving_bank_conveyor` repinta només els que intersecten el viewport:
+    - **Peixeres (aigua i vores, fila 30)**: superfície d'aigua (`131 <-> 199`), vora dreta (`149 <-> 217`) i vora esquerra (`170 <-> 247`).
+    - **Cintes transportadores (files 36, 39, 42, 45)**: dreta (`248->249->250`, corrons `253->252->251`) i esquerra (`239->238->237`, corrons `240->241->242`).
+- **Efecte de reixa transparent per sobre d'en Jake (`engine/sprite.s`, `src/moving_bank.c`)**:
+  - Es determina dinàmicament llegint el byte 9 (`avt_num`) de `TRIG0.BIN` a la posició d'en Jake (`avt >= 12 && avt <= 17`), activant `_grate_lut` durant el blit.
 
 ---
 
 ## 7. Pipeline de Construcció (`tools/build.py`)
 
-El sistema de compilació automàtic s'encarrega de tot el cicle d'integració:
-1. **Dades primer**: Munta `TITLE.BIN`, `TILESET0.BIN`, `MAP0.BIN` i `TRIG0.BIN` als primers sectors del disc `.dsk`.
-2. **Generació automàtica de taules CHS**: Genera `src/disk_tables.h` amb les coordenades físiques exactes (pista, cap, sector) de cada fitxer al disquet.
-3. **Compilació SDCC 4.5+**: Compila els mòduls C i ASM amb `--opt-code-size` i format `__sdcccall(1)`.
-4. **Enllaçat**: Genera el binari `BLUESB.BIN` i n'obté automàticament el punt
-   d'entrada `_start` del map file de l'enllaçador.
-5. **Generació del fitxer DSK**: Insereix el binari i actualitza la capçalera AMSDOS per permetre l'arrencada amb `RUN"BLUESB"`.
+El sistema de compilació automàtic s'encarrega de tot el cicle d'integració en ~30 segons:
+1. **Compilació Resident i Banc 5**: Compila el motor resident (`obj/GAME.BIN`), extreu els símbols globals a `obj/bank_equ.s` i compila+enllaça el paquet de nivell del Banc 5 (`obj/BANK5.BIN` a `0x6E00`).
+2. **Starter reubicable (`obj/STARTER.BIN`)**: Compila el carregador inicial que s'executa a `0xC000` per carregar `GAME.BIN` via FDC raw sense trepitjar-se a si mateix.
+3. **Empaquetat DSK i Taules CHS + CRC16**: Munta `BLUESB.BIN`, `GAME.BIN`, `BANK5.BIN`, `TITLE.BIN`, `TILESET0.BIN`, `MAP0.BIN`, `TRIG0.BIN`, `PFRAMES.BIN`, `EXTRA.BIN` i `ELEV.BIN` dins `bluesb.dsk`, generant automàticament `src/disk_tables.h`, `src/starter_tables.h` i `src/crt_addrs.h` amb verificació CRC16-CCITT.
 
 ---
 

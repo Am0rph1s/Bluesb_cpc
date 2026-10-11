@@ -8,6 +8,12 @@
 
 #include "cpctelera.h"
 #include "bank.h"
+#include "moving.h"
+#include "sprite.h"
+#include "hud_pkg.h"
+
+#define LEVEL_PKG_DEFS_ONLY
+#include "level_pkg.h"
 
 #define TILESET    ((const u8*)0x4000)
 #define GMAP       ((const u8*)0x4000)
@@ -16,8 +22,77 @@
 #define PLAY_ROWS  20
 
 extern void render_tile_fast(const u8* tile);
+extern void hud_blit_col(const u8* strip24, u16 ma20);
 
 u16 g_render_tile_offset;
+
+static u8 s_hud_layout[PLAY_CHARS];
+static u8 s_hud_lives[2];
+static u8 s_hud_vinyls[2];
+static u8 s_hud_hearts[2];
+static u8 s_hud_inst[2];
+
+static void hud_set_digits(u8 col, u8 val) {
+    u8 tens = 9;
+    while (val >= 10) {
+        val = (u8)(val - 10);
+        tens++;
+    }
+    s_hud_layout[col] = tens;
+    s_hud_layout[(u8)(col + 1)] = (u8)(9 + val);
+}
+
+void hud_init(void) {
+    u8 i;
+    for (i = 0; i < PLAY_CHARS; i++) s_hud_layout[i] = 0;
+    s_hud_layout[0]  = 1;
+    s_hud_layout[1]  = 3;
+    s_hud_layout[2]  = 4;
+    s_hud_layout[18] = 5;
+    s_hud_layout[19] = 6;
+    s_hud_layout[39] = 2;
+    s_hud_lives[0] = s_hud_lives[1] = 0xFF;
+}
+
+void hud_render(u8 page, u8 force) {
+    u8 cx, i;
+    u16 ma;
+    if (!force &&
+        s_hud_lives[page] == g_lives_count &&
+        s_hud_vinyls[page] == g_vinyls_count &&
+        s_hud_hearts[page] == g_hearts_count &&
+        s_hud_inst[page] == g_has_instrument) {
+        return;
+    }
+    s_hud_lives[page]  = g_lives_count;
+    s_hud_vinyls[page] = g_vinyls_count;
+    s_hud_hearts[page] = g_hearts_count;
+    s_hud_inst[page]   = g_has_instrument;
+
+    // Vides 1 digit (maxim real 8; clamp defensiu a 9).
+    { u8 lv = (g_lives_count > 9) ? 9 : g_lives_count;
+      s_hud_layout[4] = (u8)(9 + lv); }
+    hud_set_digits(21, g_vinyls_count);
+    for (i = 0; i < 5; i++) {
+        u8 c = (u8)(7 + (i << 1));
+        u8 h0 = (i < g_hearts_count) ? 7 : 0;
+        s_hud_layout[c] = h0;
+        s_hud_layout[(u8)(c + 1)] = h0 ? 8 : 0;
+    }
+    // Slots col.leccionables: slot i gris (19+4i,20+4i), color si es el del
+    // nivell i ja s'ha recollit (21+4i,22+4i).
+    for (i = 0; i < 5; i++) {
+        u8 sb = (u8)(19 + (i << 2) + ((i == LEVEL_ID && g_has_instrument) ? 2 : 0));
+        s_hud_layout[(u8)(24 + (i << 1))] = sb;
+        s_hud_layout[(u8)(25 + (i << 1))] = (u8)(sb + 1);
+    }
+
+    ma = (u16)((g_vram_start + 800) & 0x03FF);
+    for (cx = 0; cx < PLAY_CHARS; cx++) {
+        hud_blit_col(s_hud_strips[s_hud_layout[cx]], ma);
+        ma = (u16)((ma + 1) & 0x03FF);
+    }
+}
 
 static void draw_char(u8 tile_index, u16 ma, u8 tile_half_y, u8 tile_half_x) {
     u16 tile_subrow;

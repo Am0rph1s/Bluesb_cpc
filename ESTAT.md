@@ -678,6 +678,15 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - Estat final: bloon_draw original + auto-grab + pop + spawn 184/860; cap resta DIAGNOSTIC/DEBUG/TRAIL (grep net); build GAME.BIN 14341 B, marge 219 B, pila 1845 B, DSK regenerat. Sense commit, sense test (aturat per parlar).
 - PENDENT: (1) un sol experiment net: pintar `s_bloon_frame` aillat amb pipeline de tiles (que funciona) -> vermell = frame bo (bug al blit/restore) vs brossa = bug lectura banc; (2) tema separat aparcat: des de l'spawn quiet UP no salta fins que camines (s_on_ground/climbing?); (3) verificar type 132 en DOS per decidir si el pop al cel es fidel.
 
+## Sessio 2026-10-11: HUD C64 (1 banda, 5 slots) + dieta Bloc 0
+- HUD estil C64 en UNA banda (files 20-21, R6=22 intacte): cara, vides 1 digit, 5 cors, icona+digits vinils, 5 slots col.leccionables gris->color (cols 24-33). 39 tires (936 B). Verificat en pixels (3/3 cors/00/slots grisos).
+- Vides inicials = 3 intents (2,1,0), confirmat per usuari; el codi ja posava 3. Maxim real 8 -> 1 digit suficient.
+- pack_level.py: extreu els 5 parells 135-139/140-144 (abans nomes el del nivell); indices nous 19..38, 0..18 intactes en esperit (vinil/cor/digits renumerats: digits base 13->9).
+- DIETA (~-320 B nets): `_scr_addr_table` 400 B -> `scr_raw_first` (calcul exacte) + `scr_raw_next` (bump +0x800 / +0x50 al wrap, verificat inclos wrap 2KB) en 6 loops (restore/blit + 4 carry via first/next). Sprites identics + pila sana en viu.
+- Neteja: `engine/render.s` (_render_hud Mode 1 mort) i `engine/level.s` (Mode 1 mort) esborrats; `verify_bonus_live.py` versionat (mai executat: scratch/ no existeix).
+- BUG canari (preexistent): _DATA havia crescut per sobre de CANARY_ADDR 0x3B40 (trepitjava `_s_carry_drawn`: falsa alarma permanent + corrupcio al boot). Mogut a 0x3C00; build.py avorta (FATAL) si _DATA hi arriba. Vora negra confirmada en captures.
+- Marge Bloc 0: +114 B (amb HUD 5 slots). PENDENT DECISIO per 500+: FDC fora del GAME (~2000 B, nomes boot) o banquejar fisica (~2000 B) o 1 slot (+384 B).
+
 ## Sessió 2026-10-10 (4): RESOLT BUG DEL GLOBUS (SPRITE AUTÈNTIC DOS 103 + JAKE 39 + COL·LISIÓ MEMÒRIA BANC 7 RESOLTA)
 - **Diagnosi del bug de l'ascensor i mida gegant**:
   1. *Col·lisió de memòria al Banc 7*: `ELEV.BIN` (448 B) es carregava a `0x78E0`, acabant a `0x7AA0`. Però `EXTRA.BIN` (Jake braç amunt) es carregava a `0x79A0`. Per tant, `ELEV.BIN` sobreescrivia els primers 256 bytes d'`EXTRA.BIN`! Quan en Jake agafava el globus i demanava `EXTRA_BASE`, el personatge es convertia en l'ascensor!

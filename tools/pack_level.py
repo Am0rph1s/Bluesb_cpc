@@ -106,6 +106,36 @@ def build_level_pkg(level_idx=0):
             else:
                 c += 1
 
+    # Extreure les taules de triggers d'ítems/bonus/malus (byte 6 de TRIG.BIN -> level_triggersdata_2030)
+    txt = open(staticres_path, "r", encoding="utf-8", errors="replace").read()
+    m6 = re.search(r"level_triggersdata_2030\[\]\s*=\s*\{([^}]*)\}", txt, re.S)
+    names6 = [x.strip() for x in m6.group(1).split(",") if x.strip()]
+    m4b = re.search(r"level_tilesdata_1fe8\[\]\s*=\s*\{([^}]*)\}", txt, re.S)
+    names4b = [x.strip() for x in m4b.group(1).split(",") if x.strip() and x.strip() != "0"]
+
+    used_b6 = sorted(set(trig_bin[t * 10 + 6] for t in range(256) if trig_bin[t * 10 + 6] != 255))
+    b6_to_idx = {b6: i for i, b6 in enumerate(used_b6)}
+    b6_lut = [b6_to_idx.get(b6, 0xFF) for b6 in range(64)]
+
+    trig_entries = []
+    for b6 in used_b6:
+        p = list(arrays[names6[b6]])
+        if p[1] in (11, 12):
+            p2 = p[2]
+            b4 = trig_bin[p2 * 10 + 4]
+            final_bg = p2
+            if 128 <= b4 < 255:
+                final_bg = arrays[names4b[b4 - 128]][-1]
+            # (kind=p[1], bg_tile, add_vinyls=p[3], sub_vinyls=p[4], add_heart=p[5],
+            #  special_anim=p[6], instrument=p[7], exit_flag=p[8], popup_or_chk=p[9], add_life=p[10], b6)
+            trig_entries.append((p[1], final_bg, p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], b6))
+        else:
+            trig_entries.append((p[1], p[2], p[3], p[4], p[5], 0, 0, 0, 0, 0, b6))
+
+    # Posició de la guitarra/instrument col·leccionable al mapa (si es troba en una sala secreta >fila 71,
+    # es col·loca automàticament a la sala del nivell corresponent, col=42, row=61 a Magasin)
+    inst_col, inst_row, inst_tile = (42, 61, 159) if level_idx == 0 else (0, 0, 0)
+
     lines = [
         "#ifndef LEVEL_PKG_H",
         "#define LEVEL_PKG_H",
@@ -127,6 +157,9 @@ def build_level_pkg(level_idx=0):
         f"#define LEVEL_CAM0_ROW      {cam0_row}",
         "",
         f"#define LEVEL_ELEVATOR_COUNT {len(elev_x)}",
+        f"#define LEVEL_INST_COL      {inst_col}",
+        f"#define LEVEL_INST_ROW      {inst_row}",
+        f"#define LEVEL_INST_TILE     {inst_tile}",
         "",
         "#ifndef LEVEL_PKG_DEFS_ONLY",
         "static const i16 s_bank_start_x[LEVEL_ELEVATOR_COUNT] = { "
@@ -167,6 +200,73 @@ def build_level_pkg(level_idx=0):
             f"    {{ {r:2d}, {c0:3d}, {c1:3d}, {seq_idx} }}, // row {r}, cols {c0}..{c1} (DOS b4={b4})"
         )
     lines.append("};")
+    lines.append("")
+    lines.append("// Taula de triggers d'ítems / bonus / malus (DOS level_triggersdata_2030)")
+    lines.append("typedef struct {")
+    lines.append("    u8 kind;         // 11 = directe, 12 = amb popup emergent")
+    lines.append("    u8 bg_tile;      // tile de fons net que substitueix l'ítem al mapa")
+    lines.append("    u8 add_vinyls;   // vinils a sumar (+1, +50)")
+    lines.append("    u8 sub_vinyls;   // vinils a restar (-10, -20, -30, -40, -50)")
+    lines.append("    u8 add_heart;    // +1 cor d'energia (màx 5)")
+    lines.append("    u8 special_anim; // 21 = ballar")
+    lines.append("    u8 instrument;   // >0 = objecte col·leccionable obligatori del nivell")
+    lines.append("    u8 exit_flag;    // 1 = meta final de nivell (requereix instrument)")
+    lines.append("    u8 popup_or_chk; // kind==12: grab_type (16..22); kind==11: checkpoint")
+    lines.append("    u8 add_life;     // +1 vida (ulleres i barret)")
+    lines.append("} LevelTriggerEntry;")
+    lines.append("")
+    # Identificar quins sprites emergents (grab_type 16..22) s'utilitzen realment en aquest nivell
+    used_popups = sorted(set(
+        pop for (kind, _, _, _, _, _, _, _, pop, _, _) in trig_entries
+        if kind == 12 and 16 <= pop <= 22
+    ))
+    popup_to_idx = {pop: i for i, pop in enumerate(used_popups)}
+
+    lines.append(f"#define LEVEL_TRIG3_COUNT {len(trig_entries)}")
+    lines.append("static const LevelTriggerEntry s_level_trig3[LEVEL_TRIG3_COUNT] = {")
+    for kind, bg, av, sv, ah, sa, inst, ex, pop, al, b6 in trig_entries:
+        pop_val = popup_to_idx.get(pop, 0xFF) if kind == 12 else pop
+        lines.append(
+            f"    {{ {kind:2d}, {bg:3d}, {av:2d}, {sv:2d}, {ah}, {sa:2d}, {inst}, {ex}, {pop_val:3d}, {al} }}, // DOS b6={b6}"
+        )
+    lines.append("};")
+    lines.append("")
+    lines.append("// LUT ràpida: byte 6 de TRIG.BIN (0..63) -> índex a s_level_trig3 (0xFF = cap)")
+    lines.append("static const u8 s_b6_to_trig3[64] = {")
+    for i in range(0, 64, 16):
+        chunk = ", ".join(f"0x{v:02X}" if v == 0xFF else f"{v:4d}" for v in b6_lut[i : i + 16])
+        lines.append(f"    {chunk},")
+    lines.append("};")
+    lines.append("")
+
+    # Extreure només els sprites emergents de DOS usats pel nivell (SPRITE.SQV frames 128..134 -> grab_type 16..22)
+    # 16x7 px DOS -> 8x7 px Mode 0 = 4 bytes/fila * 2 [inv_mask, img] * 7 files = 56 bytes/popup
+    sys.path.insert(0, os.path.join(HERE, "bbdata"))
+    from sprites import load_sqv_frames  # noqa: E402
+    from gen_extra_frames import encode_pair, dos_to_cpc_pen  # noqa: E402
+
+    sqv_frames = load_sqv_frames(os.path.join(PROJ, "assets", "bbdata", "SPRITE.SQV"))
+    popup_labels = {16: "-10", 17: "-20", 18: "-30", 19: "-40", 20: "-50", 21: "+50", 22: "1UP"}
+    lines.append(f"#define LEVEL_POPUP_COUNT {len(used_popups)}")
+    lines.append("static const u8 s_popup_sprites[LEVEL_POPUP_COUNT][56] = {")
+    for idx_p, pop_gt in enumerate(used_popups):
+        dos_f = 128 + (pop_gt - 16)
+        w, h, px = sqv_frames[dos_f]
+        raw = []
+        for y in range(7):
+            m0_pens = []
+            for xm in range(8):
+                p0 = px[y][xm * 2]
+                p1 = px[y][xm * 2 + 1]
+                val = p0 if p0 != 0 else p1
+                m0_pens.append(dos_to_cpc_pen.get(val))
+            for xb in range(4):
+                inv_mask, img = encode_pair(m0_pens[xb * 2], m0_pens[xb * 2 + 1])
+                raw.append(inv_mask)
+                raw.append(img)
+        hex_str = ", ".join(f"0x{b:02X}" for b in raw)
+        lines.append(f"    {{ {hex_str} }}, // {idx_p}: grab_type {pop_gt} ({popup_labels[pop_gt]})")
+    lines.append("};")
     lines.append("#endif // LEVEL_PKG_DEFS_ONLY")
     lines.append("")
     lines.append("#endif")
@@ -176,10 +276,199 @@ def build_level_pkg(level_idx=0):
         f.write("\n".join(lines) + "\n")
     print(
         f"Generat {out_path}: nivell {level_idx + 1} ({lname}), "
-        f"{len(elev_x)} ascensors, {len(spans)} spans animats ({len(used_b4)} seqüències)."
+        f"{len(elev_x)} ascensors, {len(spans)} spans animats, {len(trig_entries)} triggers bonus/malus."
     )
+    build_hud_pkg(level_idx, sqv_frames)
+
+
+def encode_m0_byte(p0, p1):
+    b0 = ((p0 & 1) << 7) | (((p0 >> 1) & 1) << 3) | (((p0 >> 2) & 1) << 5) | (((p0 >> 3) & 1) << 1)
+    b1 = ((p1 & 1) << 6) | (((p1 >> 1) & 1) << 2) | (((p1 >> 2) & 1) << 4) | (((p1 >> 3) & 1) << 0)
+    return b0 | b1
+
+
+def grid_to_strip24(grid12x4):
+    """Converteix una columna de 12 files x 4 píxels Mode 0 en 24 bytes:
+    bytes 0..11 = sy=20 (ra=2..7), bytes 12..23 = sy=21 (ra=0..5)."""
+    out = []
+    for y in range(12):
+        r = grid12x4[y]
+        out.append(encode_m0_byte(r[0], r[1]))
+        out.append(encode_m0_byte(r[2], r[3]))
+    return out
+
+
+def build_hud_pkg(level_idx, sqv_frames):
+    bar_pen = {11: 11, 4: 4, 3: 2, 8: 12, 15: 0, 5: 1}
+    inst_uncol_pen = {11: 11, 4: 4, 3: 2, 8: 12, 15: 0}
+    inst_col_pen = {11: 11, 4: 4, 3: 2, 8: 12, 7: 7, 5: 1, 15: 0}
+
+    _, _, px124 = sqv_frames[124]
+    bar_rows = [bar_pen.get(px124[y][10], 11) for y in range(12)]
+
+    # 0: bar, 1: cap_l, 2: cap_r
+    strip_bar = [[bar_rows[y]] * 4 for y in range(12)]
+    strip_cap_l = [[bar_pen.get(px124[y][xm * 2], 11) for xm in range(4)] for y in range(12)]
+    strip_cap_r = [[bar_pen.get(px124[y][312 + xm * 2], 11) for xm in range(4)] for y in range(12)]
+
+    # 3, 4: Jake icon (#115, 8x12 -> 2 strips of 4x12)
+    _, _, px115 = sqv_frames[115]
+    jake_grid = []
+    for y in range(12):
+        row = []
+        for xm in range(8):
+            p0, p1 = px115[y][xm * 2], px115[y][xm * 2 + 1]
+            if xm == 0 or xm == 7:
+                pen = bar_rows[y] if (p0 in (3, 4, 11) and p1 in (3, 4, 11)) else 11
+            elif 5 in (p0, p1) or 7 in (p0, p1):
+                pen = 1
+            elif 4 in (p0, p1):
+                pen = 4
+            else:
+                pen = 11
+            row.append(pen)
+        jake_grid.append(row)
+
+    # 5 slots col.leccionables (un per nivell): gris DOS #135+i, color DOS #140+i.
+    # Cada icona 8x12 -> 2 tires de 4x12. Indices: slot i -> gris 23+4i,24+4i;
+    # color 25+4i,26+4i (total tires 23..42). Es mantenen 0..22 intactes.
+    inst_grids = []
+    for slot in range(5):
+        _, _, px_ioff = sqv_frames[135 + slot]
+        _, _, px_ion = sqv_frames[140 + slot]
+        ioff_grid, ion_grid = [], []
+        for y in range(12):
+            r_off, r_on = [], []
+            for xm in range(8):
+                p0, p1 = px_ioff[y][xm * 2], px_ioff[y][xm * 2 + 1]
+                val = p0 if p0 != 11 else p1
+                r_off.append(inst_uncol_pen.get(val, 11))
+
+                p0, p1 = px_ion[y][xm * 2], px_ion[y][xm * 2 + 1]
+                val = p0 if p0 != 11 else p1
+                r_on.append(inst_col_pen.get(val, 11))
+            ioff_grid.append(r_off)
+            ion_grid.append(r_on)
+        inst_grids.append((ioff_grid, ion_grid))
+
+    # 9, 10: Vinyl icon (8x12 -> 2 strips)
+    vinyl_ascii = [
+        "........",
+        "..BBBB..",
+        ".B4BBBB.",
+        "B4BB77BB",
+        "BBB7007B",
+        "BB70BB07",
+        "BB70BB07",
+        "BBB7007B",
+        "BBBB77B4",
+        ".BBBB4B.",
+        "..BBBB..",
+        "........",
+    ]
+    vinyl_grid = [
+        [bar_rows[y] if ch == "." else int(ch, 16) for ch in vinyl_ascii[y]]
+        for y in range(12)
+    ]
+
+    # 11, 12: Heart icon (#120, 8x12 -> 2 strips)
+    _, _, px120 = sqv_frames[120]
+    heart_grid = []
+    for y in range(12):
+        row = []
+        for xm in range(8):
+            p0, p1 = px120[y][xm * 2], px120[y][xm * 2 + 1]
+            if y in (3, 4) and xm == 2:
+                pen = 0
+            elif 15 in (p0, p1) and 1 < y < 9 and 0 < xm < 6:
+                pen = 7
+            elif 5 in (p0, p1):
+                pen = 1
+            elif 7 in (p0, p1):
+                pen = 13
+            elif 11 in (p0, p1):
+                pen = 11
+            else:
+                pen = bar_rows[y]
+            row.append(pen)
+        heart_grid.append(row)
+
+    # 13..22: Digits 0..9 (4x12 each)
+    digits_ascii = [
+        ["111", "101", "101", "101", "101", "101", "111"],
+        ["010", "110", "010", "010", "010", "010", "111"],
+        ["111", "001", "001", "111", "100", "100", "111"],
+        ["111", "001", "001", "111", "001", "001", "111"],
+        ["101", "101", "101", "111", "001", "001", "001"],
+        ["111", "100", "100", "111", "001", "001", "111"],
+        ["111", "100", "100", "111", "101", "101", "111"],
+        ["111", "001", "001", "001", "001", "001", "001"],
+        ["111", "101", "101", "111", "101", "101", "111"],
+        ["111", "101", "101", "111", "001", "001", "111"],
+    ]
+    digit_strips = []
+    for d in range(10):
+        g = digits_ascii[d]
+        d_grid = []
+        for y in range(12):
+            row = []
+            gy = y - 2
+            for xm in range(4):
+                pen = bar_rows[y]
+                if 0 <= gy < 7 and xm < 3 and g[gy][xm] == "1":
+                    pen = 11
+                elif 0 <= gy - 1 < 7 and 0 <= xm - 1 < 3 and g[gy - 1][xm - 1] == "1":
+                    pen = 4
+                row.append(pen)
+            d_grid.append(row)
+        digit_strips.append(grid_to_strip24(d_grid))
+
+    strips = [
+        ("bar", grid_to_strip24(strip_bar)),
+        ("cap_l", grid_to_strip24(strip_cap_l)),
+        ("cap_r", grid_to_strip24(strip_cap_r)),
+        ("jake_0", grid_to_strip24([r[:4] for r in jake_grid])),
+        ("jake_1", grid_to_strip24([r[4:] for r in jake_grid])),
+        ("vinyl_0", grid_to_strip24([r[:4] for r in vinyl_grid])),
+        ("vinyl_1", grid_to_strip24([r[4:] for r in vinyl_grid])),
+        ("heart_0", grid_to_strip24([r[:4] for r in heart_grid])),
+        ("heart_1", grid_to_strip24([r[4:] for r in heart_grid])),
+    ]
+    for d in range(10):
+        strips.append((f"digit_{d}", digit_strips[d]))
+    # 23..42: slots col.leccionables (gris parell, color imparell per slot).
+    for slot in range(5):
+        ioff_grid, ion_grid = inst_grids[slot]
+        strips.append((f"inst{slot}_off_0", grid_to_strip24([r[:4] for r in ioff_grid])))
+        strips.append((f"inst{slot}_off_1", grid_to_strip24([r[4:] for r in ioff_grid])))
+        strips.append((f"inst{slot}_on_0", grid_to_strip24([r[:4] for r in ion_grid])))
+        strips.append((f"inst{slot}_on_1", grid_to_strip24([r[4:] for r in ion_grid])))
+
+    h_lines = [
+        "#ifndef HUD_PKG_H",
+        "#define HUD_PKG_H",
+        "",
+        "// Generat automàticament per tools/pack_level.py. NO EDITAR MANUALMENT.",
+        "// 39 tires de columna CRTC (4x12 px Mode 0 = 24 bytes cadascuna):",
+        "//   0: barra, 1..2: extrems, 3..4: Jake, 5..6: vinil, 7..8: cor,",
+        "//   9..18: dígits 0..9, 19..38: slots col.leccionables (slot i:",
+        "//   gris 19+4i,20+4i; color 21+4i,22+4i).",
+        "static const u8 s_hud_strips[39][24] = {",
+    ]
+    for idx, (label, data) in enumerate(strips):
+        hex_s = ", ".join(f"0x{b:02X}" for b in data)
+        h_lines.append(f"    {{ {hex_s} }}, // {idx:2d}: {label}")
+    h_lines.append("};")
+    h_lines.append("")
+    h_lines.append("#endif")
+
+    hud_path = os.path.join(PROJ, "src", "hud_pkg.h")
+    with open(hud_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(h_lines) + "\n")
+    print(f"Generat {hud_path}: 23 tires Mode 0 (552 B) per al HUD del nivell {level_idx + 1}.")
 
 
 if __name__ == "__main__":
     lvl = int(sys.argv[1]) if len(sys.argv) > 1 else 0
     build_level_pkg(lvl)
+

@@ -25,7 +25,7 @@ SDASZ80 = r"C:\Program Files\SDCC\bin\sdasz80.exe"
 CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "15000",
              "--disable-warning", "110"]
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0x36A0", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0x3780", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 
@@ -51,7 +51,7 @@ C_SOURCES = [
 ]
 C_HEADERS = {
     "engine/fdc.c": ["engine/fdc.h", "engine/cpctelera.h"],
-    "src/render.c": ["engine/cpctelera.h"],
+    "src/render.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h", "src/hud_pkg.h"],
     "src/moving.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h"],
     "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "src/disk_tables.h",
                    "src/sprite.h", "src/moving.h", "src/player_frames.h",
@@ -326,6 +326,10 @@ def report_and_assert_memory_budget(map_path):
         print("\n[FATAL] _CODE ha envait _DATA per %d bytes! (code_end=0x%04X > data_start=0x%04X)" %
               (-code_margin, code_end, s_data))
         sys.exit(1)
+    if data_end > 0x3C00:
+        print("\n[FATAL] _DATA ha trepitjat el canari de pila (data_end=0x%04X > 0x3C00)! Mou CANARY_ADDR." %
+              data_end)
+        sys.exit(1)
     if stack_margin < 256:
         print("\n[FATAL] Marge de pila insuficient (%d B < 256 B)! Risc immediat de crash." %
               stack_margin)
@@ -399,10 +403,16 @@ def build_bank(force):
         run([SDASZ80, "-plosgff", equ_rel, equ_s])
         mark_fresh(equ_rel, [equ_s])
     bank_rels.append(equ_rel)
-    ihx = os.path.join(obj, "bank5.ihx")
+    ihx = os.path.join(PROJ, "bank5.ihx") if False else os.path.join(obj, "bank5.ihx")
     run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % BANK5_BASE,
-         "--data-loc", "0x7E00"] + bank_rels + ["-o", ihx])
+         "--data-loc", "0x7F80"] + bank_rels + ["-o", ihx])
     map_path = os.path.join(obj, "bank5.map")
+    b5_code_s, b5_code_l = map_area(map_path, "CODE")
+    b5_data_s, b5_data_l = map_area(map_path, "DATA")
+    if b5_code_s is not None and b5_data_s is not None and (b5_code_s + b5_code_l) > b5_data_s:
+        print("\n[FATAL] Banc 5 _CODE (0x%04X..0x%04X) envaeix _DATA (0x%04X)!" %
+              (b5_code_s, b5_code_s + b5_code_l, b5_data_s))
+        sys.exit(1)
     # Asserts d'integritat del banc (FATAL si fallen: adreces o mides malament
     # penjarien el Z80 en el primer call_banked).
     syms = map_symbols(map_path)
@@ -423,7 +433,8 @@ def build_bank(force):
         print("\n[FATAL] Banc 5: %d bytes > límit 0x%04X! Cal aprimar moving_bank.c." %
               (size, BANK5_MAXLEN))
         sys.exit(1)
-    print("BANC5: 0x%04X (%d bytes, marge %d)" % (BANK5_BASE, size, BANK5_MAXLEN - size))
+    print("BANC5: 0x%04X (%d bytes, code=%d B, marge_code=%d B)" %
+          (BANK5_BASE, size, b5_code_l, (b5_data_s or 0x7F80) - (BANK5_BASE + b5_code_l)))
     return bin_path
 
 

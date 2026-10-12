@@ -658,6 +658,10 @@ void main(void) {
             u16 spr_addr = (u16)(PLAYER_FRAMES_BASE + ((u16)cur << 9) - ((u16)cur << 5));
             const u8* fr_addr = (const u8*)spr_addr;
             u8 prev_b = bank_set(PLAYER_FRAMES_BANK);
+            // Contracte hflip (verificat en viu): C7 paginat als dos costats.
+            // flip escriu i blit llegeix C7:0x7700 (gap lliure 0x7120-0x78E0,
+            // 480 B justos fins ELEV); la LUT es llegeix de C7:0x7F00 (B=0x7F).
+            // NO cridar amb un altre banc paginat (llegiria LUT/dest brossa).
             if (g_face == 0) {
                 sprite_blit_player(fr_addr);
             } else {

@@ -101,7 +101,7 @@ static u8 s_load_one(const DiskFileDesc* f, u8 bank, void* addr, u16 len, u16 cr
     return 0;
 }
 
-u8 s_main(void) {
+void s_main(void) {
     s_border_blue(); // s_main ha arrencat
     // 1. GAME resident (mateixos colors d'abans).
     if (!s_load_one(&g_file_game, 0xC0, (void*)0x0100, GAME_LEN, GAME_CRC)) {
@@ -115,8 +115,14 @@ u8 s_main(void) {
         s_border_fail(); // vermell: FDC no carregat/corrupte, no saltar
         while (1) { }
     }
-    s_border_ok(); // verd: tot a RAM (3 s visibles)
-    { u16 w; u8 v; for (w = 0; w < 300; w++) for (v = 0; v < 200; v++) { } }
+    s_border_ok(); // verd: tot a RAM (pausa visible ~0.3 s)
+    __asm
+        ld      bc, #60000
+1$:     dec     bc
+        ld      a, b
+        or      c
+        jr      nz, 1$
+    __endasm;
     __asm
         ld      bc, #0x7F00
         ld      a, #0x10
@@ -126,7 +132,6 @@ u8 s_main(void) {
     __endasm;
     ((void(*)(void))GAME_START)();
     while (1) { }
-    return 0;
 }
 
 void s_start(void) {

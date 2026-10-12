@@ -44,6 +44,7 @@ ASM_SOURCES = [
     "engine/moving_blit.s",
     "engine/tile_blit.s",
     "engine/sprite_hflip.s",
+    "engine/mus.s",  # stubs AKG (Init/Play via EQU obj/mus_ext.s)
 ]
 C_SOURCES = [
     "engine/fdc.c",
@@ -53,14 +54,14 @@ C_SOURCES = [
 ]
 # F1: el GAME ja no enllaca el FDC (viu al Banc 6, scratch central).
 # Es continuen compilant (l'starter enllaca obj/fdc.rel + obj/assets_fdc.rel).
-# F1-FRONT: el GAME SI enllaca el decoder ZX0 (les pantalles es mostren
-# des del GAME central; des de l'starter/VRAM seria suïcida).
-GAME_LINK_SKIP = {"engine/fdc.c", "engine/assets_fdc.s"}
+# F1-MUSICA: el GAME tampoc enllaca el decoder ZX0 (viu al FRONT.BIN C4;
+# nomes el FRONT el crida). Guany ~94 B de Bloc 0 (overflow 53 B, 12/10/26).
+GAME_LINK_SKIP = {"engine/fdc.c", "engine/assets_fdc.s", "engine/zx0_decompress.s"}
 C_HEADERS = {
     "engine/fdc.c": ["engine/fdc.h", "engine/cpctelera.h"],
     "src/render.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h", "src/hud_pkg.h"],
     "src/moving.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h", "engine/fdc.h"],
-    "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h", "src/disk_tables.h",
+    "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h", "engine/mus.h", "src/disk_tables.h",
                    "src/sprite.h", "src/moving.h", "src/player_frames.h",
                    "engine/stack_canary.h", "src/crt_addrs.h", "src/level_pkg.h"],
 }
@@ -88,6 +89,16 @@ FRONT_DATA = 0x4200
 FRONT_MAXLEN = 0x1000
 FRONT_C_SOURCE = "engine/front.c"
 FRONT_C_HEADERS = ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h"]
+
+# MUSICA (banc C1, AT3 AKG): player a MUS_PLAYER_BASE + canco a MUS_SONG_SLOT
+# (les 4 fan 1.6-4.7 KB; player ~3.1 KB). MUSBANK.BIN = player + intro (el
+# carrega l'starter); MUSMAIN.BIN = tema nivell 1 (el carrega el GAME).
+MUS_BANK = 0xC1
+MUS_PLAYER_BASE = 0x4000
+MUS_SONG_SLOT = 0x5000
+MUS_PLAYER_SRC = "tools/akg/PlayerAkg.asm"
+MUS_INTRO_SRC = "assets/musica_cpc/The_Blues_Brothers_Intro_CPC.akg"
+MUS_MAIN_SRC = "assets/musica_cpc/The_Blues_Brothers_CPC.akg"
 
 # Fitxers de dades al DSK (es carregaran per FDC raw). Ordre = ordre al disc.
 # (L'ordre de dades no afecta el boot; el BLUESB va primer via package().)
@@ -118,6 +129,9 @@ DATA_FILES = [
     ("FSPLASH", "ZX0", os.path.join(PROJ, "obj", "FSPLASH.ZX0")),
     ("FSELECT", "ZX0", os.path.join(PROJ, "obj", "FSELECT.ZX0")),
     ("FMAP", "ZX0", os.path.join(PROJ, "obj", "FMAP.ZX0")),
+    # MUSICA: MUSBANK (player+intro, starter->C1) + MUSMAIN (GAME->C1 slot).
+    ("MUSBANK", "BIN", os.path.join(PROJ, "obj", "MUSBANK.BIN")),
+    ("MUSMAIN", "BIN", os.path.join(PROJ, "obj", "MUSMAIN.BIN")),
 ]
 
 
@@ -531,7 +545,8 @@ def build_front(force):
     # EQU externs centrals des del mapa resident (falla sorollos si falten).
     resident_map = os.path.join(obj, PROGNAME + ".map")
     syms = map_symbols(resident_map)
-    need = {"_fdc_load_file": None, "_zx0_decompress": None, "_g_front_args": None}
+    need = {"_fdc_load_file": None, "_g_front_args": None,
+            "_mus_play": None, "_mus_init": None, "_g_ticks": None}
     for k in need:
         if k not in syms:
             print("\n[FATAL] FRONT: %s no es al mapa resident. Enllaca GAME primer?" % k)
@@ -554,6 +569,14 @@ def build_front(force):
     if force or is_stale(tab_rel, [tab_s]):
         run([SDASZ80, "-plosgff", tab_rel, tab_s])
         mark_fresh(tab_rel, [tab_s])
+    # Decoder ZX0 al FRONT (era resident; ~94 B de Bloc 0). El GAME ja no
+    # l'enllaca (GAME_LINK_SKIP); el FRONT el crida en banc C4 (nomes toca
+    # scratch 0x8400 + VRAM + AF', com en central: mateixa seguretat).
+    dec_s = os.path.join(PROJ, "engine", "zx0_decompress.s")
+    dec_rel = os.path.join(obj, "zx0_decompress.rel")
+    if force or is_stale(dec_rel, [dec_s]):
+        run([SDASZ80, "-plosgff", dec_rel, dec_s])
+        mark_fresh(dec_rel, [dec_s])
     ext_rel = os.path.join(obj, "front_ext.rel")
     if force or is_stale(ext_rel, [ext_s]):
         run([SDASZ80, "-plosgff", ext_rel, ext_s])
@@ -561,7 +584,7 @@ def build_front(force):
     ihx = os.path.join(obj, "front.ihx")
     run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % FRONT_BASE,
          "--data-loc", "0x%04X" % FRONT_DATA,
-         tab_rel, rel, ext_rel, "-o", ihx])
+         tab_rel, rel, dec_rel, ext_rel, "-o", ihx])
     map_path = os.path.join(obj, "front.map")
     syms_f = map_symbols(map_path)
     if syms_f.get("_front_entry", -1) != FRONT_BASE:
@@ -586,6 +609,108 @@ def build_front(force):
     return bin_path
 
 
+def akg_convert(src_path, mod, force):
+    """Converteix .akg/RASM a .s sdas (cache per hash) via tools/akg_rasm2sdas.
+    Retorna el .s generat a obj/."""
+    obj = os.path.join(PROJ, "obj")
+    dst = os.path.join(obj, mod + ".s")
+    sys.path.insert(0, os.path.join(PROJ, "tools"))
+    import akg_rasm2sdas
+    text = open(os.path.join(PROJ, src_path), "rb").read().decode("latin1")
+    out, asserts, decisions = akg_rasm2sdas.convert(text, module=mod)
+    old = None
+    try:
+        old = open(dst).read()
+    except OSError:
+        pass
+    if old != out or force:
+        open(dst, "w").write(out)
+    return dst
+
+
+def link_bin(rel_path, map_name, base, data_loc, bin_path, extra_labels=()):
+    """Enllaca un .rel a base + el converteix a BIN (tallat a fi de CODE:
+    el _DATA buit no s'hi inclou). Retorna (size, labels)."""
+    obj = os.path.join(PROJ, "obj")
+    ihx = os.path.join(obj, map_name + ".ihx")
+    args = [SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % base]
+    if data_loc is not None:
+        args += ["--data-loc", "0x%04X" % data_loc]
+    run(args + [rel_path, "-o", ihx])
+    map_path = os.path.join(obj, map_name + ".map")
+    code_s, code_l = map_area(map_path, "CODE")
+    labels = {}
+    if extra_labels:
+        lst_path = os.path.splitext(rel_path)[0] + ".lst"
+        want = set(extra_labels)
+        with open(lst_path, "r", encoding="latin1") as f:
+            for line in f:
+                m = re.match(r"^\s*([0-9A-Fa-f]{4,8})\s+\d+\s+(\w+):\s*$", line)
+                if m and m.group(2) in want:
+                    labels[m.group(2)] = base + int(m.group(1), 16)
+    convert_ihx(ihx, bin_path, start_addr=base,
+                max_length=(code_s + code_l) - base if code_s is not None else image_length(map_path, base))
+    return os.path.getsize(bin_path), labels
+
+
+def build_music(force):
+    """MUSBANK.BIN (player@0x4000 + intro@slot) + MUSMAIN.BIN (tema@slot).
+    Genera obj/mus_ext.s (EQU _akg_init/_akg_play pel GAME)."""
+    obj = os.path.join(PROJ, "obj")
+    # Player (cache mtime+hash; el .rel depen del .s GENERAT + conversor).
+    conv = os.path.join(PROJ, "tools", "akg_rasm2sdas.py")
+    ps = akg_convert(MUS_PLAYER_SRC, "player_akg", force)
+    prel = os.path.join(obj, "player_akg.rel")
+    if force or is_stale(prel, [ps, os.path.join(PROJ, MUS_PLAYER_SRC), conv]):
+        run([SDASZ80, "-plosgff", prel, ps])
+        mark_fresh(prel, [ps, os.path.join(PROJ, MUS_PLAYER_SRC), conv])
+    pbin = os.path.join(obj, "player_akg.bin")
+    psize, plabels = link_bin(prel, "musplayer", MUS_PLAYER_BASE, None, pbin,
+                              extra_labels=("PLY_AKG_Init", "PLY_AKG_Play", "PLY_AKG_Stop"))
+    if psize > (MUS_SONG_SLOT - MUS_PLAYER_BASE):
+        print("\n[FATAL] Player AKG: %d B envaeix l'slot 0x%04X!" % (psize, MUS_SONG_SLOT))
+        sys.exit(1)
+    # Cancons (mateix conversor; cadascuna al seu .rel).
+    songs = {}
+    for tag, src in (("intro", MUS_INTRO_SRC), ("main", MUS_MAIN_SRC)):
+        ss = akg_convert(src, "song_" + tag, force)
+        srel = os.path.join(obj, "song_" + tag + ".rel")
+        if force or is_stale(srel, [ss, os.path.join(PROJ, src), conv]):
+            run([SDASZ80, "-plosgff", srel, ss])
+            mark_fresh(srel, [ss, os.path.join(PROJ, src), conv])
+        sbin = os.path.join(obj, "song_" + tag + ".bin")
+        ssize, _ = link_bin(srel, "mussong_" + tag, MUS_SONG_SLOT, None, sbin)
+        if MUS_SONG_SLOT + ssize > 0x8000:
+            print("\n[FATAL] Canco %s: 0x%04X+%d surt de la finestra!" % (tag, MUS_SONG_SLOT, ssize))
+            sys.exit(1)
+        songs[tag] = (sbin, ssize)
+    # MUSBANK = player + pad fins slot + intro.
+    mbin = os.path.join(obj, "MUSBANK.BIN")
+    pdata = open(pbin, "rb").read()
+    idata = open(songs["intro"][0], "rb").read()
+    pad = MUS_SONG_SLOT - (MUS_PLAYER_BASE + len(pdata))
+    assert pad >= 0
+    open(mbin, "wb").write(pdata + bytes(pad) + idata)
+    # MUSMAIN = tema sol (mateix slot).
+    mainbin = os.path.join(obj, "MUSMAIN.BIN")
+    mdata = open(songs["main"][0], "rb").read()
+    open(mainbin, "wb").write(mdata)
+    # EQU pel GAME (mus.s crida _akg_init/_akg_play en finestra C1).
+    ext_s = os.path.join(obj, "mus_ext.s")
+    need = {"_akg_init": plabels.get("PLY_AKG_Init"), "_akg_play": plabels.get("PLY_AKG_Play")}
+    if None in need.values():
+        print("\n[FATAL] MUSICA: PLY_AKG_Init/Play no trobats al .lst (%s)" % sorted(plabels))
+        sys.exit(1)
+    ext_txt = ("    .module mus_ext\n" +
+               "".join("    .globl %s\n%s = 0x%04X\n" % (k, k, v) for k, v in need.items()))
+    if not os.path.exists(ext_s) or open(ext_s).read() != ext_txt:
+        open(ext_s, "w").write(ext_txt)
+    print("MUSBANK: player %d B + intro %d B = %d B; MUSMAIN %d B; init=0x%04X play=0x%04X" %
+          (len(pdata), len(idata), os.path.getsize(mbin), len(mdata),
+           need["_akg_init"], need["_akg_play"]))
+    return mbin, mainbin
+
+
 def compile_and_link(force):
     obj = os.path.join(PROJ, "obj")
     objs = []
@@ -606,6 +731,17 @@ def compile_and_link(force):
             mark_fresh(rel, [src] + headers)
         if rel_src not in GAME_LINK_SKIP:
             objs.append(rel)
+    # EQU de musica (obj/mus_ext.s, generat per build_music() ABANS d'aqui):
+    # _akg_init/_akg_play en finestra C1 (els crida engine/mus.s).
+    mus_ext_s = os.path.join(obj, "mus_ext.s")
+    mus_ext_rel = os.path.join(obj, "mus_ext.rel")
+    if not os.path.exists(mus_ext_s):
+        print("\n[FATAL] obj/mus_ext.s no existeix: build_music() ha de correr abans de compile_and_link!")
+        sys.exit(1)
+    if force or is_stale(mus_ext_rel, [mus_ext_s]):
+        run([SDASZ80, "-plosgff", mus_ext_rel, mus_ext_s])
+        mark_fresh(mus_ext_rel, [mus_ext_s])
+    objs.append(mus_ext_rel)
     ihx = os.path.join(obj, PROGNAME + ".ihx")
     run([SDCC] + LINKARGS + objs + ["-o", ihx])
     map_path = os.path.join(obj, PROGNAME + ".map")
@@ -624,11 +760,35 @@ def crc16_ccitt(data, init=0xFFFF):
     return crc
 
 
-def gen_starter_tables(game_entry, game_start, game_len, game_crc, fdc_entry, front_entry):
-    """Genera src/starter_tables.h (descs GAME.BIN + FDC.BIN + FRONT.BIN + CRCs)."""
+def verify_starter_jump():
+    """Anti-ranci 12/10/26: el starter crida GAME_START en dur. Si el .rel
+    no s'ha recompilat amb les taules finals, el salt apunta a brossa
+    (sautar LD SP = pila podrida = reboot a BASIC). Compara el CALL real
+    del BIN (patro CALL xxxx; JR $) amb src/starter_tables.h. FATAL si no
+    coincideixen (refer amb -f, mai un DSK incoherent)."""
+    import re as _re
+    sbin = open(os.path.join(PROJ, "obj", "STARTER.BIN"), "rb").read()
+    jumps = [m.group(1)[0] | (m.group(1)[1] << 8)
+             for m in _re.finditer(b"\xCD(..)\x18\xFE", sbin, _re.S)
+             if (m.group(1)[0] | (m.group(1)[1] << 8)) < 0x8000]
+    if len(jumps) != 1:
+        print("\n[FATAL] Starter: no trobo el salt unic a GAME (trobat=%s)." % jumps)
+        sys.exit(1)
+    want = _re.search(r"#define GAME_START (0x[0-9A-Fa-f]+)",
+                      open(os.path.join(PROJ, "src", "starter_tables.h")).read()).group(1)
+    if jumps[0] != int(want, 16):
+        print("\n[FATAL] Starter ranci: salta a 0x%04X pero GAME_START=%s. Refer amb -f." %
+              (jumps[0], want))
+        sys.exit(1)
+    print("STARTER-JUMP-OK: CALL 0x%04X == GAME_START" % jumps[0])
+
+
+def gen_starter_tables(game_entry, game_start, game_len, game_crc, fdc_entry, front_entry, mus_entry):
+    """Genera src/starter_tables.h (GAME + FDC + FRONT + MUSBANK + CRCs)."""
     obytes, scount, chs = game_entry
     fbytes, fcount, fchs, fcrc = fdc_entry
     rbytes, rcount, rchs, rcrc = front_entry
+    mbytes, mcount, mchs, mcrc = mus_entry
     lines = ["#ifndef STARTER_TABLES_H", "#define STARTER_TABLES_H",
              '#include "fdc.h"', "",
              "// Generat per tools/build.py. NO EDITAR.",
@@ -638,7 +798,9 @@ def gen_starter_tables(game_entry, game_start, game_len, game_crc, fdc_entry, fr
              "#define FDC_LEN %d" % fbytes,
              "#define CRC_FDC 0x%04X" % fcrc,
              "#define FRONT_LEN %d" % rbytes,
-             "#define CRC_FRONT 0x%04X" % rcrc, "",
+             "#define CRC_FRONT 0x%04X" % rcrc,
+             "#define MUS_LEN %d" % mbytes,
+             "#define CRC_MUS 0x%04X" % mcrc, "",
              "static const u8 g_game_chs[%d] = {" % len(chs)]
     for i in range(0, len(chs), 12):
         lines.append("    " + ",".join("0x%02X" % b for b in chs[i:i + 12]) + ",")
@@ -654,6 +816,11 @@ def gen_starter_tables(game_entry, game_start, game_len, game_crc, fdc_entry, fr
         lines.append("    " + ",".join("0x%02X" % b for b in rchs[i:i + 12]) + ",")
     lines.append("};")
     lines.append("static const DiskFileDesc g_file_front = { %d, %d, g_front_chs };" % (rbytes, rcount))
+    lines.append("static const u8 g_mus_chs[%d] = {" % len(mchs))
+    for i in range(0, len(mchs), 12):
+        lines.append("    " + ",".join("0x%02X" % b for b in mchs[i:i + 12]) + ",")
+    lines.append("};")
+    lines.append("static const DiskFileDesc g_file_mus = { %d, %d, g_mus_chs };" % (mbytes, mcount))
     lines.append("")
     lines.append("#endif")
     return "\n".join(lines) + "\n"
@@ -663,6 +830,7 @@ def placeholder_starter_tables():
     chs = [0] * (28 * 3)
     fchs = [0] * (4 * 3)
     rchs = [0] * (2 * 3)
+    mchs = [0] * (16 * 3)
     lines = ["#ifndef STARTER_TABLES_H", "#define STARTER_TABLES_H",
              '#include "fdc.h"', "",
              "#define GAME_START 0x13BA",
@@ -671,13 +839,17 @@ def placeholder_starter_tables():
               "#define FDC_LEN 1400",
               "#define CRC_FDC 0x0000",
               "#define FRONT_LEN 512",
-              "#define CRC_FRONT 0x0000", "",
+              "#define CRC_FRONT 0x0000",
+              "#define MUS_LEN 8192",
+              "#define CRC_MUS 0x0000", "",
              "static const u8 g_game_chs[%d] = { 0 };" % len(chs),
              "static const DiskFileDesc g_file_game = { 14318, 28, g_game_chs };",
              "static const u8 g_fdc_chs[%d] = { 0 };" % len(fchs),
              "static const DiskFileDesc g_file_fdc = { 1400, 4, g_fdc_chs };",
              "static const u8 g_front_chs[%d] = { 0 };" % len(rchs),
              "static const DiskFileDesc g_file_front = { 512, 2, g_front_chs };",
+             "static const u8 g_mus_chs[%d] = { 0 };" % len(mchs),
+             "static const DiskFileDesc g_file_mus = { 8192, 16, g_mus_chs };",
              "",
              "#endif"]
     return "\n".join(lines) + "\n"
@@ -849,7 +1021,7 @@ def main():
         hdr_txt = open(hdr_path).read()
     except OSError:
         hdr_txt = ""
-    if "CRC_TILES" not in hdr_txt or "g_pal_fsplash" not in hdr_txt or "g_file_fselect" not in hdr_txt or "g_file_fmap" not in hdr_txt:
+    if "CRC_TILES" not in hdr_txt or "g_pal_fsplash" not in hdr_txt or "g_file_fselect" not in hdr_txt or "g_file_fmap" not in hdr_txt or "g_file_musmain" not in hdr_txt or "g_file_musbank" not in hdr_txt:
         open(hdr_path, "w").write(placeholder_header())
     if not os.path.exists(crt_path):
         open(crt_path, "w").write(crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map")))
@@ -859,7 +1031,7 @@ def main():
         stab_txt = open(stab_path).read()
     except OSError:
         stab_txt = ""
-    if "GAME_CRC" not in stab_txt or "g_file_fdc" not in stab_txt or "g_file_front" not in stab_txt:
+    if "GAME_CRC" not in stab_txt or "g_file_fdc" not in stab_txt or "g_file_front" not in stab_txt or "g_file_mus" not in stab_txt:
         open(stab_path, "w").write(placeholder_starter_tables())
 
     prev = None
@@ -872,6 +1044,7 @@ def main():
     for it in range(8):
         # Header changes from the generated CHS table are picked up through
         # newer(); avoid recompiling every assembly and C source on pass two.
+        build_music(force)  # MUSICA primer (obj/mus_ext.s pel GAME)
         game_path, game_start, game_size = compile_and_link(force)
         build_bank(force)  # Banc 5 (necessita el mapa resident per l'equ)
         build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)
@@ -880,7 +1053,7 @@ def main():
         chs_map, gentry, game_len, game_crc = package(starter_path, starter_start, game_path)
         text = gen_header(chs_map)
         crt_text = crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map"))
-        stab_text = gen_starter_tables(gentry, game_start, game_len, game_crc, chs_map["FDC"], chs_map["FRONT"])
+        stab_text = gen_starter_tables(gentry, game_start, game_len, game_crc, chs_map["FDC"], chs_map["FRONT"], chs_map["MUSBANK"])
         changed = False
         # Escriure NOMES si el contingut canvia (si no, el mtime nou
         # invalidaria hash/mtime i recompilaria dependents debades, i
@@ -908,6 +1081,7 @@ def main():
     else:
         print("\n[FATAL] 8 iteracions sense convergir: el DSK quedaria incoherent (starter ranci).")
         sys.exit(1)
+    verify_starter_jump()
     print()
 
 

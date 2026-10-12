@@ -17,6 +17,8 @@ typedef struct {
     u8 home;                  // 0xC4 (el motor hi restaura en sortir)
     const DiskFileDesc* desc; // .ZX0 (central: llegible des del banc)
     const u8* palhw;          // paleta 16 INKR (central)
+    const DiskFileDesc* musbank; // MUSBANK (player+intro, central)
+    u8 load_mus;              // 1 = carrega MUSBANK a C1 + mus_init (splash)
 } FrontArgs;
 
 extern FrontArgs g_front_args; // definit a main.c (central _DATA)

@@ -126,6 +126,10 @@ void s_main(void) {
         s_border_fail(); // vermell: FRONT no carregat/corrupte, no saltar
         while (1) { }
     }
+    // 4. MUSBANK: NO es carrega aqui. C1 mapeja slot3->banc7 (config 1 del
+    // 6128) i l'starter (slot 3: 0xC000) desapareix en paginar = reboot.
+    // El GAME (slot 0, segur en totes les configs) el carrega pre-FRONT.
+    // (El fitxer MUSBANK continua al DSK; el GAME el llegeix amb el stub.)
     s_border_ok(); // verd: tot a RAM (pausa visible ~0.3 s)
     __asm
         ld      bc, #60000

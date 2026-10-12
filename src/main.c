@@ -13,6 +13,7 @@
 #include "cpctelera.h"
 #include "fdc.h"
 #include "front.h"
+#include "mus.h"
 #include "disk_tables.h"
 #include "sprite.h"
 #include "moving.h"
@@ -465,16 +466,18 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
     }
 }
 
-void zx0_decompress(const void* src, void* dst);
+// (zx0_decompress viu al FRONT.BIN banked; el GAME no el toca.)
 
 // FRONT banked (C4:0x4000): args centrals + crida absoluta (patro motor).
 // El TILESET sobreescriu C4 quan acaben les 3 pantalles.
 FrontArgs g_front_args;
-static void front_one(const DiskFileDesc* d, const u8* palhw) {
+static void front_one(const DiskFileDesc* d, const u8* palhw, u8 load_mus) {
     u8 prev;
     g_front_args.home = 0xC4;
     g_front_args.desc = d;
     g_front_args.palhw = palhw;
+    g_front_args.musbank = &g_file_musbank;
+    g_front_args.load_mus = load_mus;
     prev = bank_set(0xC4);
     ((void(*)(void))FRONT_RUN)();
     bank_restore(prev);
@@ -486,20 +489,29 @@ void main(void) {
     stack_canary_init();
     cpc_install_isr();
 
+    // MUSICA (C1): C1 NO es pot paginar des de l'starter (viu a slot 3:
+    // config C1 mapeja slot3->banc7 i l'starter desapareix = reboot) ni
+    // directament des del FRONT (viu a slot 1: desapareix igual). El FRONT
+    // (splash, load_mus=1) el carrega via stub central (trampoli segur) i
+    // l'inicia ell mateix (mus_init EQU). El GAME nomes (re)inicia el tema
+    // del nivell post-carregues (mus_init#2).
+
     // FRONT: SPLASH -> SELECT -> MAP (banked C4, args centrals). El display
     // apunta a 0xC000 (firmware), Mode 0 (starter): el depack hi es visible.
-    front_one(&g_file_fsplash, g_pal_fsplash);
-    front_one(&g_file_fselect, g_pal_fselect);
-    front_one(&g_file_fmap, g_pal_fmap);
+    // Nomes l'splash carrega MUSBANK (load_mus=1); els altres el reutilitzen.
+    front_one(&g_file_fsplash, g_pal_fsplash, 1);
+    front_one(&g_file_fselect, g_pal_fselect, 0);
+    front_one(&g_file_fmap, g_pal_fmap, 0);
 
     // Carregar recursos del nivell als Bancs 4/5/7 amb verificació CRC16
+    // (+ MUSMAIN a C1:0x5000: el tema del nivell 1).
     {
-        static const u8 v_bank[7] = { 0xC4, 0xC5, 0xC5, 0xC7, 0xC7, 0xC7, 0xC5 };
-        static const u16 v_addr[7] = { 0x4000, 0x4000, 0x6400, 0x4000, 0x7AA0, 0x78E0, 0x6E00 };
-        static const u16 v_crc[7] = { CRC_TILES, CRC_MAP, CRC_TRIG, CRC_PFRAMES, CRC_EXTRA, CRC_ELEV, CRC_BANK5 };
-        static const DiskFileDesc* const v_desc[7] = { &g_file_tiles, &g_file_map, &g_file_trig, &g_file_pframes, &g_file_extra, &g_file_elev, &g_file_bank5 };
+        static const u8 v_bank[8] = { 0xC4, 0xC5, 0xC5, 0xC7, 0xC7, 0xC7, 0xC5, 0xC1 };
+        static const u16 v_addr[8] = { 0x4000, 0x4000, 0x6400, 0x4000, 0x7AA0, 0x78E0, 0x6E00, 0x5000 };
+        static const u16 v_crc[8] = { CRC_TILES, CRC_MAP, CRC_TRIG, CRC_PFRAMES, CRC_EXTRA, CRC_ELEV, CRC_BANK5, CRC_MUSMAIN };
+        static const DiskFileDesc* const v_desc[8] = { &g_file_tiles, &g_file_map, &g_file_trig, &g_file_pframes, &g_file_extra, &g_file_elev, &g_file_bank5, &g_file_musmain };
         u8 i, t;
-        for (i = 0; i < 7; i++) {
+        for (i = 0; i < 8; i++) {
             u8 ok = 0;
             for (t = 0; t < 3 && !ok; t++) {
                 u8 prev;
@@ -522,6 +534,9 @@ void main(void) {
             if (!ok) { cpct_setBorder((u8)(0x40 + i)); while (1) { } }
         }
     }
+
+    // MUSICA nivell 1: MUSMAIN ja es a l'slot C1:0x5000: (re)inicia'l.
+    mus_init();
 
     video_init();
 
@@ -704,6 +719,11 @@ void main(void) {
         while ((u8)(g_ticks - last_ticks) < 12) {
         }
         last_ticks = g_ticks;
+
+        // MUSICA 50 Hz: 2 ticks per frame de 25 Hz (mateixa taxa mitjana que
+        // 1x50 Hz; la sortida per tick es identica).
+        mus_play();
+        mus_play();
 
         cpc_wait_vsync_start();
         crtc_set_display_start((u16)((s_back_page == 1 ? 0x2000 : 0x3000) + g_vram_start));

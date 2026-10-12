@@ -11,7 +11,10 @@
 // vermell d'error es OUT directe al Gate Array.
 // ============================================================
 
-void zx0_decompress(const void* src, void* dst); // EQU central (build)
+void zx0_decompress(const void* src, void* dst); // enllacat AL FRONT (no EQU)
+void mus_play(void); // EQU central (mus.s: pagina C1, 1 tick, restaura)
+void mus_init(void); // EQU central (mus.s: pagina C1, init intro, restaura)
+extern volatile u8 g_ticks; // ISR 300 Hz (central _DATA; llegible banked)
 
 static u8 f_fkb[10];
 // Resultat via static (NO en L/A directe!): veure s_fkey_pressed (main.c).
@@ -91,6 +94,28 @@ void front_run(void) {
     const u8* palhw = g_front_args.palhw;
     u8 home = g_front_args.home;
     u8 ok = 0, t;
+    // MUSICA (nomes splash): carrega MUSBANK (player+intro) a C1:0x4000 via
+    // stub CENTRAL (trampoli segur: el stub pagina/restaura; el FRONT (slot 1)
+    // MAI pagina ell mateix (desapareixeria: C1 mapeja slot1->banc1)).
+    // Home propi (C4): el motor hi restaura en sortir. + mus_init central.
+    if (g_front_args.load_mus) {
+        u8 mok = 0, mt;
+        for (mt = 0; mt < 3 && !mok; mt++) {
+            if (fdc_load_file(home, g_front_args.musbank, 0xC1, (void*)0x4000))
+                mok = 1;
+        }
+        if (!mok) {
+            __asm
+                ld      bc, #0x7F00
+                ld      a, #0x10
+                out     (c), a
+                ld      a, #0x4C
+                out     (c), a      ;; vermell (sense cpct_ aqui)
+            __endasm;
+            while (1) { }
+        }
+        mus_init();
+    }
     for (t = 0; t < 3 && !ok; t++) {
         if (!fdc_load_file(home, f, 0xC0, (void*)0x8400)) continue;
         zx0_decompress((const void*)0x8400, (void*)0xC000);
@@ -108,9 +133,18 @@ void front_run(void) {
     }
     f_fpal(palhw);
     // Espera-premut amb TIMEOUT (~4s = 8000 scans): robust en tot cas
-    // (scan be -> tecla; retorn encallat -> auto-avanca).
+    // (scan be -> tecla; retorn encallat -> auto-avanca). Musica a 50 Hz:
+    // 1 tick de player cada 6 ticks ISR (300 Hz). mus_play pagina C1 i
+    // restaura C4 (nest-safe); crida central sempre visible des del banc.
     {
         u16 w = 0;
-        while (!f_fkey_pressed() && w < 8000) { w++; }
+        u8 last = g_ticks;
+        while (!f_fkey_pressed() && w < 8000) {
+            w++;
+            if ((u8)(g_ticks - last) >= 6) {
+                last += 6;
+                mus_play();
+            }
+        }
     }
 }

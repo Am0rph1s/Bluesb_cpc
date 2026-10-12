@@ -40,18 +40,58 @@ def convert(name, src, y0, y1):
                        (((a >> 3) & 1) << 1) | ((b & 1) << 6) | (((b >> 1) & 1) << 2) |
                        (((b >> 2) & 1) << 4) | (((b >> 3) & 1) << 0))
     assert len(out) == 16000
+    # ENTRELLACAT HW: el depack escriu cru a 0xC000 i el 6845 llegeix la
+    # fila L a ((L%8)*2048)+((L//8)*80)+xb. Un .BIN lineal es veuria
+    # "ratllat" (vist 12/10/26). Guardem ja entrellacat (16384 B).
+    inter = bytearray(16384)
+    for L in range(200):
+        base = (L % 8) * 2048 + (L // 8) * 80
+        inter[base:base + 80] = out[L * 80:(L + 1) * 80]
     with open(os.path.join(PROJ, 'assets', 'bbdata', name + '.BIN'), 'wb') as f:
-        f.write(bytes(out))
+        f.write(bytes(inter))
     with open(os.path.join(PROJ, 'assets', 'bbdata', name + '.PAL'), 'wb') as f:
         for c in pal16:
             f.write(bytes(c))
+    # .PALHW: 16 INKR (Gate Array) pel FRONT (nearest-match 27 colors HW).
+    HW = {0x54:(0,0,0),0x44:(0,0,128),0x55:(0,0,255),0x5C:(128,0,0),
+          0x58:(128,0,128),0x5D:(128,0,255),0x4C:(255,0,0),0x45:(255,0,128),
+          0x4D:(255,0,255),0x56:(0,128,0),0x46:(0,128,128),0x57:(0,128,255),
+          0x5E:(128,128,0),0x40:(128,128,128),0x5F:(128,128,255),
+          0x4E:(255,128,0),0x47:(255,128,128),0x4F:(255,128,255),
+          0x52:(0,255,0),0x42:(0,255,128),0x53:(0,255,255),0x5A:(128,255,0),
+          0x59:(128,255,128),0x5B:(128,255,255),0x4A:(255,255,0),
+          0x43:(255,255,128),0x4B:(255,255,255)}
+    palhw = bytearray()
+    for c in pal16:
+        best = min(HW.items(), key=lambda kv: sum((a-b)**2 for a,b in zip(kv[1],c)))[0]
+        palhw.append(best)
+    with open(os.path.join(PROJ, 'assets', 'bbdata', name + '.PALHW'), 'wb') as f:
+        f.write(bytes(palhw))
     prev = Image.new('RGB', (160, 200))
     pd = prev.load()
     for y in range(200):
         for x in range(160):
             pd[x, y] = pal16[qi[y * 320 + x * 2]]
     prev.resize((480, 600), Image.NEAREST).save(os.path.join(OUT, name + '_m0.png'))
-    print(f'{name}: {len(out)} B + paleta, preview {name}_m0.png')
+    # WYSIWYG: rellegeix el .BIN i renderitza'l COM EL HW (entrellacat).
+    # Si aquest preview no es identic a _m0.png, el .BIN no es mostrara be.
+    raw = open(os.path.join(PROJ, 'assets', 'bbdata', name + '.BIN'), 'rb').read()
+    assert len(raw) == 16384, len(raw)
+    hw = Image.new('RGB', (160, 200))
+    hd = hw.load()
+    for L in range(200):
+        base = (L % 8) * 2048 + (L // 8) * 80
+        for xb in range(80):
+            byte = raw[base + xb]
+            # desempaqueta Mode 0 (invers de la codificacio de dalt)
+            b0 = ((byte >> 7) & 1) | (((byte >> 3) & 1) << 1) | \
+                 (((byte >> 5) & 1) << 2) | (((byte >> 1) & 1) << 3)
+            b1 = ((byte >> 6) & 1) | (((byte >> 2) & 1) << 1) | \
+                 (((byte >> 4) & 1) << 2) | (((byte >> 0) & 1) << 3)
+            hd[xb * 2, L] = pal16[b0]
+            hd[xb * 2 + 1, L] = pal16[b1]
+    hw.resize((480, 600), Image.NEAREST).save(os.path.join(OUT, name + '_hw.png'))
+    print(f'{name}: {len(inter)} B + paleta, preview {name}_m0.png + {name}_hw.png')
 
 
 if __name__ == '__main__':

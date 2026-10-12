@@ -89,7 +89,10 @@ static u8 s_back_page = 1;
 
 void main(void);
 
-const u16 g_crc_fdc = CRC_FDC; // per a l'stub FDC (verifica l'scratch, moving.c)
+const u16 g_crc_fdc = CRC_FDC; // stub FDC: verifica l'scratch (moving.c)
+const u16 g_len_fdc = 785; // FDC.BIN sencer (sense header); ha de coincidir
+                           // amb l'obj generat (si el motor creix i el CRC
+                           // falla -> white-hang: actualitzar aqui)
 
 void start(void) {
     __asm
@@ -461,11 +464,121 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
     }
 }
 
+void zx0_decompress(const void* src, void* dst);
+
+// FRONT (pre-joc, GAME central: escriure VRAM es segur aqui). Teclat sense
+// dependre del loop: PPI directe (mateix patro que l'starter).
+static u8 s_fkb[10];
+// Resultat via static (NO en L/A directe!): els callers SDCC comproven el
+// retorn u8 en A (`or a,a`), i qualsevol sentencia C darrere l'__endasm
+// (fins i tot `return 0` -> `xor a`) trepitjaria A. Amb `return s_fkres`
+// l'SDCC emet `ld a,(s_fkres)` (mateixa convencio que _bank_get: vist
+// 12/10/26: el `return 0` + test-en-A donava espera infinita).
+static volatile u8 s_fkres;
+static u8 s_fkey_pressed(void) {
+    s_fkres = 0;
+    __asm
+        di
+        ld      bc, #0xF782
+        out     (c), c
+        ld      bc, #0xF40E
+        ld      e, b
+        out     (c), c
+        ld      bc, #0xF6C0
+        ld      d, b
+        out     (c), c
+        .dw     #0x71ED
+        ld      bc, #0xF792
+        out     (c), c
+        ld      a, #0x40          ;; files 0x40..0x49 (C=0xC0 intacte!)
+        ld      hl, #_s_fkb
+00004$: ld      b, d
+        out     (c), a
+        ld      b, e
+        ini
+        inc     a
+        cp      #0x4A
+        jr      nz, 00004$
+        ld      bc, #0xF782
+        out     (c), c
+        ei
+        ld      hl, #_s_fkb
+        ld      b, #10
+        xor     a
+00001$: or      (hl)
+        inc     hl
+        djnz    00001$
+        cp      #0xFF
+        jr      z, 00002$
+        ld      hl, #_s_fkres
+        inc     (hl)          ;; cap tecla -> 0; qualsevol -> 1
+00002$:
+    __endasm;
+    return s_fkres;
+}
+
+// Posa paleta HW (HL = taula 16 INKR) + vora negra.
+static void s_fpal(const u8* palhw) {
+    __asm
+        ld      d, #0            ;; D = pen 0..15
+00003$: ld      e, (hl)          ;; E = hw
+        ld      bc, #0x7F00
+        ld      a, d
+        out     (c), a
+        ld      a, e
+        out     (c), a
+        inc     hl
+        inc     d
+        ld      a, d
+        cp      #16
+        jr      nz, 00003$
+        ld      bc, #0x7F00
+        ld      a, #0x10
+        out     (c), a
+        ld      a, #0x54
+        out     (c), a          ;; vora negra
+        ret
+    __endasm;
+}
+
+// Mostra una pantalla FRONT (.ZX0 a scratch 0x8400, depack a VRAM visible,
+// paleta, espera alliberar+pulsar). La pantalla anterior es perd.
+// OJO: MAI a 0x8000 (hi viu el motor FDC banked: el primer sector el
+// sobreescriuria en plena execucio = suicidi; vist 12/10/26: PC 0x80F4
+// executant bytes ZX0). 0x8400 es segur (motor fins 0x8310, FDC_BUF 0xB800;
+// el pitjor .ZX0 (MAP 6339B) arriba a 0x9CC3).
+// (Sense CRC extra: el FDC ja verifica CRC per sector en HW; si falla,
+// reintenta x3 i penja vermell.)
+static void s_fshow(const DiskFileDesc* f, const u8* palhw) {
+    u8 ok = 0, t;
+    for (t = 0; t < 3 && !ok; t++) {
+        if (!fdc_load_file(0xC0, f, 0xC0, (void*)0x8400)) continue;
+        zx0_decompress((const void*)0x8400, (void*)0xC000);
+        ok = 1;
+    }
+    if (!ok) { cpct_setBorder(0x4C); while (1) { } }
+    s_fpal(palhw);
+    // Espera-premut amb TIMEOUT (~4s = 8000 scans): si l'scan PPI va be,
+    // surt amb tecla (i el temps d'arrencada < timeout lo PROVA); si el
+    // retorn esta encallat (a 0 o a 1, vist 12/10/26), el timeout avanza
+    // igual (splash ja s'ha vist ~2s de carrega). Robust en tot cas.
+    // (Sense espera-alliberar: amb retorn encallat a 1 penjava sempre.)
+    {
+        u16 w = 0;
+        while (!s_fkey_pressed() && w < 8000) { w++; }
+    }
+}
+
 void main(void) {
     cpct_memset((void*)CRT_DATA_START, 0, CRT_DATA_LEN);
     cpct_memcpy((void*)CRT_IDATA_DST, (void*)CRT_IDATA_SRC, CRT_IDATA_LEN);
     stack_canary_init();
     cpc_install_isr();
+
+    // FRONT: SPLASH -> SELECT -> MAP (tecla). El display apunta a 0xC000
+    // (firmware), Mode 0 (starter): el depack hi es directament visible.
+    // FRONT (DIAG: nomes SPLASH; SELECT/MAP tornen amb FRONT.BIN per marge).
+    s_fshow(&g_file_fsplash, g_pal_fsplash);
 
     // Carregar recursos del nivell als Bancs 4/5/7 amb verificació CRC16
     {
@@ -480,7 +593,8 @@ void main(void) {
                 u8 prev;
                 const u8* p;
                 u16 crc, n;
-                if (!fdc_load_file(v_desc[i], v_bank[i], (void*)v_addr[i])) continue;
+                // Home 0xC0: el GAME corre en central (mai paginat).
+                if (!fdc_load_file(0xC0, v_desc[i], v_bank[i], (void*)v_addr[i])) continue;
                 prev = bank_set(v_bank[i]);
                 p = (const u8*)v_addr[i];
                 crc = 0xFFFF; n = (u16)(v_desc[i]->ondisk_bytes - 128);

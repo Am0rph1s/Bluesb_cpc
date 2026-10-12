@@ -8,6 +8,7 @@
         .globl _g_fdc_chs_table
         .globl _g_fdc_dest_bank
         .globl _g_fdc_dest_addr
+        .globl _g_fdc_home_bank
 
 ;; Mapa de RAM:
 ;;   FDC_BUF i FDC_WORK han d'estar en RAM base, no en zona bancable.
@@ -47,9 +48,11 @@ _assets_bank_select::
         ret
 
 _assets_bank_restore::
-        ld bc, #0x7F00
-        ld a, #ASSETS_BANK_CFG_DEFAULT
-        out (c), a
+        ld      a, (_g_fdc_home_bank) ;; home del caller (byte dedicat del
+                                    ;; shim; lectura idempotent, sense estat)
+        ld      bc, #0x7F00
+        out     (c), a              ;; restaura el banc del CALLER (C0 central,
+                                    ;; C4 FRONT futur)
         ret
 
 ;; ============================================================
@@ -157,7 +160,9 @@ assets_fail:
         xor a
         ld bc, #FDC_MOTOR_PORT
         out (c), a
-        ei
+        call _assets_bank_restore  ;; restaura home fins i tot en error
+        ei                         ;; (callers banked hi sobreviuen; central,
+                                   ;; identic a abans: home=C0)
         xor a
         ld l, a
         pop ix

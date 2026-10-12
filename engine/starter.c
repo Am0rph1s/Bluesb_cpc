@@ -87,7 +87,8 @@ static void s_border_fail(void) {
 static u8 s_load_one(const DiskFileDesc* f, u8 bank, void* addr, u16 len, u16 crc) {
     u8 tries = 3;
     while (tries--) {
-        if (fdc_load_file(f, bank, addr)) {
+        // Home 0xC0: l'starter corre en VRAM/central (mai paginat).
+        if (fdc_load_file(0xC0, f, bank, addr)) {
             if (crc == 0) return 1;
             // Verificar amb el banc desti paginat (el motor el restaura en sortir).
             g_st_bank = bank; s_bank_apply();
@@ -100,6 +101,10 @@ static u8 s_load_one(const DiskFileDesc* f, u8 bank, void* addr, u16 len, u16 cr
     }
     return 0;
 }
+
+// NOTA FRONT: les pantalles (SPLASH/SELECT/MAP) les mostra el GAME
+// (main() primerenc, central: escriure VRAM des de VRAM es suïcida).
+// L'starter nomes carrega+salta (aqui no es desempaca res).
 
 void s_main(void) {
     s_border_blue(); // s_main ha arrencat

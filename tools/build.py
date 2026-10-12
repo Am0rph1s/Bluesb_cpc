@@ -32,10 +32,12 @@ INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
 ASM_SOURCES = [
     "engine/cpc_hardware.s",
     "engine/assets_fdc.s",
+    # F1-FRONT: decoder ZX0 (el linka l'starter per desempacar pantalles;
+    # el GAME no el necessita -> GAME_LINK_SKIP).
+    "engine/zx0_decompress.s",
     # TEMPORALMENT EXCLOSOS (pes mort ~2KB linkat sense cridar;
     # el Bloc 0 no dona per features + reserva):
     # - engine/audio.s -> retornar a CP-5 (cablejar audio_init/update+sfx)
-    # - engine/zx0_decompress.s -> retornar a CP-7 (carregador ZX0)
     "engine/video.s",
     "engine/isr.s",
     "engine/sprite.s",
@@ -51,6 +53,8 @@ C_SOURCES = [
 ]
 # F1: el GAME ja no enllaca el FDC (viu al Banc 6, scratch central).
 # Es continuen compilant (l'starter enllaca obj/fdc.rel + obj/assets_fdc.rel).
+# F1-FRONT: el GAME SI enllaca el decoder ZX0 (les pantalles es mostren
+# des del GAME central; des de l'starter/VRAM seria suïcida).
 GAME_LINK_SKIP = {"engine/fdc.c", "engine/assets_fdc.s"}
 C_HEADERS = {
     "engine/fdc.c": ["engine/fdc.h", "engine/cpctelera.h"],
@@ -98,6 +102,8 @@ DATA_FILES = [
     ("EXTRA", "BIN", os.path.join(PROJ, "assets", "bbdata", "EXTRA.BIN")),
     # ELEV: 2 frames d'ascensor Mode 0 (2x224 B) -> Banc 7 lliure 0x78E0.
     ("ELEV", "BIN", os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")),
+    # F1-FRONT (DIAG: nomes FSPLASH; FSELECT/FMAP tornen amb FRONT.BIN).
+    ("FSPLASH", "ZX0", os.path.join(PROJ, "obj", "FSPLASH.ZX0")),
 ]
 
 
@@ -489,6 +495,16 @@ def build_fdcbank(force):
         print("\n[FATAL] FDC bank: %d bytes > scratch 0x%04X! Aprimar motor." %
               (size, FDC_BANK_WINLEN))
         sys.exit(1)
+    # L'stub (moving.c) verifica CRC_FDC sobre g_len_fdc bytes: si la mida
+    # de FDC.BIN canvia sense actualitzar main.c -> white-hang silencios.
+    # Falla AQUI (sorollos) en comptes d'engegar malament.
+    import re as _re
+    m = _re.search(r"g_len_fdc\s*=\s*(\d+)",
+                   open(os.path.join(PROJ, "src", "main.c")).read())
+    if not m or int(m.group(1)) != size:
+        print("\n[FATAL] FDC.BIN fa %d B pero g_len_fdc=%s a src/main.c. "
+              "Actualitza'l (white-hang segur)!" % (size, m.group(1) if m else "?"))
+        sys.exit(1)
     print("FDCBANK: 0x%04X (%d bytes, entry=0x%04X)" % (FDC_BANK_BASE, size, entry))
     return bin_path
 
@@ -566,8 +582,8 @@ def placeholder_starter_tables():
              "#define GAME_START 0x13BA",
              "#define GAME_LEN 14185",
              "#define GAME_CRC 0x0000",
-             "#define FDC_LEN 1400",
-             "#define CRC_FDC 0x0000", "",
+              "#define FDC_LEN 1400",
+              "#define CRC_FDC 0x0000", "",
              "static const u8 g_game_chs[%d] = { 0 };" % len(chs),
              "static const DiskFileDesc g_file_game = { 14318, 28, g_game_chs };",
              "static const u8 g_fdc_chs[%d] = { 0 };" % len(fchs),
@@ -624,6 +640,33 @@ def build_starter(force):
     return bin_path, start
 
 
+# F1-FRONT: pantalles fixes (SPLASH/SELECT/MAP) en ZX0 classic (v1 = el
+# decoder resident zx0_decompress.s). Compressor optimal Orlof/Einar BSD-3
+# vendoritzat a tools/zx0pkg/. QUICK mode (mateix format, quasi-optim):
+# optimal es lent en Python (~minuts/fitxer) i nomes caldria per retallar
+# 2-4 sectors de carrega; canviar ZX0_QUICK a False (drop-in).
+ZX0_QUICK = True
+# Tags DSK (unics!) -> fitxer base a assets/bbdata (.BIN entrada, .PALHW).
+FRONT_SCREENS = [("FSPLASH", "SPLASH"), ("FSELECT", "SELECT"), ("FMAP", "MAP")]
+FRONT_TAGS = [t for t, b in FRONT_SCREENS]
+FRONT_FILES = {t: b for t, b in FRONT_SCREENS}
+
+
+def zx0_pack_all():
+    """Comprimeix les pantalles FRONT a obj/<TAG>.ZX0 (cache per mtime)."""
+    from zx0pkg.zx0 import zx0_compress
+    for tag, base in FRONT_SCREENS:
+        src = os.path.join(PROJ, "assets", "bbdata", base + ".BIN")
+        dst = os.path.join(PROJ, "obj", tag + ".ZX0")
+        if is_stale(dst, [src]):
+            data = open(src, "rb").read()
+            out, stats = zx0_compress(bytes(data), classic=True, quick=ZX0_QUICK)
+            open(dst, "wb").write(bytes(out))
+            mark_fresh(dst, [src])
+            print("ZX0: %s %d -> %d B (classic v1, %s)" %
+                  (tag, len(data), len(out), "quick" if ZX0_QUICK else "optimal"))
+
+
 def package(starter_path, starter_start, game_path):
     dsk_path = os.path.join(PROJ, PROGNAME + ".dsk")
     create_empty_cpc_dsk(dsk_path, 40)
@@ -675,6 +718,10 @@ def gen_header(chs_map):
         lines.append("};")
         lines.append("static const DiskFileDesc g_file_%s = { %d, %d, g_%s_chs };" % (var, obytes, scount, var))
         lines.append("#define CRC_%s 0x%04X" % (name, crc))
+        if name in FRONT_TAGS:
+            pal = open(os.path.join(PROJ, "assets", "bbdata", FRONT_FILES[name] + ".PALHW"), "rb").read()
+            assert len(pal) == 16, name
+            lines.append("static const u8 g_pal_%s[16] = {%s};" % (var, ",".join("0x%02X" % b for b in pal)))
         lines.append("")
     lines.append("#endif")
     return "\n".join(lines) + "\n"
@@ -692,6 +739,8 @@ def placeholder_header():
         lines.append("static const u8 g_%s_chs[%d] = { 0 };" % (var, scount * 3))
         lines.append("static const DiskFileDesc g_file_%s = { %d, %d, g_%s_chs };" % (var, data_len + 128, scount, var))
         lines.append("#define CRC_%s 0x0000" % name8)
+        if name8 in FRONT_TAGS:
+            lines.append("static const u8 g_pal_%s[16] = { 0 };" % var)
         lines.append("")
     lines.append("#endif")
     return "\n".join(lines) + "\n"
@@ -700,6 +749,7 @@ def placeholder_header():
 def main():
     force = "-f" in sys.argv or "--force" in sys.argv
     os.makedirs(os.path.join(PROJ, "obj"), exist_ok=True)
+    zx0_pack_all()  # F1-FRONT: pantalles .ZX0 a obj/ (cache mtime)
     hdr_path = os.path.join(PROJ, "src", "disk_tables.h")
     crt_path = os.path.join(PROJ, "src", "crt_addrs.h")
     stab_path = os.path.join(PROJ, "src", "starter_tables.h")
@@ -709,7 +759,7 @@ def main():
         hdr_txt = open(hdr_path).read()
     except OSError:
         hdr_txt = ""
-    if "CRC_TILES" not in hdr_txt:
+    if "CRC_TILES" not in hdr_txt or "g_pal_fsplash" not in hdr_txt:
         open(hdr_path, "w").write(placeholder_header())
     if not os.path.exists(crt_path):
         open(crt_path, "w").write(crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map")))

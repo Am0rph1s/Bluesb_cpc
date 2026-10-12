@@ -18,8 +18,10 @@ typedef struct {
     const u8* chs_table;
 } DiskFileDesc;
 
-// Llegeix un fitxer del disc i el desa al banc de RAM indicat.
-// Retorna 1 (OK) o 0 (error).
-u8 fdc_load_file(const DiskFileDesc* desc, u8 dest_bank, void* dest_addr);
+// home_bank PRIMER (no darrer): SDCC classic passa el 1r param u8 a A
+// (patro bank_set, provat en verd) i el shim el desa a AF' d'entrada,
+// sense matematica de pila fragil. 0xC0 = GAME/STARTER (central);
+// C4 = FRONT futur (banked).
+u8 fdc_load_file(u8 home_bank, const DiskFileDesc* desc, u8 dest_bank, void* dest_addr);
 
 #endif // FDC_H

@@ -738,3 +738,7 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - FIX: `sub=[qi[y*320+x*2]...x 0..159]` + pack des de `sub` + PORTA WYSIWYG (assert _hw==_m0 pixel a pixel; mateix qi/mateix run = identics obligats). Previews: SPLASH 2 cares + titol sencer, SELECT 2 focus + PRESS FIRE TO START, MAP fabrica sencera.
 - Entrebanc: vermell a l'emu despres del rebuild (PC=C434 starter, A=4C). Arrel: els ZX0 mes grans + FSELECT/FMAP mouen el GAME 2 cops seguits i el loop de 4 iteracions s'exhaureix amb l'starter ranci (CRC vell) al DSK. FIX: range(4)->range(8) + FATAL si no convergeix (mai un DSK incoherent).
 - VERD en emu: splash/map/select SENCERS + nivell 1 jugable (PC 0475). Marges: _CODE ..0x3718 (104 B). PENDENT: musica AKY, commit.
+
+## Sessio 2026-10-12 (4): MAP retocat per l'usuari (via directa)
+- `assets/bbdata/MAP_mode0.png` (160x200 P, usuari): 20 RGB unics (tots HW exactes) en 21 indexs (negre duplicat + 5 residuals d'antialiasing). `convert_direct()` nou a gen_screens.py: empaqueta SENSE tocar resolucio/colors (top-16 per pixels; 31 px residuals al proper amb informe) + .PALHW per match EXACTE (assert, res de nearest) + porta WYSIWYG. MAP via directa (SPLASH/SELECT segueixen VGA+quantize).
+- VERD en emu: el mapa de l'usuari pixel-clavat (CHEMICALS, edificis, STORE) + boot al joc. FMAP 8572 B, convergencia en 3 iters (sense FATAL). PENDENT: musica AKY, commit.

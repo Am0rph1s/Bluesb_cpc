@@ -49,10 +49,13 @@ C_SOURCES = [
     "src/moving.c",
     "src/main.c",
 ]
+# F1: el GAME ja no enllaca el FDC (viu al Banc 6, scratch central).
+# Es continuen compilant (l'starter enllaca obj/fdc.rel + obj/assets_fdc.rel).
+GAME_LINK_SKIP = {"engine/fdc.c", "engine/assets_fdc.s"}
 C_HEADERS = {
     "engine/fdc.c": ["engine/fdc.h", "engine/cpctelera.h"],
     "src/render.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h", "src/hud_pkg.h"],
-    "src/moving.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h"],
+    "src/moving.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h", "engine/fdc.h"],
     "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "src/disk_tables.h",
                    "src/sprite.h", "src/moving.h", "src/player_frames.h",
                    "engine/stack_canary.h", "src/crt_addrs.h", "src/level_pkg.h"],
@@ -78,6 +81,12 @@ BANK_C_HEADERS = {
 DATA_FILES = [
     # BANK5: codi moving.* generat per build (obj/) -> Banc 5 a 0x6E00.
     ("BANK5", "BIN", os.path.join(PROJ, "obj", "BANK5.BIN")),
+    # FDC: motor FDC (fdc.c + assets_fdc.s) enllacat a 0x8000 (imatge) -> Banc 6
+    # (dest C6:0x7000, dins la finestra bancable: alla hi es correcte).
+    # El resident el copia a scratch central 0x8000 (VRAM pag.2, FORA de la
+    # finestra 0x4000-0x7FFF: el motor pagina bancs i s'esborraria ell mateix
+    # a 0x7000!) i l'executa alla (F1).
+    ("FDC", "BIN", os.path.join(PROJ, "obj", "FDC.BIN")),
     # TITLE: el títol encara és Mode 1 (16 KB). Quan fem el títol Mode 0 el canviarem.
     ("TITLE", "BIN", os.path.join(PROJ, "assets", "bbdata", "TITLE.BIN")),
     # Mode 0: tileset 8x16 (64 B/tile, 256 tiles = 16 KB), mapa 128x72.
@@ -438,6 +447,52 @@ def build_bank(force):
     return bin_path
 
 
+# --- Banc FDC (F1): motor de disc resident tota la sessio ---
+# fdc.c + assets_fdc.s, TAL QUAL (mateixes fonts que l'starter), imatge
+# enllacada a FDC_BANK_BASE (execucio central NO paginable!). La imatge viu
+# al Banc 6 (dest C6:0x7000, dins la finestra: correcte alla). El resident
+# NO executa el banc (el motor commuta la finestra on s'executaria a 0x7000):
+# copia la imatge a scratch central 0x8000 (VRAM pag.2, invisible, fora de
+# 0x4000-0x7FFF) i l'executa alla, amb el comportament bit-identic al
+# resident d'abans. _fdc_load_file ha de caure a FDC_BANK_BASE (fdc.rel
+# enllacat primer); l'stub hi crida directe.
+FDC_BANK = 0xC6
+FDC_BANK_BASE = 0x8000
+FDC_BANK_DATA = 0x8300
+FDC_BANK_WINLEN = 0x1000  # scratch 0x8000..0x8FFF (VRAM pag.2; el GAME
+                          # l'esborra amb memset post-carregues)
+
+def build_fdcbank(force):
+    """Enllaça FDC.BIN (motor FDC sencer) a 0x8000. Retorna FDC.BIN."""
+    obj = os.path.join(PROJ, "obj")
+    bank_rels = [os.path.join(obj, "fdc.rel"), os.path.join(obj, "assets_fdc.rel")]
+    ihx = os.path.join(obj, "fdcbank.ihx")
+    run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % FDC_BANK_BASE,
+         "--data-loc", "0x%04X" % FDC_BANK_DATA] + bank_rels + ["-o", ihx])
+    map_path = os.path.join(obj, "fdcbank.map")
+    syms = map_symbols(map_path)
+    entry = syms.get("_fdc_load_file", -1)
+    if entry != FDC_BANK_BASE:
+        print("\n[FATAL] FDC bank: _fdc_load_file=0x%04X (esperat 0x%04X). L'stub hi crida directe!" %
+              (entry, FDC_BANK_BASE))
+        sys.exit(1)
+    code_s, code_l = map_area(map_path, "CODE")
+    data_s, data_l = map_area(map_path, "DATA")
+    if code_s is not None and data_s is not None and (code_s + code_l) > data_s:
+        print("\n[FATAL] FDC bank _CODE envaeix _DATA! Mou --data-loc amunt.")
+        sys.exit(1)
+    bin_path = os.path.join(obj, "FDC.BIN")
+    convert_ihx(ihx, bin_path, start_addr=FDC_BANK_BASE,
+                max_length=image_length(map_path, FDC_BANK_BASE))
+    size = os.path.getsize(bin_path)
+    if size > FDC_BANK_WINLEN:
+        print("\n[FATAL] FDC bank: %d bytes > scratch 0x%04X! Aprimar motor." %
+              (size, FDC_BANK_WINLEN))
+        sys.exit(1)
+    print("FDCBANK: 0x%04X (%d bytes, entry=0x%04X)" % (FDC_BANK_BASE, size, entry))
+    return bin_path
+
+
 def compile_and_link(force):
     obj = os.path.join(PROJ, "obj")
     objs = []
@@ -447,7 +502,8 @@ def compile_and_link(force):
         if force or is_stale(rel, [src]):
             run([SDASZ80, "-plosgff", rel, src])
             mark_fresh(rel, [src])
-        objs.append(rel)
+        if rel_src not in GAME_LINK_SKIP:
+            objs.append(rel)
     for rel_src in C_SOURCES:
         src = os.path.join(PROJ, rel_src)
         rel = os.path.join(obj, os.path.splitext(os.path.basename(src))[0] + ".rel")
@@ -455,7 +511,8 @@ def compile_and_link(force):
         if force or is_stale(rel, [src] + headers):
             run([SDCC] + INCLUDES + CFLAGS + ["-c", src, "-o", rel])
             mark_fresh(rel, [src] + headers)
-        objs.append(rel)
+        if rel_src not in GAME_LINK_SKIP:
+            objs.append(rel)
     ihx = os.path.join(obj, PROGNAME + ".ihx")
     run([SDCC] + LINKARGS + objs + ["-o", ihx])
     map_path = os.path.join(obj, PROGNAME + ".map")
@@ -474,20 +531,28 @@ def crc16_ccitt(data, init=0xFFFF):
     return crc
 
 
-def gen_starter_tables(game_entry, game_start, game_len, game_crc):
-    """Genera src/starter_tables.h (desc de GAME.BIN + adreca d'inici + CRC)."""
+def gen_starter_tables(game_entry, game_start, game_len, game_crc, fdc_entry):
+    """Genera src/starter_tables.h (descs GAME.BIN + FDC.BIN + CRCs)."""
     obytes, scount, chs = game_entry
+    fbytes, fcount, fchs, fcrc = fdc_entry
     lines = ["#ifndef STARTER_TABLES_H", "#define STARTER_TABLES_H",
              '#include "fdc.h"', "",
              "// Generat per tools/build.py. NO EDITAR.",
              "#define GAME_START 0x%04X" % game_start,
              "#define GAME_LEN %d" % game_len,
-             "#define GAME_CRC 0x%04X" % game_crc, "",
+             "#define GAME_CRC 0x%04X" % game_crc,
+             "#define FDC_LEN %d" % fbytes,
+             "#define CRC_FDC 0x%04X" % fcrc, "",
              "static const u8 g_game_chs[%d] = {" % len(chs)]
     for i in range(0, len(chs), 12):
         lines.append("    " + ",".join("0x%02X" % b for b in chs[i:i + 12]) + ",")
     lines.append("};")
     lines.append("static const DiskFileDesc g_file_game = { %d, %d, g_game_chs };" % (obytes, scount))
+    lines.append("static const u8 g_fdc_chs[%d] = {" % len(fchs))
+    for i in range(0, len(fchs), 12):
+        lines.append("    " + ",".join("0x%02X" % b for b in fchs[i:i + 12]) + ",")
+    lines.append("};")
+    lines.append("static const DiskFileDesc g_file_fdc = { %d, %d, g_fdc_chs };" % (fbytes, fcount))
     lines.append("")
     lines.append("#endif")
     return "\n".join(lines) + "\n"
@@ -495,13 +560,18 @@ def gen_starter_tables(game_entry, game_start, game_len, game_crc):
 
 def placeholder_starter_tables():
     chs = [0] * (28 * 3)
+    fchs = [0] * (4 * 3)
     lines = ["#ifndef STARTER_TABLES_H", "#define STARTER_TABLES_H",
              '#include "fdc.h"', "",
              "#define GAME_START 0x13BA",
              "#define GAME_LEN 14185",
-             "#define GAME_CRC 0x0000", "",
+             "#define GAME_CRC 0x0000",
+             "#define FDC_LEN 1400",
+             "#define CRC_FDC 0x0000", "",
              "static const u8 g_game_chs[%d] = { 0 };" % len(chs),
              "static const DiskFileDesc g_file_game = { 14318, 28, g_game_chs };",
+             "static const u8 g_fdc_chs[%d] = { 0 };" % len(fchs),
+             "static const DiskFileDesc g_file_fdc = { 1400, 4, g_fdc_chs };",
              "",
              "#endif"]
     return "\n".join(lines) + "\n"
@@ -633,7 +703,6 @@ def main():
     hdr_path = os.path.join(PROJ, "src", "disk_tables.h")
     crt_path = os.path.join(PROJ, "src", "crt_addrs.h")
     stab_path = os.path.join(PROJ, "src", "starter_tables.h")
-    # Llavors només si falten (primera compilació): altrament reescriure'ls
     # amb placeholders invalidaria mtime+hash i forzaria recompilar-ho TOT
     # amb SDCC (~15 min) a cada build encara que res hagi canviat.
     try:
@@ -644,46 +713,56 @@ def main():
         open(hdr_path, "w").write(placeholder_header())
     if not os.path.exists(crt_path):
         open(crt_path, "w").write(crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map")))
-    # Llavor si falta o és d'una generació antiga (sense GAME_LEN/GAME_CRC):
+    # Llavor si falta o és d'una generació antiga (sense GAME_LEN/GAME_CRC/g_file_fdc):
     # compilar-hi a sobre petaria amb 'Undefined identifier'.
     try:
         stab_txt = open(stab_path).read()
     except OSError:
         stab_txt = ""
-    if "GAME_CRC" not in stab_txt:
+    if "GAME_CRC" not in stab_txt or "g_file_fdc" not in stab_txt:
         open(stab_path, "w").write(placeholder_starter_tables())
 
     prev = None
     prev_crt = None
     prev_stab = None
-    for it in range(3):
+    for it in range(4):
         # Header changes from the generated CHS table are picked up through
         # newer(); avoid recompiling every assembly and C source on pass two.
         game_path, game_start, game_size = compile_and_link(force)
         build_bank(force)  # Banc 5 (necessita el mapa resident per l'equ)
+        build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)
         starter_path, starter_start = build_starter(force)
         chs_map, gentry, game_len, game_crc = package(starter_path, starter_start, game_path)
         text = gen_header(chs_map)
         crt_text = crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map"))
-        stab_text = gen_starter_tables(gentry, game_start, game_len, game_crc)
+        stab_text = gen_starter_tables(gentry, game_start, game_len, game_crc, chs_map["FDC"])
         changed = False
-        if text != prev:
-            prev = text
-            open(hdr_path, "w").write(text)
-            print("  -> disk_tables.h actualitzat (iteracio %d)" % (it + 1))
-            changed = True
-        if crt_text != prev_crt:
-            prev_crt = crt_text
-            open(crt_path, "w").write(crt_text)
-            print("  -> crt_addrs.h actualitzat (iteracio %d)" % (it + 1))
-            changed = True
-        if stab_text != prev_stab:
-            prev_stab = stab_text
-            open(stab_path, "w").write(stab_text)
-            print("  -> starter_tables.h actualitzat (iteracio %d)" % (it + 1))
-            changed = True
+        # Escriure NOMES si el contingut canvia (si no, el mtime nou
+        # invalidaria hash/mtime i recompilaria dependents debades, i
+        # amagaria la no-convergencia entre iteracions).
+        for cur, old, path, label in ((text, prev, hdr_path, "disk_tables.h"),
+                                      (crt_text, prev_crt, crt_path, "crt_addrs.h"),
+                                      (stab_text, prev_stab, stab_path, "starter_tables.h")):
+            if cur != old:
+                try:
+                    disk = open(path).read()
+                except OSError:
+                    disk = None
+                if disk != cur:
+                    open(path, "w").write(cur)
+                    print("  -> %s actualitzat (iteracio %d)" % (label, it + 1))
+                    changed = True
+                if label == "disk_tables.h":
+                    prev = cur
+                elif label == "crt_addrs.h":
+                    prev_crt = cur
+                else:
+                    prev_stab = cur
         if not changed:
             break
+    else:
+        print("\n[AVIS] 4 iteracions sense convergir: revisa cadenes de dependencia.")
+    print()
 
 
 if __name__ == "__main__":

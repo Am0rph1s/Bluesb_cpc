@@ -18,8 +18,8 @@
 //  7 ( 3360): crouch2
 //  8 ( 3840): crouch3
 //  9 ( 4320): ladder1
-// 10 ( 4800): ladder2
-// 11 ( 5280): ladder3
+// 10 ( 4800): dance1
+// 11 ( 5280): dance2
 // 12 ( 5760): crate_walk1
 // 13 ( 6240): crate_walk2
 // 14 ( 6720): crate_walk3

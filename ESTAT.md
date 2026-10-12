@@ -704,3 +704,11 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
   - Validat en execució real (`scratch/trace_game.py`):
   - Captures reals preses durant el vol (`trace_float1.png`, `trace_float2.png`): en Jake puja agafant el cordill d'un globus vermell rodó perfecte, camisa blanca impecable, corbata, ulleres de sol, fons net sense rastre d'ascensors ni corrupció visual.
 
+
+## Sessio 2026-10-11 (2): F1 loader verd + ARREL del reboot (scratch paginable)
+- F1 infra build verd: FDC.BIN 784 B (entry 0x8000) -> slot C6:0x7000; starter N-fitxers (GAME 30 sectors + FDC 2 sectors) amb vores blau/groc/verd/vermell+gris pre-salt; GAME_LEN/CRC + FDC_LEN/CRC_FDC regenerats; DSK byte-verificat (BLUESB/GAME/FDC identics a obj/).
+- ARREL (debug 6 h, 30+ hipotesis mortes): l'scratch del motor a 0x7000 central cau DINS la finestra paginable 0x4000-0x7FFF. Al primer bank_select el motor es pagina ell mateix i executa dades (PC al buffer 0xB9xx, SP volat, backtrace amb cadena 70EB/70C2/7036 intacta). Hang o reboot segons la deriva (brossa depenent de sector).
+- FIX (1 adreca): scratch 0x7000 -> 0x8000 (VRAM pag.2, no paginable, invisible, esborrat pel memset post-carregues). build.py FDC_BANK_BASE/DATA 0x8000/0x8300; stub copia 2x512 C6:0x7000 -> 0x8000 + verifica CRC + reintenta; slot C6:0x7000 intacte (emmagatzematge). BOOT VERD: 7 assets + video_init (vora negra +58 s) + render + loop (PC 03EB) + input (Jake dreta + scroll verificats).
+- Robustesa shippada: starter verifica CRC_FDC (abans skip) via s_bank_apply; stub verifica+reintenta scratch (penja blanc 0x4B si falla); gris pre-salt 0x40 conservat. DIAG temporals revertits (t9/V2/V3/marcadors GAME/delay/ELEV-only/RET-stub).
+- Marges: _CODE 0x0100..0x35C1 (447 B lliures), _DATA ..0x3BCD (pila 1073 B), Banc5 marge 175 B, STARTER 1809 B. Llico ZRCP apresa: send-keys-string perd '"',;() -> '"' per chord SHIFT+50, ENTER=129; save-screen ranci durant motor (frames buits/fantasma); read-memory retorna buffer estatic (inutil); cpu/breakpoints disponibles pero no calgueren.
+- APARCATS (no reboot): hflip 0x7700 cau en finestra paginable (possible corrupcio silenciosa sprites mirallats, F0-shipped); OVERFLOW _CODE detectat en afegir disk_tables.h sencer a moving.c (resolt amb extern g_crc_fdc 2 B). PENDENT usuari: commit?; seguent F1 (FRONT/ZX0/musica) o test gameplay nivell 1.

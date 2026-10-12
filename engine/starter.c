@@ -16,6 +16,19 @@ void cpct_setPALColour(u8 pen, u8 hw) { (void)pen; (void)hw; }
 
 void s_start(void);
 
+// Banc a paginar per a la pagina de CRC (el motor restaura 0xC0 en sortir;
+// cal re-paginar el banc desti per a verificar-hi a sobre).
+u8 g_st_bank;
+static void s_bank_apply(void) {
+    __asm
+        push    bc
+        ld      bc, #0x7F00
+        ld      a, (_g_st_bank)
+        out     (c), a
+        pop     bc
+    __endasm;
+}
+
 static u16 s_crc16(const u8* p, u16 len) {
     u16 crc = 0xFFFF;
     while (len--) {
@@ -71,23 +84,47 @@ static void s_border_fail(void) {
     __endasm;
 }
 
-u8 s_main(void) {
+static u8 s_load_one(const DiskFileDesc* f, u8 bank, void* addr, u16 len, u16 crc) {
     u8 tries = 3;
-    s_border_blue(); // s_main ha arrencat
     while (tries--) {
-        if (fdc_load_file(&g_file_game, 0xC0, (void*)0x0100)) {
-            s_border_yellow(); // FDC ok, abans del CRC
-            if (s_crc16((const u8*)0x0100, GAME_LEN) == GAME_CRC) {
-                s_border_ok(); // verd: GAME íntegre a RAM (3 s visibles)
-                { u16 w; u8 v; for (w = 0; w < 300; w++) for (v = 0; v < 200; v++) { } }
-                ((void(*)(void))GAME_START)();
-            } else {
-                s_border_fail(); // vermell: GAME corrupte, no saltar
-                while (1) { }
+        if (fdc_load_file(f, bank, addr)) {
+            if (crc == 0) return 1;
+            // Verificar amb el banc desti paginat (el motor el restaura en sortir).
+            g_st_bank = bank; s_bank_apply();
+            if (s_crc16((const u8*)addr, len) == crc) {
+                g_st_bank = 0xC0; s_bank_apply();
+                return 1;
             }
+            g_st_bank = 0xC0; s_bank_apply();
         }
     }
-    // 3 intents esgotats: spin (el border vermell ho indicaria si video...).
+    return 0;
+}
+
+u8 s_main(void) {
+    s_border_blue(); // s_main ha arrencat
+    // 1. GAME resident (mateixos colors d'abans).
+    if (!s_load_one(&g_file_game, 0xC0, (void*)0x0100, GAME_LEN, GAME_CRC)) {
+        s_border_fail(); // vermell: GAME no carregat/corrupte, no saltar
+        while (1) { }
+    }
+    s_border_yellow(); // GAME ok (llegit + CRC)
+    // 2. Banc FDC (motor de disc de la sessio; el GAME el crida via scratch).
+    // Amb CRC del payload (FDC_LEN-128): si el banc arriba corrupte, vermell.
+    if (!s_load_one(&g_file_fdc, 0xC6, (void*)0x7000, FDC_LEN - 128, CRC_FDC)) {
+        s_border_fail(); // vermell: FDC no carregat/corrupte, no saltar
+        while (1) { }
+    }
+    s_border_ok(); // verd: tot a RAM (3 s visibles)
+    { u16 w; u8 v; for (w = 0; w < 300; w++) for (v = 0; v < 200; v++) { } }
+    __asm
+        ld      bc, #0x7F00
+        ld      a, #0x10
+        out     (c), a
+        ld      a, #0x40
+        out     (c), a   ;; BLANC pre-salt (DIAG F1: si es veu, el salt passa)
+    __endasm;
+    ((void(*)(void))GAME_START)();
     while (1) { }
     return 0;
 }

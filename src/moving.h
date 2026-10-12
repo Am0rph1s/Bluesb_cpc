@@ -62,7 +62,17 @@ extern u8  s_anim_idx, s_anim_timer;
 extern u8  s_rep_n;
 extern u8  s_rep_col[3], s_rep_row[3], s_rep_tile[3], s_rep_pages[3];
 
+// Estat d'ítems, bonus i malus (actualitzat al Banc 5):
+extern u8  g_vinyls_count;
+extern u8  g_hearts_count;
+extern u8  g_lives_count;
+extern u8  g_has_instrument;
+extern u8  g_level_complete;
+extern u8  g_checkpoint;
+extern u8  s_dance_timer;
+
 void carry_abort(void);
+void moving_popup_restore(u8 page);
 
 // Bloc de paràmetres per crides bankades amb args/retorn (CP-2.2).
 extern u16 bc_a, bc_b, bc_c, bc_d, bc_e;

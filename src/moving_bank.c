@@ -28,34 +28,54 @@ extern void render_tile_world(u8 tile_index, u16 col, u16 row,
 
 // --- Consultes directes al Banc 5 (MAP_PTR i TRIG_PTR ja mapejats) ---
 
-static u8 b5_tile_type(u16 col, u16 row) {
+static const u8* b5_trig_ptr(u8 col, u8 row) {
     u8 t;
     if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return 0;
-    t = MAP_PTR[(row << 7) + col];
-    return TRIG_PTR[(((u16)t) << 3) + (((u16)t) << 1)];
+    t = MAP_PTR[((u16)row << 7) + col];
+    return &TRIG_PTR[((u16)t << 3) + ((u16)t << 1)];
 }
 
-static void b5_world_reset_tile(u16 col, u16 row) {
-    u8 n, m = 0;
-    u16 c;
+static u8 b5_tile_type(u8 col, u8 row) {
+    const u8* p = b5_trig_ptr(col, row);
+    return p ? p[0] : 0;
+}
+
+static void b5_set_tile(u8 col, u8 row, u8 new_tile) {
+    u8 i;
     if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return;
-    n = MAP_PTR[(row << 7) + col];
-    c = (u16)(col + 1);
-    while (c < LEVEL_MAP_W) {
-        m = MAP_PTR[(row << 7) + c];
-        if (m != n) break;
-        c++;
-    }
-    if (c >= LEVEL_MAP_W) return;
-    MAP_MUT[(row << 7) + col] = m;
-    if (s_rep_n < 3) {
-        s_rep_col[s_rep_n] = (u8)col;
-        s_rep_row[s_rep_n] = (u8)row;
-        s_rep_tile[s_rep_n] = m;
-        s_rep_pages[s_rep_n] = 3;
-        s_rep_n++;
+    MAP_MUT[((u16)row << 7) + col] = new_tile;
+    i = s_rep_n;
+    if (i < 3) {
+        s_rep_col[i] = col;
+        s_rep_row[i] = row;
+        s_rep_tile[i] = new_tile;
+        s_rep_pages[i] = 3;
+        s_rep_n = (u8)(i + 1);
     }
 }
+
+static void b5_world_reset_tile(u8 col, u8 row) {
+    const u8* mp;
+    u8 n, m, c;
+    if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return;
+    mp = &MAP_PTR[((u16)row << 7) + col];
+    n = *mp;
+    for (c = (u8)(col + 1); c < LEVEL_MAP_W; c++) {
+        m = *++mp;
+        if (m != n) {
+            b5_set_tile(col, row, m);
+            return;
+        }
+    }
+}
+
+static u8  s_popup_timer;
+static u8  s_popup_idx;
+static i16 s_popup_wx;
+static i16 s_popup_wy;
+static u8  s_popup_drawn[2];
+static u16 s_popup_dst[2][7];
+static u8  s_popup_bg[2][28];
 
 void moving_bank_init(void) {
     u8 i;
@@ -64,6 +84,22 @@ void moving_bank_init(void) {
     g_cam_row = LEVEL_CAM0_ROW;
     s_px8 = (i16)(LEVEL_START_PX * SUB);
     s_py8 = (i16)(LEVEL_START_PY * SUB);
+
+    g_vinyls_count = 0;
+    g_hearts_count = 3;
+    g_lives_count = 3;
+    g_has_instrument = 0;
+    g_level_complete = 0;
+    g_checkpoint = 0;
+    s_dance_timer = 0;
+
+    s_popup_timer = 0;
+    s_popup_drawn[0] = s_popup_drawn[1] = 0;
+
+#if LEVEL_INST_TILE != 0
+    // Ubicar l'instrument col·leccionable obligatori del nivell a la seva sala
+    MAP_MUT[(LEVEL_INST_ROW << 7) + LEVEL_INST_COL] = LEVEL_INST_TILE;
+#endif
 
     s_conveyor_phase = 0;
     s_conveyor_tick = 0;
@@ -80,35 +116,38 @@ void moving_bank_init(void) {
         e->anim_tick = 0;
         e->frame = 0;
         e->drawn[0] = e->drawn[1] = 0;
-        e->drawn_frame[0] = e->drawn_frame[1] = 0;
-        e->drawn_start_byte[0] = e->drawn_start_byte[1] = 0;
-        e->drawn_byte_count[0] = e->drawn_byte_count[1] = 0;
-        e->drawn_start_row[0] = e->drawn_start_row[1] = 0;
-        e->drawn_row_count[0] = e->drawn_row_count[1] = 0;
-        e->drawn_x[0] = e->drawn_x[1] = 0;
-        e->drawn_y[0] = e->drawn_y[1] = 0;
     }
 }
 
+void moving_bank_popup_restore(void) {
+    u8 page = (u8)bc_a;
+    u8 r;
+    const u16* dst_p;
+    const u8* bg_p;
+    if (page > 1 || !s_popup_drawn[page]) return;
+    dst_p = s_popup_dst[page];
+    bg_p = s_popup_bg[page];
+    for (r = 0; r < 7; r++) {
+        g_moving_dst = *dst_p++;
+        g_moving_background = (u16)bg_p;
+        g_moving_span = 4;
+        moving_restore_span();
+        bg_p += 4;
+    }
+    s_popup_drawn[page] = 0;
+}
+
 void moving_bank_push(void) {
-    u16 col0 = bc_a;
-    u16 col1 = bc_b;
-    u16 row = bc_c;
-    u8 op0, op1, tile;
-    u16 off;
+    u8 row = (u8)bc_c;
+    const u8* p0 = b5_trig_ptr((u8)bc_a, row);
+    const u8* p1 = b5_trig_ptr((u8)bc_b, row);
     i8 direction = 0;
-
-    if (row >= LEVEL_MAP_H || col0 >= LEVEL_MAP_W || col1 >= LEVEL_MAP_W) { bc_r = 0; return; }
-
-    tile = MAP_PTR[(row << 7) + col0];
-    off = (((u16)tile) << 3) + (((u16)tile) << 1);
-    op0 = TRIG_PTR[off + 2];
-    tile = MAP_PTR[(row << 7) + col1];
-    off = (((u16)tile) << 3) + (((u16)tile) << 1);
-    op1 = TRIG_PTR[off + 2];
-
-    if (op0 == 27 || op1 == 27) direction++;
-    if (op0 == 28 || op1 == 28) direction--;
+    if (p0 && p1) {
+        u8 op0 = p0[2];
+        u8 op1 = p1[2];
+        if (op0 == 27 || op1 == 27) direction++;
+        if (op0 == 28 || op1 == 28) direction--;
+    }
     bc_r = (i16)(direction * 16);
 }
 
@@ -140,8 +179,7 @@ static void b5_update_entities_and_spans(void) {
     u8 i;
     for (i = 0; i < LEVEL_ELEVATOR_COUNT; i++) {
         MovingElevator* e = &g_mag_elevators[i];
-        u16 row;
-        i16 step;
+        u8 row, step;
 
         e->delta_y = 0;
         e->frame = 0;
@@ -151,18 +189,18 @@ static void b5_update_entities_and_spans(void) {
             continue;
         }
 
-        row = (u16)(e->y >> 4);
+        row = (u8)(e->y >> 4);
         step = (((e->anim_tick & 7) < 3) ? 3 : 2);
         if (e->direction < 0) {
-            if (row >= 4 && b5_tile_type(e->map_col, (u16)(row - 4)) == 10) {
+            if (row >= 4 && b5_tile_type(e->map_col, (u8)(row - 4)) == 10) {
                 e->direction = 1;
                 e->wait = 1;
                 continue;
             }
             e->y = (i16)(e->y - step);
-            e->delta_y = (i16)-step;
+            e->delta_y = (i16)-(i8)step;
         } else {
-            if (b5_tile_type(e->map_col, (u16)(row + 1)) == 10) {
+            if (b5_tile_type(e->map_col, (u8)(row + 1)) == 10) {
                 e->direction = -1;
                 e->wait = 1;
                 continue;
@@ -176,7 +214,7 @@ static void b5_update_entities_and_spans(void) {
     }
 
     if (++s_conveyor_tick >= 4) {
-        u8 s, c;
+        u8 s;
         s_conveyor_tick = 0;
         if (++s_conveyor_phase >= 6) {
             s_conveyor_phase = 0;
@@ -184,11 +222,85 @@ static void b5_update_entities_and_spans(void) {
         for (s = 0; s < LEVEL_ANIM_SPAN_COUNT; s++) {
             const LevelAnimSpan* sp = &s_level_anim_spans[s];
             u8 tile = s_level_anim_seqs[sp->seq][s_conveyor_phase];
-            u16 row_off = (u16)sp->row << 7;
-            for (c = sp->col_start; c <= sp->col_end; c++) {
-                MAP_MUT[row_off + c] = tile;
-            }
+            u8* dst = &MAP_MUT[((u16)sp->row << 7) + sp->col_start];
+            u8 n = (u8)(sp->col_end - sp->col_start + 1);
+            while (n--) *dst++ = tile;
         }
+    }
+
+    if (s_popup_timer) {
+        s_popup_timer--;
+        s_popup_wy--;
+    }
+}
+
+static void b5_check_bonus_triggers(u8 col, u8 row, i16 px, i16 py, u8 crouch) {
+    const u8* tp = b5_trig_ptr(col, row);
+    u8 b6, idx;
+    const LevelTriggerEntry* e;
+
+    if (!tp) return;
+    b6 = tp[6];
+    if (b6 == 255 && !crouch && row > 0) {
+        row--;
+        tp = b5_trig_ptr(col, row);
+        if (!tp) return;
+        b6 = tp[6];
+    }
+    if (b6 >= 64) return;
+    idx = s_b6_to_trig3[b6];
+    if (idx == 0xFF) return;
+
+    e = &s_level_trig3[idx];
+    if (e->kind == 11) {
+        if (e->popup_or_chk && !g_checkpoint) {
+            g_checkpoint = e->popup_or_chk;
+        }
+        if (e->exit_flag) {
+            if (g_has_instrument == (LEVEL_ID + 1) && !g_level_complete) {
+                g_level_complete = 1;
+                b5_set_tile(col, row, e->bg_tile);
+                if (e->special_anim == 21) s_dance_timer = 52;
+                if (s_carry_kind) carry_abort();
+            }
+            return;
+        }
+        b5_set_tile(col, row, e->bg_tile);
+    } else if (e->kind == 12) {
+        b5_set_tile(col, row, e->bg_tile);
+        if (e->popup_or_chk < LEVEL_POPUP_COUNT) {
+            s_popup_idx = e->popup_or_chk;
+            s_popup_wx = (i16)(px & ~1);
+            s_popup_wy = (i16)(py - 8);
+            s_popup_timer = 30;
+        }
+    } else {
+        return;
+    }
+
+    if (e->add_vinyls) {
+        u8 v = (u8)(g_vinyls_count + e->add_vinyls);
+        if (v >= 100) {
+            v = (u8)(v - 100);
+            if (g_hearts_count < 5) g_hearts_count++;
+        }
+        g_vinyls_count = v;
+    }
+    if (e->sub_vinyls) {
+        g_vinyls_count = (g_vinyls_count > e->sub_vinyls)
+                       ? (u8)(g_vinyls_count - e->sub_vinyls) : 0;
+    }
+    if (e->add_heart && g_hearts_count < 5) {
+        g_hearts_count++;
+    }
+    if (e->add_life && g_lives_count < 99) {
+        g_lives_count++;
+    }
+    if (e->instrument && !g_has_instrument) {
+        g_has_instrument = e->instrument;
+    }
+    if (e->special_anim == 21) {
+        s_dance_timer = 52;
     }
 }
 
@@ -198,51 +310,62 @@ void moving_bank_update(void) {
     u8 grab = (u8)bc_d;
     u8 climbing = 0;
     i16 px, py, belt_push = 0;
+    u8 col, row, tt;
 
     b5_update_entities_and_spans();
 
     py = (i16)(s_py8 >> 3);
     px = (i16)(s_px8 >> 3);
 
+    if (s_dance_timer) {
+        s_dance_timer--;
+        s_vx = 0;
+        bc_r = 0;
+        return;
+    }
+
+    col = (u8)((px + 8) >> 3);
+    row = (u8)((py + PH - 1) >> 4);
+
+    // --- Triggers d'ítems: vinils (+1/-10), interrogants (?), cors, 1-Up, guitarra i meta ---
+    b5_check_bonus_triggers(col, row, px, py, crouch);
+    if (s_dance_timer) {
+        s_vx = 0;
+        bc_r = 0;
+        return;
+    }
+
     // --- Escala (tt==7 -> climbing=1) i Aigua/Peixera (tt==11 -> climbing=2) ---
-    {
-        u16 lcol = (u16)((px + 8) >> 3);
-        u8 tt = b5_tile_type(lcol, (u16)((py + PH - 1) >> 4));
-        if (tt != 7 && b5_tile_type(lcol, (u16)((py + PH) >> 4)) == 7) tt = 7;
-        if (tt == 7 || tt == 11) {
-            climbing = (tt == 7) ? 1 : 2;
-            if (s_carry_kind) carry_abort();
-            if (tt == 7) {
-                if (s_climb_prev != 1) {
-                    px = (i16)((lcol << 3) - 4);
-                    s_px8 = (i16)(px * SUB);
-                }
-                s_on_ground = 0;
+    tt = b5_tile_type(col, row);
+    if (tt != 7 && b5_tile_type(col, (u8)((py + PH) >> 4)) == 7) tt = 7;
+    if (tt == 7 || tt == 11) {
+        climbing = (tt == 7) ? 1 : 2;
+        if (s_carry_kind) carry_abort();
+        if (tt == 7) {
+            if (s_climb_prev != 1) {
+                px = (i16)(((u16)col << 3) - 4);
+                s_px8 = (i16)(px * SUB);
             }
-            if (jump) {
-                u16 arow = (u16)(((tt == 7) ? (py - 2) : (py + 12)) >> 4);
-                u8 ok = (b5_tile_type(lcol, arow) == tt);
-                s_vy = (tt == 7) ? (ok ? -19 : -10) : (ok ? -12 : 0);
-                s_on_ground = 0;
-            } else if (crouch) {
-                s_vy = (tt == 7) ? 19 : 16;
-            } else if (tt == 11 && !s_on_ground) {
-                s_vy = 8;
-            }
-            s_ground_elevator = -1;
+            s_on_ground = 0;
         }
+        if (jump) {
+            u8 arow = (u8)(((tt == 7) ? (py - 2) : (py + 12)) >> 4);
+            u8 ok = (b5_tile_type(col, arow) == tt);
+            s_vy = (tt == 7) ? (ok ? -19 : -10) : (ok ? -12 : 0);
+            s_on_ground = 0;
+        } else if (crouch) {
+            s_vy = (tt == 7) ? 19 : 16;
+        } else if (tt == 11 && !s_on_ground) {
+            s_vy = 8;
+        }
+        s_ground_elevator = -1;
     }
 
     // --- Grab / release d'objectes del mapa (globus=8, paraigua=9, caixa=5) ---
-    if (!s_carry_kind && !climbing) {
-        u16 gcol = (u16)((px + 8) >> 3);
-        u16 grow = (u16)((py + PH - 1) >> 4);
-        u8 gtype = b5_tile_type(gcol, grow);
-        if (gtype == 8 || gtype == 9) {
-            b5_world_reset_tile(gcol, grow);
-            if (grow > 0) b5_world_reset_tile(gcol, (u16)(grow - 1));
-            s_carry_kind = (gtype == 8) ? 2 : 8;
-        }
+    if (!s_carry_kind && !climbing && (tt == 8 || tt == 9)) {
+        b5_world_reset_tile(col, row);
+        if (row > 0) b5_world_reset_tile(col, (u8)(row - 1));
+        s_carry_kind = (tt == 8) ? 2 : 8;
     }
     if (grab && !s_grab_prev && !climbing) {
         if (s_carry_kind == 1 && !s_carry_state) {
@@ -254,22 +377,18 @@ void moving_bank_update(void) {
         } else if (s_carry_kind == 2 || s_carry_kind == 8) {
             sprite_abort_balloon();
             s_carry_kind = 0;
-        } else if (!s_carry_kind && crouch && s_on_ground) {
-            u16 gcol = (u16)((px + 8) >> 3);
-            u16 grow = (u16)((py + PH - 1) >> 4);
-            if (b5_tile_type(gcol, grow) == 5) {
-                b5_world_reset_tile(gcol, grow);
-                s_carry_kind = 1; s_carry_state = 0;
-                s_anim_idx = 0; s_anim_timer = 0;
-            }
+        } else if (!s_carry_kind && crouch && s_on_ground && tt == 5) {
+            b5_world_reset_tile(col, row);
+            s_carry_kind = 1; s_carry_state = 0;
+            s_anim_idx = 0; s_anim_timer = 0;
         }
     }
     s_grab_prev = grab;
 
     if (s_on_ground) {
-        bc_a = (u16)((px + 3) >> 3);
-        bc_b = (u16)((px + 8) >> 3);
-        bc_c = (u16)((py + PH) >> 4);
+        bc_a = (u8)((px + 3) >> 3);
+        bc_b = col;
+        bc_c = (u8)((py + PH) >> 4);
         moving_bank_push();
         belt_push = bc_r;
     }
@@ -304,8 +423,8 @@ void moving_bank_conveyor(void) {
         i16 bb = (i16)((s_py8 >> 3) - 1);
         u8 pop = (bb < 32);
         if (!pop) {
-            u16 bcol = (u16)(((s_px8 >> 3) + 8) >> 3);
-            u16 brow = (u16)((bb >> 4) - 2);
+            u8 bcol = (u8)(((s_px8 >> 3) + 8) >> 3);
+            u8 brow = (u8)((bb >> 4) - 2);
             pop = (b5_tile_type(bcol, brow) > 5);
         }
         if (pop) {
@@ -319,19 +438,39 @@ void moving_bank_conveyor(void) {
     {
         i16 px = (i16)(s_px8 >> 3);
         i16 py = (i16)(s_py8 >> 3);
-        u16 gcol = (u16)((px + 8) >> 3);
-        u16 grow = (u16)((py + 16) >> 4);
-        u8 avt = 255;
-        if (gcol < LEVEL_MAP_W && grow < LEVEL_MAP_H) {
-            u8 t = MAP_PTR[(grow << 7) + gcol];
-            avt = TRIG_PTR[(((u16)t) << 3) + (((u16)t) << 1) + 9];
-        }
+        const u8* tp = b5_trig_ptr((u8)((px + 8) >> 3), (u8)((py + 16) >> 4));
+        u8 avt = tp ? tp[9] : 255;
         if (avt >= 12 && avt <= 17) {
             g_grate_enable = 1;
             g_grate_phase_x = (u8)((px >> 1) & 1);
             g_grate_base_y = (u8)(py & 7);
         } else {
             g_grate_enable = 0;
+        }
+    }
+
+    // 4. Dibuixar sprite emergent (popup -10, -20, +50) si està actiu i visible
+    if (s_popup_timer && page <= 1) {
+        i16 view_x = (i16)(g_cam_x4 << 2);
+        i16 view_y = (i16)(g_cam_row << 3);
+        if (s_popup_wx >= view_x && s_popup_wx + 8 <= view_x + 160 &&
+            s_popup_wy >= view_y && s_popup_wy + 7 <= view_y + 160) {
+            u8 r;
+            const u8* spr = s_popup_sprites[s_popup_idx];
+            u16* dst_p = s_popup_dst[page];
+            u8* bg_p = s_popup_bg[page];
+            for (r = 0; r < 7; r++) {
+                u16 dst = (u16)ring_address(page, s_popup_wx, (i16)(s_popup_wy + r));
+                *dst_p++ = dst;
+                g_moving_dst = dst;
+                g_moving_background = (u16)bg_p;
+                g_moving_sprite = (u16)spr;
+                g_moving_span = 4;
+                moving_blit_span();
+                bg_p += 4;
+                spr += 8;
+            }
+            s_popup_drawn[page] = 1;
         }
     }
 }

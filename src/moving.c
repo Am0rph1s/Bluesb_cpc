@@ -11,6 +11,8 @@
 #include "bank.h"
 #include "moving.h"
 #include "sprite.h"
+#include "fdc.h"
+extern const u16 g_crc_fdc;
 
 // Slots fixos de la taula de salts del Banc 5 (engine/bank5_table.s).
 #define BC_UPDATE ((void*)0x6E00)
@@ -34,6 +36,14 @@ u8 s_conveyor_phase;
 u8 s_conveyor_tick;
 u8 s_page_conveyor_phase[2];
 
+u8 g_vinyls_count;
+u8 g_hearts_count;
+u8 g_lives_count;
+u8 g_has_instrument;
+u8 g_level_complete;
+u8 g_checkpoint;
+u8 s_dance_timer;
+
 u8* ring_address(u8 page, i16 x, i16 y) {
     u16 x_byte = (u16)(x >> 1);
     u16 ma = (u16)((((u16)(y >> 3) * 40) + (x_byte >> 1)) & 0x03FF);
@@ -45,6 +55,8 @@ u8* ring_address(u8 page, i16 x, i16 y) {
 void moving_init(void) { call_banked(0xC5, BC_INIT); }
 
 void moving_update(void) { call_banked(0xC5, BC_UPDATE); }
+
+void moving_popup_restore(u8 page) { bc_a = page; call_banked(0xC5, BC_RESTORE); }
 
 // Frames d'ascensor al Banc 7 (ELEV.BIN a 0x78E0, 2x224 B).
 #define ELEVATOR_FRAMES_BASE ((const u8*)0x78E0)
@@ -147,3 +159,58 @@ void moving_draw_conveyor_tiles(void) { call_banked(0xC5, (void*)0x6E12); }
 i16 moving_conveyor_push(void) { call_banked(0xC5, BC_PUSH); return bc_r; }
 
 i8 moving_find_landing(void) { call_banked(0xC5, BC_FIND); return (i8)bc_r; }
+
+// --- Carregador FDC banquet (F1) ---
+// El motor FDC (fdc.c + assets_fdc.s, TAL QUAL) viu al banc 0xC6 (FDC.BIN,
+// slot C6:0x7000). Com que el motor commuta la finestra on s'executaria,
+// NO pot correr ni al banc ni a 0x7000 central (paginable!): l'stub el
+// copia a scratch central 0x8000 (VRAM pag.2, fora de 0x4000-0x7FFF,
+// invisible, esborrat pel GAME post-carregues) i l'hi crida, amb
+// comportament bit-identic al resident d'abans. Una sola copia per sessio
+// (l'scratch sobreviu: el joc no escriu a 0x8000 central fins al memset;
+// FRONT futur: per sota de 0x8000!). Mateixa signatura que fdc.h: main.c
+// no canvia. Guany: ~1600 B fora del Bloc 0 + carrega a mig joc (nivells).
+#define FDC_BANK_BASE 0x8000
+#define FDC_BANK_ENTRY ((u8(*)(const DiskFileDesc*, u8, void*))FDC_BANK_BASE)
+#define FDC_IMAGE_LEN 784
+static u8 s_fdc_ready = 0;
+static u16 s_fdc_crc16(const u8* p, u16 len) {
+    u16 crc = 0xFFFF;
+    while (len--) {
+        u8 k;
+        crc ^= (u16)(*p++) << 8;
+        for (k = 0; k < 8; k++)
+            crc = (crc & 0x8000) ? (u16)((crc << 1) ^ 0x1021) : (u16)(crc << 1);
+    }
+    return crc;
+}
+static void s_fdc_copy(void) {
+    u8 i;
+    // 2x512 = imatge (codi+dades inicials; l'estat es re-inicialitza per
+    // carrega). SRC: slot C6:0x7000 (emmagatzematge). DST: adreca linkada.
+    for (i = 0; i < 2; i++) {
+        u16 off = (u16)(i << 9);
+        bank_set(0xC6);
+        cpct_memcpy((void*)0xB800, (const void*)(0x7000 + off), 512);
+        bank_set(0xC0);
+        cpct_memcpy((void*)(FDC_BANK_BASE + off), (const void*)0xB800, 512);
+    }
+}
+u8 fdc_load_file(const DiskFileDesc* d, u8 bk, void* ad) {
+    if (!s_fdc_ready) {
+        u8 tries = 3, ok = 0;
+        while (tries-- && !ok) {
+            u8 prev = bank_get();
+            s_fdc_copy();
+            bank_restore(prev);
+            // Verificar l'scratch abans de cridar-hi (imposa C6 real).
+            if (s_fdc_crc16((const u8*)FDC_BANK_BASE, FDC_IMAGE_LEN) == g_crc_fdc) ok = 1;
+        }
+        if (!ok) { cpct_setBorder(0x4B); while (1) { } } // blanc: scratch corrupte
+        s_fdc_ready = 1;
+    }
+    // Blink FDC silencios (NAU_FDC_BLINK bit 7): a mig joc no es toca la
+    // paleta; a l'arrencada ja informen els colors de vora.
+    *(volatile u8*)0xBA0A |= 0x80;
+    return FDC_BANK_ENTRY(d, bk, ad);
+}

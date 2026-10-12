@@ -125,10 +125,10 @@ GAME_FRAMES = [
     ('crouch1', 4),
     ('crouch2', 5),
     ('crouch3', 6),
-    # 9..11: Escala de mà
+    # 9..11: Escala de mà (9) + Ball d'interrogant/meta (10..11, DOS 33 i 35 / animframe_0135)
     ('ladder1', 9),
-    ('ladder2', 10),
-    ('ladder3', 11),
+    ('dance1',  33),
+    ('dance2',  35),
     # 12..17: Caixes (portar, caminar, agafar)
     ('crate_walk1', 13),
     ('crate_walk2', 14),

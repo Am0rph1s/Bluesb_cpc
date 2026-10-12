@@ -10,8 +10,7 @@
     .optsdcc -mz80 sdcccall(1)
 
     .globl _moving_bank_update
-    ;; CP-2.2b: restore/draw són residents (moving.c); els seus slots queden
-    ;; com a RETs per conservar les adreces de la resta (cap crida els usa).
+    .globl _moving_bank_popup_restore
     .globl _moving_bank_push
     .globl _moving_bank_find
     .globl _moving_bank_init
@@ -20,11 +19,9 @@
     .area _CODE
 
 _bc_update::
-    jp      _moving_bank_update     ;; slot 0 -> 0x6E00
+    jp      _moving_bank_update         ;; slot 0 -> 0x6E00
 _bc_restore::
-    ret                             ;; slot 1 (sense ús) -> 0x6E03
-    nop
-    nop
+    jp      _moving_bank_popup_restore  ;; slot 1 -> 0x6E03
 _bc_draw::
     ret                             ;; slot 2 (sense ús) -> 0x6E06
     nop

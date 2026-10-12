@@ -29,6 +29,8 @@ extern void render_column(u16 cam_col, u16 cam_row, u16 sx);
 extern void render_row(u16 cam_col, u16 cam_row, u16 sy);
 extern void render_tile_world(u8 tile_index, u16 col, u16 row,
                               u16 cam_x4, u16 cam_row);
+extern void hud_init(void);
+extern void hud_render(u8 page, u8 force);
 extern void crtc_set_display_start(u16 ma);
 extern void cpc_install_isr(void);
 extern volatile u8 g_ticks;
@@ -86,6 +88,8 @@ u8  s_rep_col[3], s_rep_row[3], s_rep_tile[3], s_rep_pages[3];
 static u8 s_back_page = 1;
 
 void main(void);
+
+const u16 g_crc_fdc = CRC_FDC; // per a l'stub FDC (verifica l'scratch, moving.c)
 
 void start(void) {
     __asm
@@ -217,6 +221,9 @@ void carry_abort(void) {
 }
 
 static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) {
+    if (s_dance_timer) {
+        return (s_dance_timer & 4) ? 10 : 11;
+    }
     if (climbing == 1) {
         if (jump || crouch || move != 0) {
             s_anim_timer++;
@@ -498,22 +505,25 @@ void main(void) {
         bank_restore(prev);
     }
 
-    cpct_memset((void*)0xC000, 0, 0x4000);
-    cpct_memset((void*)0x8000, 0, 0x4000);
+    cpct_memset((void*)0xC000, 0xFF, 0x4000);
+    cpct_memset((void*)0x8000, 0xFF, 0x4000);
 
     // Inicialitza posició d'inici, càmera i entitats des del paquet de nivell (Banc 5)
     moving_init();
+    hud_init();
     g_vram_start = camera_ma(g_cam_x4, g_cam_row);
     s_pending_x = 0;
     s_pending_y = 0;
 
     g_vram_base_hi = 0xC0;
     render_all(g_cam_x4, g_cam_row);
+    hud_render(0, 1);
     moving_draw(0, g_cam_x4, g_cam_row);
     crtc_set_display_start((u16)(0x3000 + g_vram_start));
 
     g_vram_base_hi = 0x80;
     render_all(g_cam_x4, g_cam_row);
+    hud_render(1, 1);
     moving_draw(1, g_cam_x4, g_cam_row);
     s_back_page = 1;
 
@@ -626,11 +636,13 @@ void main(void) {
         }
         moving_restore(s_back_page, (move_x != 0 || move_y != 0));
         carry_restore(s_back_page);
+        moving_popup_restore(s_back_page);
         world_flush_repaints();
 
         // Actualitzar tires d'scroll i spans animats del nivell + reixes de primer pla al Banc 5
         sync_backbuffer(page_dx, page_dy, g_cam_x4, g_cam_row);
         g_vram_start = camera_ma(g_cam_x4, g_cam_row);
+        hud_render(s_back_page, (page_dx != 0 || page_dy != 0));
         bc_a = s_back_page;
         moving_draw_conveyor_tiles();
         cur = select_player_anim(s_climb_prev, move, jump, crouch, (i16)dsy);

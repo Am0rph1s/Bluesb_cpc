@@ -60,7 +60,7 @@ C_HEADERS = {
     "engine/fdc.c": ["engine/fdc.h", "engine/cpctelera.h"],
     "src/render.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h", "src/hud_pkg.h"],
     "src/moving.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h", "engine/fdc.h"],
-    "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "src/disk_tables.h",
+    "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h", "src/disk_tables.h",
                    "src/sprite.h", "src/moving.h", "src/player_frames.h",
                    "engine/stack_canary.h", "src/crt_addrs.h", "src/level_pkg.h"],
 }
@@ -79,6 +79,15 @@ BANK_C_HEADERS = {
     "src/moving_bank.c": ["engine/cpctelera.h", "engine/bank.h",
                           "src/moving.h", "src/sprite.h", "src/level_pkg.h"],
 }
+
+# FRONT banked (overlay d'arrencada C4:0x4000, descartable per TILESET).
+# front.c (show/key/pal, nomes central/VRAM/PPI/GA) + front_table.s (slot JP)
+# + front_ext.s (EQU externs centrals generat del mapa resident).
+FRONT_BASE = 0x4000
+FRONT_DATA = 0x4200
+FRONT_MAXLEN = 0x1000
+FRONT_C_SOURCE = "engine/front.c"
+FRONT_C_HEADERS = ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h"]
 
 # Fitxers de dades al DSK (es carregaran per FDC raw). Ordre = ordre al disc.
 # (L'ordre de dades no afecta el boot; el BLUESB va primer via package().)
@@ -102,8 +111,13 @@ DATA_FILES = [
     ("EXTRA", "BIN", os.path.join(PROJ, "assets", "bbdata", "EXTRA.BIN")),
     # ELEV: 2 frames d'ascensor Mode 0 (2x224 B) -> Banc 7 lliure 0x78E0.
     ("ELEV", "BIN", os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")),
-    # F1-FRONT (DIAG: nomes FSPLASH; FSELECT/FMAP tornen amb FRONT.BIN).
+    # FRONT.BIN: overlay d'arrencada (front.c banked C4:0x4000) -> C4 (el
+    # TILESET el sobreescriu quan acaba el FRONT). L'starter el carrega.
+    ("FRONT", "BIN", os.path.join(PROJ, "obj", "FRONT.BIN")),
+    # F1-FRONT: les 3 pantalles (el GAME les mostra via FRONT banked).
     ("FSPLASH", "ZX0", os.path.join(PROJ, "obj", "FSPLASH.ZX0")),
+    ("FSELECT", "ZX0", os.path.join(PROJ, "obj", "FSELECT.ZX0")),
+    ("FMAP", "ZX0", os.path.join(PROJ, "obj", "FMAP.ZX0")),
 ]
 
 
@@ -509,6 +523,69 @@ def build_fdcbank(force):
     return bin_path
 
 
+def build_front(force):
+    """Enllaca FRONT.BIN (front.c banked C4:0x4000 + slot + EQU centrals).
+    Necessita el mapa resident (bluesb.map) per resoldre stub/depack/args.
+    Retorna FRONT.BIN."""
+    obj = os.path.join(PROJ, "obj")
+    # EQU externs centrals des del mapa resident (falla sorollos si falten).
+    resident_map = os.path.join(obj, PROGNAME + ".map")
+    syms = map_symbols(resident_map)
+    need = {"_fdc_load_file": None, "_zx0_decompress": None, "_g_front_args": None}
+    for k in need:
+        if k not in syms:
+            print("\n[FATAL] FRONT: %s no es al mapa resident. Enllaca GAME primer?" % k)
+            sys.exit(1)
+        need[k] = syms[k]
+    ext_s = os.path.join(obj, "front_ext.s")
+    ext_txt = ("    .module front_ext\n" +
+               "".join("    .globl %s\n%s = 0x%04X\n" % (k, k, v) for k, v in need.items()))
+    if not os.path.exists(ext_s) or open(ext_s).read() != ext_txt:
+        open(ext_s, "w").write(ext_txt)
+    # Compila front.c (cache mtime+hash com la resta).
+    src = os.path.join(PROJ, FRONT_C_SOURCE)
+    rel = os.path.join(obj, "front.rel")
+    headers = [os.path.join(PROJ, name) for name in FRONT_C_HEADERS]
+    if force or is_stale(rel, [src] + headers):
+        run([SDCC] + INCLUDES + CFLAGS + ["-c", src, "-o", rel])
+        mark_fresh(rel, [src] + headers)
+    tab_s = os.path.join(PROJ, "engine", "front_table.s")
+    tab_rel = os.path.join(obj, "front_table.rel")
+    if force or is_stale(tab_rel, [tab_s]):
+        run([SDASZ80, "-plosgff", tab_rel, tab_s])
+        mark_fresh(tab_rel, [tab_s])
+    ext_rel = os.path.join(obj, "front_ext.rel")
+    if force or is_stale(ext_rel, [ext_s]):
+        run([SDASZ80, "-plosgff", ext_rel, ext_s])
+        mark_fresh(ext_rel, [ext_s])
+    ihx = os.path.join(obj, "front.ihx")
+    run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % FRONT_BASE,
+         "--data-loc", "0x%04X" % FRONT_DATA,
+         tab_rel, rel, ext_rel, "-o", ihx])
+    map_path = os.path.join(obj, "front.map")
+    syms_f = map_symbols(map_path)
+    if syms_f.get("_front_entry", -1) != FRONT_BASE:
+        print("\n[FATAL] FRONT: entry=0x%04X (esperat 0x%04X). Ordre _CODE trencat!" %
+              (syms_f.get("_front_entry", -1), FRONT_BASE))
+        sys.exit(1)
+    f_code_s, f_code_l = map_area(map_path, "CODE")
+    f_data_s, f_data_l = map_area(map_path, "DATA")
+    if (f_code_s is not None and f_data_s is not None and
+            (f_code_s + f_code_l) > f_data_s):
+        print("\n[FATAL] FRONT _CODE envaeix _DATA! Mou --data-loc amunt.")
+        sys.exit(1)
+    bin_path = os.path.join(obj, "FRONT.BIN")
+    convert_ihx(ihx, bin_path, start_addr=FRONT_BASE,
+                max_length=image_length(map_path, FRONT_BASE))
+    size = os.path.getsize(bin_path)
+    if size > FRONT_MAXLEN:
+        print("\n[FATAL] FRONT: %d bytes > 0x%04X! Aprimar (o pujar data-loc)." %
+              (size, FRONT_MAXLEN))
+        sys.exit(1)
+    print("FRONTBANK: 0x%04X (%d bytes, entry=0x%04X)" % (FRONT_BASE, size, FRONT_BASE))
+    return bin_path
+
+
 def compile_and_link(force):
     obj = os.path.join(PROJ, "obj")
     objs = []
@@ -547,10 +624,11 @@ def crc16_ccitt(data, init=0xFFFF):
     return crc
 
 
-def gen_starter_tables(game_entry, game_start, game_len, game_crc, fdc_entry):
-    """Genera src/starter_tables.h (descs GAME.BIN + FDC.BIN + CRCs)."""
+def gen_starter_tables(game_entry, game_start, game_len, game_crc, fdc_entry, front_entry):
+    """Genera src/starter_tables.h (descs GAME.BIN + FDC.BIN + FRONT.BIN + CRCs)."""
     obytes, scount, chs = game_entry
     fbytes, fcount, fchs, fcrc = fdc_entry
+    rbytes, rcount, rchs, rcrc = front_entry
     lines = ["#ifndef STARTER_TABLES_H", "#define STARTER_TABLES_H",
              '#include "fdc.h"', "",
              "// Generat per tools/build.py. NO EDITAR.",
@@ -558,7 +636,9 @@ def gen_starter_tables(game_entry, game_start, game_len, game_crc, fdc_entry):
              "#define GAME_LEN %d" % game_len,
              "#define GAME_CRC 0x%04X" % game_crc,
              "#define FDC_LEN %d" % fbytes,
-             "#define CRC_FDC 0x%04X" % fcrc, "",
+             "#define CRC_FDC 0x%04X" % fcrc,
+             "#define FRONT_LEN %d" % rbytes,
+             "#define CRC_FRONT 0x%04X" % rcrc, "",
              "static const u8 g_game_chs[%d] = {" % len(chs)]
     for i in range(0, len(chs), 12):
         lines.append("    " + ",".join("0x%02X" % b for b in chs[i:i + 12]) + ",")
@@ -569,6 +649,11 @@ def gen_starter_tables(game_entry, game_start, game_len, game_crc, fdc_entry):
         lines.append("    " + ",".join("0x%02X" % b for b in fchs[i:i + 12]) + ",")
     lines.append("};")
     lines.append("static const DiskFileDesc g_file_fdc = { %d, %d, g_fdc_chs };" % (fbytes, fcount))
+    lines.append("static const u8 g_front_chs[%d] = {" % len(rchs))
+    for i in range(0, len(rchs), 12):
+        lines.append("    " + ",".join("0x%02X" % b for b in rchs[i:i + 12]) + ",")
+    lines.append("};")
+    lines.append("static const DiskFileDesc g_file_front = { %d, %d, g_front_chs };" % (rbytes, rcount))
     lines.append("")
     lines.append("#endif")
     return "\n".join(lines) + "\n"
@@ -577,17 +662,22 @@ def gen_starter_tables(game_entry, game_start, game_len, game_crc, fdc_entry):
 def placeholder_starter_tables():
     chs = [0] * (28 * 3)
     fchs = [0] * (4 * 3)
+    rchs = [0] * (2 * 3)
     lines = ["#ifndef STARTER_TABLES_H", "#define STARTER_TABLES_H",
              '#include "fdc.h"', "",
              "#define GAME_START 0x13BA",
              "#define GAME_LEN 14185",
              "#define GAME_CRC 0x0000",
               "#define FDC_LEN 1400",
-              "#define CRC_FDC 0x0000", "",
+              "#define CRC_FDC 0x0000",
+              "#define FRONT_LEN 512",
+              "#define CRC_FRONT 0x0000", "",
              "static const u8 g_game_chs[%d] = { 0 };" % len(chs),
              "static const DiskFileDesc g_file_game = { 14318, 28, g_game_chs };",
              "static const u8 g_fdc_chs[%d] = { 0 };" % len(fchs),
              "static const DiskFileDesc g_file_fdc = { 1400, 4, g_fdc_chs };",
+             "static const u8 g_front_chs[%d] = { 0 };" % len(rchs),
+             "static const DiskFileDesc g_file_front = { 512, 2, g_front_chs };",
              "",
              "#endif"]
     return "\n".join(lines) + "\n"
@@ -759,7 +849,7 @@ def main():
         hdr_txt = open(hdr_path).read()
     except OSError:
         hdr_txt = ""
-    if "CRC_TILES" not in hdr_txt or "g_pal_fsplash" not in hdr_txt:
+    if "CRC_TILES" not in hdr_txt or "g_pal_fsplash" not in hdr_txt or "g_file_fselect" not in hdr_txt or "g_file_fmap" not in hdr_txt:
         open(hdr_path, "w").write(placeholder_header())
     if not os.path.exists(crt_path):
         open(crt_path, "w").write(crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map")))
@@ -769,7 +859,7 @@ def main():
         stab_txt = open(stab_path).read()
     except OSError:
         stab_txt = ""
-    if "GAME_CRC" not in stab_txt or "g_file_fdc" not in stab_txt:
+    if "GAME_CRC" not in stab_txt or "g_file_fdc" not in stab_txt or "g_file_front" not in stab_txt:
         open(stab_path, "w").write(placeholder_starter_tables())
 
     prev = None
@@ -781,11 +871,12 @@ def main():
         game_path, game_start, game_size = compile_and_link(force)
         build_bank(force)  # Banc 5 (necessita el mapa resident per l'equ)
         build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)
+        build_front(force)  # FRONT banked (necessita el mapa resident)
         starter_path, starter_start = build_starter(force)
         chs_map, gentry, game_len, game_crc = package(starter_path, starter_start, game_path)
         text = gen_header(chs_map)
         crt_text = crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map"))
-        stab_text = gen_starter_tables(gentry, game_start, game_len, game_crc, chs_map["FDC"])
+        stab_text = gen_starter_tables(gentry, game_start, game_len, game_crc, chs_map["FDC"], chs_map["FRONT"])
         changed = False
         # Escriure NOMES si el contingut canvia (si no, el mtime nou
         # invalidaria hash/mtime i recompilaria dependents debades, i

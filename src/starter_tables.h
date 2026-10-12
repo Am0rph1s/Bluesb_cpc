@@ -3,11 +3,13 @@
 #include "fdc.h"
 
 // Generat per tools/build.py. NO EDITAR.
-#define GAME_START 0x1EBD
-#define GAME_LEN 15070
-#define GAME_CRC 0xBB54
+#define GAME_START 0x1F2E
+#define GAME_LEN 15064
+#define GAME_CRC 0x1508
 #define FDC_LEN 913
 #define CRC_FDC 0x5413
+#define FRONT_LEN 651
+#define CRC_FRONT 0xA5E1
 
 static const u8 g_game_chs[90] = {
     0x00,0x00,0xC9,0x01,0x00,0xC1,0x01,0x00,0xC2,0x01,0x00,0xC3,
@@ -19,10 +21,14 @@ static const u8 g_game_chs[90] = {
     0x03,0x00,0xC6,0x03,0x00,0xC7,0x03,0x00,0xC8,0x03,0x00,0xC9,
     0x04,0x00,0xC1,0x04,0x00,0xC2,
 };
-static const DiskFileDesc g_file_game = { 15198, 30, g_game_chs };
+static const DiskFileDesc g_file_game = { 15192, 30, g_game_chs };
 static const u8 g_fdc_chs[6] = {
     0x05,0x00,0xC4,0x05,0x00,0xC5,
 };
 static const DiskFileDesc g_file_fdc = { 913, 2, g_fdc_chs };
+static const u8 g_front_chs[6] = {
+    0x13,0x00,0xC6,0x13,0x00,0xC7,
+};
+static const DiskFileDesc g_file_front = { 651, 2, g_front_chs };
 
 #endif

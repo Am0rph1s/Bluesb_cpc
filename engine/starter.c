@@ -120,6 +120,12 @@ void s_main(void) {
         s_border_fail(); // vermell: FDC no carregat/corrupte, no saltar
         while (1) { }
     }
+    // 3. FRONT banked (overlay C4:0x4000, el TILESET el sobreescriura).
+    // Amb CRC del payload: si arriba corrupte, vermell (saltar-hi seria deriva).
+    if (!s_load_one(&g_file_front, 0xC4, (void*)0x4000, FRONT_LEN - 128, CRC_FRONT)) {
+        s_border_fail(); // vermell: FRONT no carregat/corrupte, no saltar
+        while (1) { }
+    }
     s_border_ok(); // verd: tot a RAM (pausa visible ~0.3 s)
     __asm
         ld      bc, #60000

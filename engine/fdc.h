@@ -19,9 +19,9 @@ typedef struct {
 } DiskFileDesc;
 
 // home_bank PRIMER (no darrer): SDCC classic passa el 1r param u8 a A
-// (patro bank_set, provat en verd) i el shim el desa a AF' d'entrada,
-// sense matematica de pila fragil. 0xC0 = GAME/STARTER (central);
-// C4 = FRONT futur (banked).
+// (patro bank_set, provat en verd) i el shim el desa al byte
+// g_fdc_home_bank d'entrada (NO AF': EX es SWAP). 0xC0 = GAME/STARTER
+// (central); C4 = FRONT banked.
 u8 fdc_load_file(u8 home_bank, const DiskFileDesc* desc, u8 dest_bank, void* dest_addr);
 
 #endif // FDC_H

@@ -30,11 +30,15 @@ def convert(name, src, y0, y1):
     qp = q.getpalette()[:48]
     pal16 = [tuple(qp[i * 3:i * 3 + 3]) for i in range(16)]
     qi = list(q.getdata())
+    # Submostreig 320 -> 160 (mateix que el preview _m0: pixel esquerre de
+    # cada parella, fila SENCERA). OJO 12/10/26: xb*2 amb xb 0..79 nomes
+    # cobreix els pixels 0..159 (meitat esquerra 1:1); cal x*2 amb x 0..159.
+    sub = [qi[y * 320 + x * 2] & 0x0F for y in range(200) for x in range(160)]
     out = bytearray()
     for y in range(200):
         for xb in range(80):
-            a = qi[y * 320 + xb * 2] & 0x0F
-            b = qi[y * 320 + xb * 2 + 1] & 0x0F
+            a = sub[y * 160 + xb * 2]
+            b = sub[y * 160 + xb * 2 + 1]
             # Byte Mode 0: pixel esq bits 7,5,3,1; dret 6,4,2,0.
             out.append(((a & 1) << 7) | (((a >> 1) & 1) << 3) | (((a >> 2) & 1) << 5) |
                        (((a >> 3) & 1) << 1) | ((b & 1) << 6) | (((b >> 1) & 1) << 2) |
@@ -91,7 +95,13 @@ def convert(name, src, y0, y1):
             hd[xb * 2, L] = pal16[b0]
             hd[xb * 2 + 1, L] = pal16[b1]
     hw.resize((480, 600), Image.NEAREST).save(os.path.join(OUT, name + '_hw.png'))
-    print(f'{name}: {len(inter)} B + paleta, preview {name}_m0.png + {name}_hw.png')
+    # PORTA: _hw (render HW del .BIN) ha de ser IDENTIC a _m0 (mateix qi,
+    # mateix run). Si difereix, el pack no representa el preview (vist
+    # 12/10/26: pack meitat-esquerra vs preview fila-sencera).
+    nd = sum(1 for y in range(200) for x in range(160)
+             if hd[x, y] != pd[x, y])
+    assert nd == 0, (name, nd)
+    print(f'{name}: {len(inter)} B + paleta, preview {name}_m0.png + {name}_hw.png (WYSIWYG ok)')
 
 
 if __name__ == '__main__':

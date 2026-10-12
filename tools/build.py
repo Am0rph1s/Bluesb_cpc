@@ -865,7 +865,11 @@ def main():
     prev = None
     prev_crt = None
     prev_stab = None
-    for it in range(4):
+    # 8 iteracions (no 4): la cadena taules->recompila->CRC nou es pot
+    # propagar 3-4 cops (vist 12/10/26: ZX0 mes grans + FSELECT/FMAP nous
+    # mouen GAME 2 cops; amb 4 l'starter del DSK quedava amb CRC vell =
+    # vermell a l'emu). Si no convergeix, FATAL (mai un DSK incoherent).
+    for it in range(8):
         # Header changes from the generated CHS table are picked up through
         # newer(); avoid recompiling every assembly and C source on pass two.
         game_path, game_start, game_size = compile_and_link(force)
@@ -902,7 +906,8 @@ def main():
         if not changed:
             break
     else:
-        print("\n[AVIS] 4 iteracions sense convergir: revisa cadenes de dependencia.")
+        print("\n[FATAL] 8 iteracions sense convergir: el DSK quedaria incoherent (starter ranci).")
+        sys.exit(1)
     print()
 
 

@@ -776,3 +776,9 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - Detall cacat en verificar: quedaven punts grocs de text (captura ib_10). Arrel: el parpelleig LED del motor commuta la ink 2 (groc 0x4A/negre) per sector i la brossa Mode-0 te pixels en tinta 2. FIX: NAU_FDC_BLINK=0x80 (bit 7 = silenci, que el motor ja respecta) a s_start (+5 B). El LED fisic no en depen; el blink-ink2 desapareix del tot (el stub del GAME ja operava en silenci).
 - Nota build: STARTER.BIN fa 1810 B constants (la mida la fixa la _DATA 0xC700.., no el CODE); verificat al byte (loop inks + BLINK=0x80 + RMR en ordre). Marge starter ~224 B.
 - VERIFICAT en emu: fase groga = negre total + vora groga; splash igual. Commit.
+
+## Sessio 2026-10-13 (9): FRONT no detectava tecla/boto en HW real (scan via cpct)
+- Sintoma usuari (HW real): splash no respon ni a teclat ni a joystick; impossible avancar al select. Arrel: l'scan ASM duplicat de front.c (`f_fkey_pressed`: seq PPI + `ini` + OR) no detectava mai (sempre 0) en HW real; el timeout 8000 ho emmascarava (auto-pass) i en emu ni tan sols la injeccio hi arribava.
+- FIX (lliço fdc_crc16: no duplicar): el FRONT crida EXACTAMENT el codi provat del joc (`_cpct_scanKeyboard_f` + buffer `_cpct_keyboardStatusBuffer`, el que mou en Jake) via EQU central a front_ext.s (patro mus.s) + deteccio en C (`OR 10 files != 0xFF`). 0 bytes al Bloc 0 (funcions ja linkades); FRONT 523->512 B (fora statics f_fkb/f_fkres); espera infinita + guarda release intactes.
+- VERIFICAT: build verd (CALL 0177 al FRONT.BIN, zero seq PPI propies F782/F40E); emu: splash espera amb PC=0198 (dins l'scan central = el FRONT executa el cami nou). La premuda real la ha de confirmar l'usuari en HW (l'emu no injecta a l'scan directe). Si encara avanca sol = fila sorollosa (pas seguent: check per tecla concreta); si no avanca prement = revisar altre cop.
+- PENDENT: confirmacio HW usuari; despres SELECT amb tria (P0 del pla) i enemics (P1-P3).

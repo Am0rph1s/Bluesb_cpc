@@ -16,51 +16,19 @@ void mus_play(void); // EQU central (mus.s: pagina C1, 1 tick, restaura)
 void mus_init(void); // EQU central (mus.s: pagina C1, init intro, restaura)
 void mus_stop(void); // EQU central (mus.s: silencia AY, posicio intacta)
 extern volatile u8 g_ticks; // ISR 300 Hz (central _DATA; llegible banked)
+void cpct_scanKeyboard_f(void); // EQU central (mateix scan que el joc)
+extern u8 cpct_keyboardStatusBuffer[10]; // EQU central (buffer 10 files)
 
-static u8 f_fkb[10];
-// Resultat via static (NO en L/A directe!): veure s_fkey_pressed (main.c).
-static volatile u8 f_fkres;
-
+// Tecla/boto premut? (13/10/26: l'scan ASM duplicat no detectava en HW
+// real (ni teclat ni joystick); el timeout ho emmascarava. Ara fem servir
+// EXACTAMENT el codi provat del joc (cpct_scanKeyboard_f + buffer), via
+// EQU central (patro mus.s): 0 bytes al Bloc 0, mateix comportament que
+// moure en Jake. Cobreix teclat + joystick (fila 9).
 static u8 f_fkey_pressed(void) {
-    f_fkres = 0;
-    __asm
-        di
-        ld      bc, #0xF782
-        out     (c), c
-        ld      bc, #0xF40E
-        ld      e, b
-        out     (c), c
-        ld      bc, #0xF6C0
-        ld      d, b
-        out     (c), c
-        .dw     #0x71ED
-        ld      bc, #0xF792
-        out     (c), c
-        ld      a, #0x40          ;; files 0x40..0x49 (C=0xC0 intacte!)
-        ld      hl, #_f_fkb
-00004$: ld      b, d
-        out     (c), a
-        ld      b, e
-        ini
-        inc     a
-        cp      #0x4A
-        jr      nz, 00004$
-        ld      bc, #0xF782
-        out     (c), c
-        ei
-        ld      hl, #_f_fkb
-        ld      b, #10
-        xor     a
-00001$: or      (hl)
-        inc     hl
-        djnz    00001$
-        cp      #0xFF
-        jr      z, 00002$
-        ld      hl, #_f_fkres
-        inc     (hl)          ;; cap tecla -> 0; qualsevol -> 1
-00002$:
-    __endasm;
-    return f_fkres;
+    u8 r = 0, i;
+    cpct_scanKeyboard_f();
+    for (i = 0; i < 10; i++) r |= cpct_keyboardStatusBuffer[i];
+    return (u8)(r != 0xFF);
 }
 
 // Posa paleta HW (HL = taula 16 INKR) + vora negra.

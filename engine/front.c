@@ -19,8 +19,6 @@ extern volatile u8 g_ticks; // ISR 300 Hz (central _DATA; llegible banked)
 
 // Resultat via static (NO en L/A directe!): veure s_fkey_pressed (main.c).
 static volatile u8 f_fkres;
-// Valors crus de les files 5 (SPACE) i 9 (foc) per les barres DIAG.
-static volatile u8 f_raw5, f_raw9;
 
 // Tecla/boto premut? = SPACE (linia 5, bit 7) o Joy0_Fire1 (linia 9,
 // bit 4). Port VERBATIM del Loader de nau_dx (Am0rph1s, provat en HW
@@ -37,12 +35,10 @@ static u8 f_fkey_pressed(void) {
                                  ;; fa DI/EI; el port nau_dx no en tenia.
         ld      e, #5
         call    00010$
-        ld      (_f_raw5), a     ;; cru per les barres DIAG
         and     #0x80             ;; Key_Space = 0x8005 (actiu-baix)
         jr      z, 00011$
         ld      e, #9
         call    00010$
-        ld      (_f_raw9), a     ;; cru per les barres DIAG
         and     #0x10             ;; Joy0_Fire1 = 0x1009 (actiu-baix)
         jr      nz, 00012$
 00011$: ld      hl, #_f_fkres
@@ -73,50 +69,6 @@ static u8 f_fkey_pressed(void) {
         ei                       ;; fi seccio atomica (veure di de dalt)
     __endasm;
     return f_fkres;
-}
-
-// DIAG2-REALHW (TEMPORAL): dues barres en viu a les files 0-1 de VRAM
-// (Mode 0: fila y a 0xC000+(y%8)*2048; files 0,1 = 0xC000,0xC800).
-// Barra 0 = valor cru linia 5 (SPACE), barra 1 = linia 9 (foc).
-// Longitud = valor>>1 bytes a 0xFF (resta a 0). Lectura:
-// - 0xFF estable + cau en premer = scan OK.
-// - constant != 0xFF = bit encallat (quina: el valor ho diu).
-// - ballant = flotant/soroll (cal debounce).
-// Nomes toca VRAM visible (mai finestra/bancs): segur banked. Cridar-la
-// NO altera l'estat (AF/BC/DE/HL lliures en C).
-static void f_bars(void) {
-    __asm
-        ld      hl, #0xC000
-        ld      a, (_f_raw5)
-        call    00020$
-        ld      hl, #0xC800
-        ld      a, (_f_raw9)
-        call    00020$
-        jr      00021$
-00020$: ;; drawbar: A=valor, HL=inici fila. Neteja 80B, omple A>>1 (max 80).
-        ld      c, a
-        ld      b, #80
-        xor     a
-00022$: ld      (hl), a
-        inc     hl
-        djnz    00022$
-        ld      a, c
-        srl     a
-        cp      #80
-        jr      c, 00023$
-        ld      a, #80
-00023$: ld      b, a
-        or      a
-        jr      z, 00024$
-        ld      a, #0xFF
-        ld      de, #0xFFB0       ;; -80: torna a l'inici
-        add     hl, de
-00025$: ld      (hl), a
-        inc     hl
-        djnz    00025$
-00024$: ret
-00021$:
-    __endasm;
 }
 
 // Posa paleta HW (HL = taula 16 INKR) + vora negra.
@@ -197,7 +149,7 @@ void front_run(void) {
     // que no hi hagi res premut (si l'usuari venia prement de la pantalla
     // anterior, no saltem en cadena) i despres espera la premuda (SPACE o
     // foc joystick). La musica la porta la ISR (50 Hz) i aqui corre lliure
-    // (cap HOLD en C0). DIAG2: f_bars() pinta els valors crus en viu.
-    while (f_fkey_pressed()) { f_bars(); }
-    while (!f_fkey_pressed()) { f_bars(); }
+    // (HOLD nomes en dest C1: pantalles i assets C0/4/5/7 sonen pel mig).
+    while (f_fkey_pressed()) { }
+    while (!f_fkey_pressed()) { }
 }

@@ -7,13 +7,13 @@ static const u8 g_bank5_chs[20] = {
     0x04,0xC9,0x05,0xC1,0x05,0xC2,0x05,0xC3,
 };
 static const DiskFileDesc g_file_bank5 = { 4700, 10, g_bank5_chs };
-#define CRC_BANK5 0x9DB5
+#define CRC_BANK5 0x1D9D
 
 static const u8 g_fdc_chs[4] = {
     0x05,0xC4,0x05,0xC5,
 };
 static const DiskFileDesc g_file_fdc = { 913, 2, g_fdc_chs };
-#define CRC_FDC 0x4CCC
+#define CRC_FDC 0x6391
 
 static const u8 g_tiles_chs[68] = {
     0x05,0xC6,0x05,0xC7,0x05,0xC8,0x05,0xC9,0x06,0xC1,0x06,0xC2,
@@ -66,8 +66,8 @@ static const DiskFileDesc g_file_elev = { 576, 2, g_elev_chs };
 static const u8 g_front_chs[4] = {
     0x0F,0xC8,0x0F,0xC9,
 };
-static const DiskFileDesc g_file_front = { 651, 2, g_front_chs };
-#define CRC_FRONT 0x7A4E
+static const DiskFileDesc g_file_front = { 641, 2, g_front_chs };
+#define CRC_FRONT 0xBBFE
 
 static const u8 g_fsplash_chs[20] = {
     0x10,0xC1,0x10,0xC2,0x10,0xC3,0x10,0xC4,0x10,0xC5,0x10,0xC6,

@@ -504,27 +504,31 @@ FDC_BANK_WINLEN = 0x1000  # scratch 0x8000..0x8FFF (VRAM pag.2; el GAME
                           # l'esborra amb memset post-carregues)
 
 def build_fdc_hold(force):
-    """Genera+assembla obj/fdc_hold.s (MUS_HOLD = _g_mus_hold del GAME).
+    """Genera+assembla obj/fdc_hold.s (MUS_HOLD + GBANK_ADDR del GAME).
     El motor (assets_fdc.s, 3 links: starter/scratch) hi escriu l'HOLD i
-    la ISR el llegeix com a simbol. Patro front_ext (mai hardcoded: l'adreca
-    de _DATA deriva amb cada build). FATAL si el simbol falta al mapa."""
+    mante _g_bank (invariant bank_set: _g_bank PRIMER, despres OUT) perque
+    la ISR hi pugui niuar segura durant lectures (musica continua).
+    Patro front_ext (mai hardcoded). FATAL si falten simbols al mapa."""
     obj = os.path.join(PROJ, "obj")
     syms = map_symbols(os.path.join(obj, PROGNAME + ".map"))
     addr = syms.get("_g_mus_hold", -1)
-    if addr < 0:
-        print("\n[FATAL] HOLD: _g_mus_hold no es al mapa resident. Enllaca GAME primer?")
+    gbank = syms.get("_g_bank", -1)
+    if addr < 0 or gbank < 0:
+        print("\n[FATAL] HOLD: _g_mus_hold/_g_bank no son al mapa resident. Enllaca GAME primer?")
         sys.exit(1)
     hold_s = os.path.join(obj, "fdc_hold.s")
     hold_txt = ("    .module fdc_hold\n"
                 "    .globl MUS_HOLD\n"
-                "MUS_HOLD = 0x%04X\n" % addr)
+                "    .globl GBANK_ADDR\n"
+                "MUS_HOLD = 0x%04X\n"
+                "GBANK_ADDR = 0x%04X\n" % (addr, gbank))
     if not os.path.exists(hold_s) or open(hold_s).read() != hold_txt:
         open(hold_s, "w").write(hold_txt)
     hold_rel = os.path.join(obj, "fdc_hold.rel")
     if force or is_stale(hold_rel, [hold_s]):
         run([SDASZ80, "-plosgff", hold_rel, hold_s])
         mark_fresh(hold_rel, [hold_s])
-    print("FDCHOLD: MUS_HOLD=0x%04X (_g_mus_hold)" % addr)
+    print("FDCHOLD: MUS_HOLD=0x%04X GBANK_ADDR=0x%04X" % (addr, gbank))
     return hold_rel
 
 

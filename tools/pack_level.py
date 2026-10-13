@@ -72,8 +72,13 @@ def build_level_pkg(level_idx=0):
         elev_x = [760, 808, 760, 808, 304]
         elev_y = [384, 464, 592, 736, 784]
         elev_col = [95, 101, 95, 101, 38]
-        start_px = 184
-        start_py = 860
+        # Spawn NATURAL del nivell 1 (13/10/26): slot DOS 39 (jugador 1) =
+        # xpos 64 (peus) -> 32 ; ypos 1136 (peus) - PH 30 = 1106 (cap).
+        # Havia quedat (184,860) d'un debug de globus: en Jake naixia al
+        # costat dels globus en comptes del carrer. (generic: xpos>>1,
+        # ypos-PH).
+        start_px = 32
+        start_py = 1106
         cam0_x4 = 0
         cam0_row = 124
     else:

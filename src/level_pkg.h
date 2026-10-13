@@ -12,8 +12,8 @@
 #define LEVEL_MAP_H         72
 #define LEVEL_W_PX          (128 * 8)
 #define LEVEL_MAX_CAM_ROW   124
-#define LEVEL_START_PX      184
-#define LEVEL_START_PY      860
+#define LEVEL_START_PX      32
+#define LEVEL_START_PY      1106
 #define LEVEL_CAM0_X4       0
 #define LEVEL_CAM0_ROW      124
 

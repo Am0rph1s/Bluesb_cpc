@@ -11,6 +11,7 @@
         .globl _g_fdc_home_bank
         .globl MUS_HOLD          ;; _g_mus_hold del GAME (obj/fdc_hold.s,
                                  ;; generat del mapa: patro front_ext)
+        .globl GBANK_ADDR        ;; _g_bank del GAME (mateix EQU)
 
 ;; Mapa de RAM:
 ;;   FDC_BUF i FDC_WORK han d'estar en RAM base, no en zona bancable.
@@ -38,11 +39,10 @@ FDC_CMD_RECALIBRATE     = 0x07
 FDC_CMD_SENSE_INT       = 0x08
 
 ;; HOLD musica ISR (_g_mus_hold del GAME, via EQU fdc_hold.s): el motor
-;; l'activa en entrar (nomes si dest!=C0: les copies a C0 son a RAM no
-;; bancable i la ISR hi pot sonar pel mig) i el neteja en sortir
-;; (exit + fail). Sense HOLD en copies bancades la ISR trepitjaria
-;; l'stream (pagina C1 a mitja copia i restaura un banc ranci: el motor
-;; no manté _g_bank).
+;; l'activa en entrar NOMES si dest==C1 (player/canco en us) i el neteja
+;; en sortir (exit + fail). En C0/4/5/7 la ISR niua segura perque el motor
+;; mante _g_bank (GBANK_ADDR, invariant bank_set: _g_bank PRIMER, despres
+;; OUT; ordre auto-curatiu si la ISR cau entremig) i la musica CONTINUA.
 
         .area _CODE
 
@@ -51,14 +51,17 @@ FDC_CMD_SENSE_INT       = 0x08
 ;; ============================================================
 
 _assets_bank_select::
-        ld bc, #0x7F00
         ld a, (_g_fdc_dest_bank)
+        ld (GBANK_ADDR), a      ;; _g_bank PRIMER (invariant bank_set):
+                                ;; la ISR llegeix-restaura be si niua aqui
+        ld bc, #0x7F00
         out (c), a
         ret
 
 _assets_bank_restore::
         ld      a, (_g_fdc_home_bank) ;; home del caller (byte dedicat del
                                     ;; shim; lectura idempotent, sense estat)
+        ld      (GBANK_ADDR), a ;; _g_bank PRIMER (mateix invariant)
         ld      bc, #0x7F00
         out     (c), a              ;; restaura el banc del CALLER (C0 central,
                                     ;; C4 FRONT futur)
@@ -72,12 +75,12 @@ _assets_bank_restore::
 _assets_fdc_load_generic::
         push ix
         di
-        ;; HOLD nomes si el desti es bancable (!=C0): les carregues FRONT
-        ;; (pantalles a scratch 0x8400, C0) sonen pel mig sense risc (tot
-        ;; fora de la finestra 0x4000-0x7FFF + el motor re-asserta bancs).
+        ;; HOLD nomes si dest==C1 (player/canco en us: sobreescriure'ls
+        ;; sonant = crash). En C0/4/5/7 la ISR niua segura: el motor mante
+        ;; _g_bank (invariant) i la musica CONTINUA durant la lectura.
         ld      a, (_g_fdc_dest_bank)
-        cp      #0xC0
-        jr      z, hold_skip$
+        cp      #0xC1
+        jr      nz, hold_skip$
         ld      a, #1
         ld      (MUS_HOLD), a     ;; musica ISR en pausa (lectura en curs)
 hold_skip$:
@@ -85,8 +88,9 @@ hold_skip$:
         ;; Fixar mapa RAM/ROM per defecte (upper ROM off, lower ROM off).
         ;; CRÍTIC: sense això, la upper ROM (AMSDOS) pot estar paginada
         ;; i interferir amb l'accés als ports FDC.
-        ld bc, #0x7F00
         ld a, #0xC0
+        ld (GBANK_ADDR), a       ;; _g_bank = C0 PRIMER (mateix invariant)
+        ld bc, #0x7F00
         out (c), a
 
         ;; Drive 0

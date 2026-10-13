@@ -16,19 +16,54 @@ void mus_play(void); // EQU central (mus.s: pagina C1, 1 tick, restaura)
 void mus_init(void); // EQU central (mus.s: pagina C1, init intro, restaura)
 void mus_stop(void); // EQU central (mus.s: silencia AY, posicio intacta)
 extern volatile u8 g_ticks; // ISR 300 Hz (central _DATA; llegible banked)
-void cpct_scanKeyboard_f(void); // EQU central (mateix scan que el joc)
-extern u8 cpct_keyboardStatusBuffer[10]; // EQU central (buffer 10 files)
 
-// Tecla/boto premut? (13/10/26: l'scan ASM duplicat no detectava en HW
-// real (ni teclat ni joystick); el timeout ho emmascarava. Ara fem servir
-// EXACTAMENT el codi provat del joc (cpct_scanKeyboard_f + buffer), via
-// EQU central (patro mus.s): 0 bytes al Bloc 0, mateix comportament que
-// moure en Jake. Cobreix teclat + joystick (fila 9).
+// Resultat via static (NO en L/A directe!): veure s_fkey_pressed (main.c).
+static volatile u8 f_fkres;
+
+// Tecla/boto premut? = SPACE (linia 5, bit 7) o Joy0_Fire1 (linia 9,
+// bit 4). Port VERBATIM del Loader de nau_dx (Am0rph1s, provat en HW
+// real): ni l'scan ASM duplicat ni el cami cpct detectaven des del FRONT
+// (sempre 0 / vora DIAG sempre negra); aquesta seq (sense F782 inicial,
+// sense INI, files per F64x/F44x, cua F600) si que veu tecles. Nomes
+// aquestes dues entrades (prou per "prem per continuar"); no OR de 10.
 static u8 f_fkey_pressed(void) {
-    u8 r = 0, i;
-    cpct_scanKeyboard_f();
-    for (i = 0; i < 10; i++) r |= cpct_keyboardStatusBuffer[i];
-    return (u8)(r != 0xFF);
+    f_fkres = 0;
+    __asm
+        ld      e, #5
+        call    00010$
+        and     #0x80             ;; Key_Space = 0x8005 (actiu-baix)
+        jr      z, 00011$
+        ld      e, #9
+        call    00010$
+        and     #0x10             ;; Joy0_Fire1 = 0x1009 (actiu-baix)
+        jr      nz, 00012$
+00011$: ld      hl, #_f_fkres
+        inc     (hl)              ;; premut -> 1
+        jr      00012$
+00010$: ;; read_keyline_e: E = linia matriu 0..9. A = estat actiu-baix.
+        ld      bc, #0xF40E
+        out     (c), c
+        ld      bc, #0xF6C0
+        out     (c), c
+        xor     a
+        out     (c), a
+        ld      bc, #0xF792
+        out     (c), c
+        ld      a, e
+        add     #0x40
+        ld      c, a
+        ld      b, #0xF6
+        out     (c), c
+        ld      b, #0xF4
+        in      a, (c)
+        ld      bc, #0xF782
+        out     (c), c
+        ld      bc, #0xF600
+        out     (c), c
+        ret
+00012$:
+    __endasm;
+    return f_fkres;
 }
 
 // Posa paleta HW (HL = taula 16 INKR) + vora negra.
@@ -105,30 +140,11 @@ void front_run(void) {
         while (1) { }
     }
     f_fpal(palhw);
-    // DIAG-REALHW (13/10/26, TEMPORAL): l'scan no detecta en HW real (ni
-    // teclat ni joy) i cal saber si es cec (negre sempre), sorollos
-    // (vermell sempre) o si funciona (negre -> vermell + avanca). La vora
-    // mostra l'estat VIU de f_fkey_pressed() a cada iteracio (mateix patro
-    // OUT provat dels errors vermells). Sense guarda release (diagnostic
-    // pur: premuda -> vermell + avanca de seguida).
-    while (1) {
-        if (f_fkey_pressed()) {
-            __asm
-                ld      bc, #0x7F00
-                ld      a, #0x10
-                out     (c), a
-                ld      a, #0x4C  ;; VERMELL = premut detectat
-                out     (c), a
-            __endasm;
-            break;
-        } else {
-            __asm
-                ld      bc, #0x7F00
-                ld      a, #0x10
-                out     (c), a
-                ld      a, #0x54  ;; NEGRE = idle
-                out     (c), a
-            __endasm;
-        }
-    }
+    // Espera TECLA/BOTO (INFINITA: res de timeouts auto-pass). Primer espera
+    // que no hi hagi res premut (si l'usuari venia prement de la pantalla
+    // anterior, no saltem en cadena) i despres espera la premuda (SPACE o
+    // foc joystick). La musica la porta la ISR (50 Hz) i aqui corre lliure
+    // (cap HOLD en C0).
+    while (f_fkey_pressed()) { }
+    while (!f_fkey_pressed()) { }
 }

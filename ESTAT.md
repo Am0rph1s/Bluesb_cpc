@@ -782,3 +782,9 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - FIX (lliço fdc_crc16: no duplicar): el FRONT crida EXACTAMENT el codi provat del joc (`_cpct_scanKeyboard_f` + buffer `_cpct_keyboardStatusBuffer`, el que mou en Jake) via EQU central a front_ext.s (patro mus.s) + deteccio en C (`OR 10 files != 0xFF`). 0 bytes al Bloc 0 (funcions ja linkades); FRONT 523->512 B (fora statics f_fkb/f_fkres); espera infinita + guarda release intactes.
 - VERIFICAT: build verd (CALL 0177 al FRONT.BIN, zero seq PPI propies F782/F40E); emu: splash espera amb PC=0198 (dins l'scan central = el FRONT executa el cami nou). La premuda real la ha de confirmar l'usuari en HW (l'emu no injecta a l'scan directe). Si encara avanca sol = fila sorollosa (pas seguent: check per tecla concreta); si no avanca prement = revisar altre cop.
 - PENDENT: confirmacio HW usuari; despres SELECT amb tria (P0 del pla) i enemics (P1-P3).
+
+## Sessio 2026-10-13 (10): DIAG-REALHW vora viu (l'scan tampoc via cpct)
+- Sintoma usuari (HW real, build b6696a2): ni foc ni tecla avancen l'splash. Ni tan sols el cami cpct provat detecta. Hipotesis esgotades en teoria (buffer central, EQU verificat, CALL 0177 al BIN, PC=0198 en emu).
+- DIAG temporal (a revertir): l'espera del FRONT mostra l'estat VIU de f_fkey_pressed() a la vora (NEGRE=idle / VERMELL=premut) i avanca en detectar; sense guarda release (diagnostic pur). Mateix patro OUT provat. FRONT 512 B, Bloc 0 intacte (257 B).
+- Verificat en emu: splash + vora NEGRA + PC=01a3 (cami nou executantse; injeccio cega = idle per sempre, esperat).
+- PENDENT: test HW usuari amb 3 resultats possibles: (a) negre->vermell + avanca = FUNCIONA (restauro guarda + commit final); (b) vermell sempre des de l'inici = fila sorollosa (pas a check per tecla concreta); (c) negre sempre prement = scan cec de deb (replantejar: PPI/PSG, ISR, context banked).

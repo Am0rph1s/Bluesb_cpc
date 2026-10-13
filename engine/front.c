@@ -105,11 +105,30 @@ void front_run(void) {
         while (1) { }
     }
     f_fpal(palhw);
-    // Espera TECLA/BOTO (INFINITA: res de timeouts auto-pass). Primer espera
-    // que no hi hagi res premut (si l'usuari venia prement de la pantalla
-    // anterior, no saltem en cadena) i despres espera la premuda.
-    // f_fkey cobreix teclat + joystick (fila 9 de la matriu). La musica la
-    // porta la ISR (50 Hz) i aqui corre lliure (cap HOLD en C0).
-    while (f_fkey_pressed()) { }
-    while (!f_fkey_pressed()) { }
+    // DIAG-REALHW (13/10/26, TEMPORAL): l'scan no detecta en HW real (ni
+    // teclat ni joy) i cal saber si es cec (negre sempre), sorollos
+    // (vermell sempre) o si funciona (negre -> vermell + avanca). La vora
+    // mostra l'estat VIU de f_fkey_pressed() a cada iteracio (mateix patro
+    // OUT provat dels errors vermells). Sense guarda release (diagnostic
+    // pur: premuda -> vermell + avanca de seguida).
+    while (1) {
+        if (f_fkey_pressed()) {
+            __asm
+                ld      bc, #0x7F00
+                ld      a, #0x10
+                out     (c), a
+                ld      a, #0x4C  ;; VERMELL = premut detectat
+                out     (c), a
+            __endasm;
+            break;
+        } else {
+            __asm
+                ld      bc, #0x7F00
+                ld      a, #0x10
+                out     (c), a
+                ld      a, #0x54  ;; NEGRE = idle
+                out     (c), a
+            __endasm;
+        }
+    }
 }

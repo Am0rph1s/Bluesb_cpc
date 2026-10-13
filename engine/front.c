@@ -16,6 +16,9 @@ void mus_play(void); // EQU central (mus.s: pagina C1, 1 tick, restaura)
 void mus_init(void); // EQU central (mus.s: pagina C1, init intro, restaura)
 void mus_stop(void); // EQU central (mus.s: silencia AY, posicio intacta)
 extern volatile u8 g_ticks; // ISR 300 Hz (central _DATA; llegible banked)
+extern volatile u8 g_mus_hold; // HOLD ISR (central _DATA; EQU front_ext.s:
+// AKG Play reprendria el so al tick seguent del mus_stop: el mute en
+// lectures ha d'anar amb HOLD=1, si no el glitch torna en 20 ms)
 
 // Resultat via static (NO en L/A directe!): veure s_fkey_pressed (main.c).
 static volatile u8 f_fkres;
@@ -123,13 +126,18 @@ void front_run(void) {
             __endasm;
             while (1) { }
         }
-        mus_init();
+        // mus_init() DESPRES de la imatge (a baix): la intro arrenca neta,
+        // sense glitch de lectura pel mig. El player encara no iniciat
+        // (g_mus_ready=0): la ISR no sona durant aquestes dues lectures.
+    } else {
+        // MUTE en lectura d'imatge (HW real 13/10/26: amb la ISR sonant la
+        // lectura grinyola/interfereix). mus_stop = silenci immediat (sense
+        // nota clavada) + HOLD = la ISR no fa Play (l'AKG reprendria el so
+        // al tick seguent). Despres: HOLD=0 + mus_init (intro de nou).
+        mus_stop();
+        g_mus_hold = 1;
     }
     for (t = 0; t < 3 && !ok; t++) {
-        // Sense mus_stop(): el desti es C0 (scratch 0x8400, RAM no bancable)
-        // i el motor ja no posa HOLD (= la ISR continua sonant pel mig, la
-        // musica NO es para en llegir pantalles). En copies bancades el HOLD
-        // si que congela + el caller muta (drone); aqui no cal.
         if (!fdc_load_file(home, f, 0xC0, (void*)0x8400)) continue;
         zx0_decompress((const void*)0x8400, (void*)0xC000);
         ok = 1;
@@ -145,11 +153,16 @@ void front_run(void) {
         while (1) { }
     }
     f_fpal(palhw);
+    // Lectura feta: reobrir so (intro de nou, des de dalt) i espera amb
+    // musica. Splash (load_mus): HOLD ja a 0 (el motor el neteja simetric
+    // en sortir del C1); select/map: netegem el mute manual d'abans.
+    g_mus_hold = 0;
+    mus_init();
     // Espera TECLA/BOTO (INFINITA: res de timeouts auto-pass). Primer espera
     // que no hi hagi res premut (si l'usuari venia prement de la pantalla
     // anterior, no saltem en cadena) i despres espera la premuda (SPACE o
     // foc joystick). La musica la porta la ISR (50 Hz) i aqui corre lliure
-    // (HOLD nomes en dest C1: pantalles i assets C0/4/5/7 sonen pel mig).
+    // (la lectura ja es muda: stop+HOLD abans, init despres).
     while (f_fkey_pressed()) { }
     while (!f_fkey_pressed()) { }
 }

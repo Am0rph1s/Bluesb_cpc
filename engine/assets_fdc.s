@@ -38,11 +38,14 @@ FDC_CMD_SEEK            = 0x0F
 FDC_CMD_RECALIBRATE     = 0x07
 FDC_CMD_SENSE_INT       = 0x08
 
-;; HOLD musica ISR (_g_mus_hold del GAME, via EQU fdc_hold.s): el motor
-;; l'activa en entrar NOMES si dest==C1 (player/canco en us) i el neteja
-;; en sortir (exit + fail). En C0/4/5/7 la ISR niua segura perque el motor
-;; mante _g_bank (GBANK_ADDR, invariant bank_set: _g_bank PRIMER, despres
-;; OUT; ordre auto-curatiu si la ISR cau entremig) i la musica CONTINUA.
+;; HOLD musica ISR (_g_mus_hold del GAME, via EQU fdc_hold.s):
+;; PROPIETAT SIMETRICA: el motor l'activa en entrar NOMES si dest==C1
+;; (player/canco en us) i el neteja en sortir (exit + fail) NOMES si
+;; dest==C1. Mai toca mutes manuals del caller (caller: mus_stop()+
+;; HOLD=1 ... lectures ... HOLD=0+mus_init(); necessari perque AKG Play
+;; reprendria el so al tick seguent del mus_stop: el mute sol no es
+;; enganxos). En C0/4/5/7 muts la ISR queda congelada (no Play) i la
+;; musica NO fa soroll durant la lectura.
 
         .area _CODE
 
@@ -170,7 +173,12 @@ assets_load_done:
         ld bc, #FDC_MOTOR_PORT
         out (c), a
         ei
-        ld (MUS_HOLD), a          ;; musica ISR lliure (a=0)
+        ld a, (_g_fdc_dest_bank)
+        cp #0xC1
+        jr nz, holdkeep$
+        xor a
+        ld (MUS_HOLD), a          ;; neteja simetrica: nomes si l'haviem posat
+holdkeep$:
         ld a, #1
         ld l, a
         pop ix
@@ -186,8 +194,13 @@ assets_fail:
         call _assets_bank_restore  ;; restaura home fins i tot en error
         ei                         ;; (callers banked hi sobreviuen; central,
                                     ;; identic a abans: home=C0)
+        ld a, (_g_fdc_dest_bank)
+        cp #0xC1
+        jr nz, holdkeep2$
         xor a
-        ld (MUS_HOLD), a          ;; musica ISR lliure fins i tot en error
+        ld (MUS_HOLD), a          ;; neteja simetrica fins i tot en error
+holdkeep2$:
+        xor a
         ld l, a
         pop ix
         ret

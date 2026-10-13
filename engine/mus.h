@@ -13,8 +13,10 @@
 #define MUS_BANK 0xC1
 #define MUS_SONG_SLOT 0x5000
 
-// HOLD musica ISR (byte a _DATA, isr.s): 1 = motor FDC en lectura (dest
-// bancable). El motor hi escriu via EQU (fdc_hold.s); la ISR el llegeix.
+// HOLD musica ISR (byte a _DATA, isr.s): 1 = no fer Play (motor en
+// lectura C1, o mute manual del caller en lectures C0/4/5/7: l'AKG
+// reprendria el so al tick seguent del mus_stop). El motor hi escriu
+// via EQU (fdc_hold.s, simetric C1); la ISR el llegeix.
 extern volatile u8 g_mus_hold;
 
 void mus_init(void); // (re)inicia la canco actual de l'slot (subsongo 0)

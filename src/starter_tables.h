@@ -5,11 +5,11 @@
 // Generat per tools/build.py. NO EDITAR.
 #define GAME_START 0x1E9D
 #define GAME_LEN 15071
-#define GAME_CRC 0x791E
+#define GAME_CRC 0x8070
 #define FDC_LEN 913
-#define CRC_FDC 0x6391
+#define CRC_FDC 0xD1A9
 #define FRONT_LEN 641
-#define CRC_FRONT 0xBBFE
+#define CRC_FRONT 0x910C
 #define MUS_LEN 7315
 #define CRC_MUS 0xE76E
 // HOLD musica ISR (_g_mus_hold del GAME): el starter el neteja a

@@ -585,7 +585,7 @@ def build_front(force):
     syms = map_symbols(resident_map)
     need = {"_fdc_load_file": None, "_g_front_args": None,
             "_mus_play": None, "_mus_init": None, "_mus_stop": None,
-            "_g_ticks": None}
+            "_g_ticks": None, "_g_mus_hold": None}
     for k in need:
         if k not in syms:
             print("\n[FATAL] FRONT: %s no es al mapa resident. Enllaca GAME primer?" % k)

@@ -494,9 +494,10 @@ void main(void) {
     // MUSICA (C1): C1 NO es pot paginar des de l'starter (viu a slot 3:
     // config C1 mapeja slot3->banc7 i l'starter desapareix = reboot) ni
     // directament des del FRONT (viu a slot 1: desapareix igual). El FRONT
-    // (splash, load_mus=1) el carrega via stub central (trampoli segur) i
-    // l'inicia ell mateix (mus_init EQU). El GAME nomes (re)inicia el tema
-    // del nivell post-carregues (mus_init#2).
+    // (splash, load_mus=1) el carrega via stub central (trampoli segur),
+    // muda cada lectura d'imatge (stop+HOLD) i inicia la intro despres
+    // (mus_init EQU). Al foc del mapa: stop+HOLD fins al tema del nivell
+    // (mus_init#2 post-carregues).
 
     // FRONT: SPLASH -> SELECT -> MAP (banked C4, args centrals). El display
     // apunta a 0xC000 (firmware), Mode 0 (starter): el depack hi es visible.
@@ -504,6 +505,13 @@ void main(void) {
     front_one(&g_file_fsplash, g_pal_fsplash, 1);
     front_one(&g_file_fselect, g_pal_fselect, 0);
     front_one(&g_file_fmap, g_pal_fmap, 0);
+
+    // FOC AL MAPA = MUSICA FORA (HW real 13/10/26: les 8 carregues del
+    // nivell amb la ISR sonant fan nota suspesa/interferencia, dramatic).
+    // mus_stop = silenci immediat + HOLD = la ISR no fa Play (l'AKG
+    // reprendria el so al tick seguent). El tema arrenca post-carregues.
+    mus_stop();
+    g_mus_hold = 1;
 
     // Carregar recursos del nivell als Bancs 4/5/7 amb verificació CRC16
     // (+ MUSMAIN a C1:0x5000: el tema del nivell 1). CRC inline (el helper
@@ -514,16 +522,17 @@ void main(void) {
         static const u16 v_crc[8] = { CRC_TILES, CRC_MAP, CRC_TRIG, CRC_PFRAMES, CRC_EXTRA, CRC_ELEV, CRC_BANK5, CRC_MUSMAIN };
         static const DiskFileDesc* const v_desc[8] = { &g_file_tiles, &g_file_map, &g_file_trig, &g_file_pframes, &g_file_extra, &g_file_elev, &g_file_bank5, &g_file_musmain };
         u8 i, t;
-        // Mute NOMES abans de MUSMAIN (l'unic dest C1 del loop: la ISR no
-        // pot sonar mentre se sobreescriu el player/canco). En C4/5/7 la
-        // musica continua (el motor mante _g_bank: niuada segura).
+        // LOOP MUT (ve de dalt: stop+HOLD al foc del mapa). El motor nomes
+        // toca HOLD en C1 (simetric); re-assegurem HOLD=1 despres de cada
+        // lectura (la de MUSMAIN el netejaria en sortir i la ISR faria un
+        // Play sobre canco no-iniciada abans del mus_init).
         for (i = 0; i < 8; i++) {
             u8 ok = 0;
-            if (v_bank[i] == 0xC1) mus_stop();
             for (t = 0; t < 3 && !ok; t++) {
                 u8 prev;
                 // Home 0xC0: el GAME corre en central (mai paginat).
                 if (!fdc_load_file(0xC0, v_desc[i], v_bank[i], (void*)v_addr[i])) continue;
+                g_mus_hold = 1;
                 prev = bank_set(v_bank[i]);
                 if (fdc_crc16((const u8*)v_addr[i],
                               (u16)(v_desc[i]->ondisk_bytes - 128)) == v_crc[i]) ok = 1;
@@ -533,7 +542,9 @@ void main(void) {
         }
     }
 
-    // MUSICA nivell 1: MUSMAIN ja es a l'slot C1:0x5000: (re)inicia'l.
+    // MUSICA nivell 1: MUSMAIN ja es a l'slot C1:0x5000: obrir so i
+    // (re)iniciar el tema.
+    g_mus_hold = 0;
     mus_init();
 
     video_init();

@@ -31,6 +31,10 @@ static volatile u8 f_raw5, f_raw9;
 static u8 f_fkey_pressed(void) {
     f_fkres = 0;
     __asm
+        di                       ;; ATOMIC (13/10/26b): la ISR (musica PSG)
+                                 ;; trepitjava la fila seleccionada entre OUT
+                                 ;; i IN = lectures tremoloses. El cami cpct
+                                 ;; fa DI/EI; el port nau_dx no en tenia.
         ld      e, #5
         call    00010$
         ld      (_f_raw5), a     ;; cru per les barres DIAG
@@ -66,6 +70,7 @@ static u8 f_fkey_pressed(void) {
         out     (c), c
         ret
 00012$:
+        ei                       ;; fi seccio atomica (veure di de dalt)
     __endasm;
     return f_fkres;
 }

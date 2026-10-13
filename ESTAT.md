@@ -800,3 +800,9 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - DIAG2 temporal (a revertir): `f_raw5/f_raw9` (valors crus) + `f_bars()` que pinta 2 barres a files VRAM 0-1 (0xC000/0xC800, long=valor>>1): barra0=linia5, barra1=linia9. Cridada als dos loops d'espera. Nomes VRAM (segur banked). FRONT 513->515 B.
 - VERIFICAT: build verd; BIN amb calls+barres; emu: MAP amb franja a dalt + pipeline fins al joc (bus flotant=0 = "sempre premut", esperat).
 - PROTOCOL TEST HW (dir a l'usuari): foto de l'splash quiet (longituds barres?) + mantenint SPACE (barra0 ha d'ENCONGIR 0x80) + mantenint FOC (barra1 -0x10) + diu si avanca + si sona la musica. Lectura: FF estable + caiguda en premer = OK; constant !=FF = bit encallat; ballant = flotant (caldra debounce).
+
+## Sessio 2026-10-13 (13): Barres llargues+tremolant -> DI al check (cursa ISR-PSG)
+- Report usuari (HW real, DIAG2): barres LLARGUES i TREMOLANT. Lectura: valors ~0xFF inestables (no cec, no encallat) = la ISR (300 Hz, player PSG cada 20 ms) trepitja la fila seleccionada entre l'OUT i l'IN del check (el port nau_dx no feia DI; el cami cpct si que en fa = per aixo al joc funciona).
+- FIX (2 B): `di` a l'inici + `ei` a la convergencia 00012$ del check (seccio atomica ~100 cicles; retard ISR inaudible). Barres es mantenen per verificar estabilitat.
+- VERIFICAT: build verd; BIN amb F3 ... FB + stores + read verbatim; emu: MAP amb franja + pipeline (bus flotant = auto-avanca, esperat).
+- PROTOCOL RETEST HW: splash quiet (barres ESTABLES ara?) + SPACE (barra0 cau + avanca?) + FOC (barra1 cau + avanca?) + musica en espera. Si estable + avanca = TREURE BARRES + SHIP. Si encara tremola = seguent teoria (config PPI pre-video_init? llegir video.s).

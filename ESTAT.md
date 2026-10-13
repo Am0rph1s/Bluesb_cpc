@@ -769,3 +769,10 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - FIX (4) verificat: 0 drones en tot el fitxer; musica al joc; tempo quiet==run (IOI 0.093 s).
 - (3) SELECT: continua static (qualsevol tecla/boto continua, Jake per defecte). La tria amb ballarins (sprites + cursor + plumbing) queda pendent (Bloc 0 te 257 B ara).
 - PENDENT: mid-game loads: l'scratch 0x8000 mor al memset (s_fdc_ready=1 ranci = cridaria brossa; cal resetejar-lo quan hi hagi loads a mig joc) + C6 persisteix (be). Theme1/2. Marge Bloc 0: 257 B. Commit.
+
+## Sessio 2026-10-13 (8): Pantalla blava amb brossa post-RUN (tintes a negre)
+- Sintoma usuari (historic, mai regressio): just despres de RUN, pantalla blava amb brossa que no afecta res. Arrel estructural: s_start posa Mode 0 + ROMs OFF i copia l'starter (2 KB) a 0xC000 (dalt de VRAM); s_main carrega segons amb vora blava/groga. La pantalla mostra restes BASIC (paper blau) + la copia starter com a pixels.
+- FIX (idea usuari): loop a s_start (post-RMR, pre-LDIR) que posa les 16 tintes a negre HW 0x54 (~18 B, PIC-safe: nomes LD/OUT). Pantalla negra neta en carregues; FRONT (f_fpal) i video_init posen la seva paleta despres. Vores diagnostics intactes (decisio usuari).
+- Detall cacat en verificar: quedaven punts grocs de text (captura ib_10). Arrel: el parpelleig LED del motor commuta la ink 2 (groc 0x4A/negre) per sector i la brossa Mode-0 te pixels en tinta 2. FIX: NAU_FDC_BLINK=0x80 (bit 7 = silenci, que el motor ja respecta) a s_start (+5 B). El LED fisic no en depen; el blink-ink2 desapareix del tot (el stub del GAME ja operava en silenci).
+- Nota build: STARTER.BIN fa 1810 B constants (la mida la fixa la _DATA 0xC700.., no el CODE); verificat al byte (loop inks + BLINK=0x80 + RMR en ordre). Marge starter ~224 B.
+- VERIFICAT en emu: fase groga = negre total + vora groga; splash igual. Commit.

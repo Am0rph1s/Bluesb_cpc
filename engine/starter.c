@@ -164,10 +164,26 @@ void s_start(void) {
         ld      (MUS_HOLD_ADDR), a ; HOLD musica ISR = 0 (lliure). La RAM pot
                                 ; portar brossa de reboot calent: sense aixo
                                 ; la ISR saltaria la musica per sempre.
+        ld      a, #0x80
+        ld      (0xBA0A), a     ; LED-ink SILENCIOS (NAU_FDC_BLINK bit 7). Si no,
+                                ; el motor parpelleja la ink 2 (groc/negre) per
+                                ; sector i la brossa de pantalla te pixels en
+                                ; tinta 2 = punts grocs parpellejants. El LED
+                                ; fisic de la disquetera no en depen.
         ld      bc, #0x7F8C
         out     (c), c          ; RMR: Mode 0 + ROMs OFF (RAM a tot arreu).
                                 ; Sense aixo, 0xC000 es llegeix de la ROM alta
                                 ; (la copia a VRAM seria invisible a la CPU).
+        ld      d, #0           ; TINTES A NEGRE (13/10/26): la pantalla mostra
+00020$: ld      bc, #0x7F00      ; 0xC000 = restes BASIC + copia starter (brossa
+        ld      a, d            ; blava). Amb inks negres es invisible pero el
+        out     (c), a          ; motor fa el mateix. Vores diagnostics intactes
+        ld      a, #0x54        ; (verd/blau/groc); FRONT/video posen la seva
+        out     (c), a          ; paleta. Nomes LD/OUT: PIC-safe.
+        inc     d
+        ld      a, d
+        cp      #16
+        jr      nz, 00020$
         ld      sp, #0x3FFE
         ld      bc, #0x7F00      ; verd immediat: prova que el firmware hi arriba
         ld      a, #0x10

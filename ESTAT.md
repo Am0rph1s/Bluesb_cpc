@@ -794,3 +794,9 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - FIX: port VERBATIM a `f_fkey_pressed()` (front.c): `E=5 -> AND 0x80 / E=9 -> AND 0x10`, 1 si actiu-baix. Fora DIAG vora (revertit a espera neta + guarda release), fora EQU cpct de build.py/front.c (no calien; el cami cpct tampoc detectava). FRONT 512->513 B, Bloc 0 intacte (257 B).
 - VERIFICAT: build verd; BIN amb `call 401F` + `and 80/10` ben resolts, zero `CALL 0177`; en emu AVANCA SOL fins al nivell 1 (pantalla de joc perfecta): el bus flotant llegeix 0 -> "sempre premut". En HW real hi ha pull-ups (0xFF idle, com al Loader) -> espera. Efecte colateral bo: pipeline sencer (select/map/loads/joc) verificat en emu de retruc.
 - PENDENT: test HW usuari (SPACE o foc = avanca). Si funciona: SELECT amb tria (P0) + enemics (P1-P3).
+
+## Sessio 2026-10-13 (12): DIAG2 barres VRAM (l'usuari no avanca ni amb nau_dx)
+- Sintoma usuari (HW real, build 4c228fe): ni SPACE ni foc fan avancar; "com si arrenquessis amb tecla premuda" (salta sol) + musica que para a les transicions. Nota: el salt rapid agrupat explica la musica (loads junts = ratxes DI sense ticks), no es un segon bug (una variable!).
+- DIAG2 temporal (a revertir): `f_raw5/f_raw9` (valors crus) + `f_bars()` que pinta 2 barres a files VRAM 0-1 (0xC000/0xC800, long=valor>>1): barra0=linia5, barra1=linia9. Cridada als dos loops d'espera. Nomes VRAM (segur banked). FRONT 513->515 B.
+- VERIFICAT: build verd; BIN amb calls+barres; emu: MAP amb franja a dalt + pipeline fins al joc (bus flotant=0 = "sempre premut", esperat).
+- PROTOCOL TEST HW (dir a l'usuari): foto de l'splash quiet (longituds barres?) + mantenint SPACE (barra0 ha d'ENCONGIR 0x80) + mantenint FOC (barra1 -0x10) + diu si avanca + si sona la musica. Lectura: FF estable + caiguda en premer = OK; constant !=FF = bit encallat; ballant = flotant (caldra debounce).

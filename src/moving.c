@@ -13,13 +13,7 @@
 #include "sprite.h"
 #include "fdc.h"
 
-// Slots fixos de la taula de salts del Banc 5 (engine/bank5_table.s).
-#define BC_UPDATE ((void*)0x6E00)
-#define BC_RESTORE ((void*)0x6E03)
-#define BC_DRAW   ((void*)0x6E06)
-#define BC_PUSH   ((void*)0x6E09)
-#define BC_FIND   ((void*)0x6E0C)
-#define BC_INIT   ((void*)0x6E0F)
+// Slots fixos de la taula de salts del Banc 5: a moving.h (font unica).
 
 MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
 u16 g_moving_dst;
@@ -174,7 +168,9 @@ i8 moving_find_landing(void) { call_banked(0xC5, BC_FIND); return (i8)bc_r; }
 extern const u16 g_crc_fdc;
 extern const u16 g_len_fdc; // = FDC.BIN sencer (main.c; el build ho verifica)
 static u8 s_fdc_ready = 0;
-static u16 s_fdc_crc16(const u8* p, u16 len) {
+// CRC16-CCITT compartit (dieta Bloc 0): tambe l'usa el loop de carregues
+// de main.c (abans inline duplicat). Global (era static).
+u16 fdc_crc16(const u8* p, u16 len) {
     u16 crc = 0xFFFF;
     while (len--) {
         u8 k;
@@ -202,7 +198,7 @@ u8 fdc_load_file(u8 home_bank, const DiskFileDesc* d, u8 bk, void* ad) {
                 cpct_memcpy((void*)(FDC_BANK_BASE + off), (const void*)0xB800, 512);
             }
             bank_restore(prev);
-            if (s_fdc_crc16((const u8*)FDC_BANK_BASE, g_len_fdc) == g_crc_fdc) ok = 1;
+            if (fdc_crc16((const u8*)FDC_BANK_BASE, g_len_fdc) == g_crc_fdc) ok = 1;
         }
         if (!ok) { cpct_setBorder(0x4B); while (1) { } }
         s_fdc_ready = 1;

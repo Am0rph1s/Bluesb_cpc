@@ -471,6 +471,8 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
 // FRONT banked (C4:0x4000): args centrals + crida absoluta (patro motor).
 // El TILESET sobreescriu C4 quan acaben les 3 pantalles.
 FrontArgs g_front_args;
+u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
+                    // primer mus_init: evita Play sobre C1 buit (reboot).
 static void front_one(const DiskFileDesc* d, const u8* palhw, u8 load_mus) {
     u8 prev;
     g_front_args.home = 0xC4;
@@ -504,7 +506,8 @@ void main(void) {
     front_one(&g_file_fmap, g_pal_fmap, 0);
 
     // Carregar recursos del nivell als Bancs 4/5/7 amb verificació CRC16
-    // (+ MUSMAIN a C1:0x5000: el tema del nivell 1).
+    // (+ MUSMAIN a C1:0x5000: el tema del nivell 1). CRC inline (el helper
+    // banked moria per ordre de carregues: slot2 encara no resident).
     {
         static const u8 v_bank[8] = { 0xC4, 0xC5, 0xC5, 0xC7, 0xC7, 0xC7, 0xC5, 0xC1 };
         static const u16 v_addr[8] = { 0x4000, 0x4000, 0x6400, 0x4000, 0x7AA0, 0x78E0, 0x6E00, 0x5000 };
@@ -513,23 +516,17 @@ void main(void) {
         u8 i, t;
         for (i = 0; i < 8; i++) {
             u8 ok = 0;
+            // Silenci pre-lectura: el HOLD congela el player pero l'AY
+            // mantindria l'ultima nota (drone). La ISR repren en sortir.
+            mus_stop();
             for (t = 0; t < 3 && !ok; t++) {
                 u8 prev;
-                const u8* p;
-                u16 crc, n;
                 // Home 0xC0: el GAME corre en central (mai paginat).
                 if (!fdc_load_file(0xC0, v_desc[i], v_bank[i], (void*)v_addr[i])) continue;
                 prev = bank_set(v_bank[i]);
-                p = (const u8*)v_addr[i];
-                crc = 0xFFFF; n = (u16)(v_desc[i]->ondisk_bytes - 128);
-                while (n--) {
-                    u8 k;
-                    crc ^= (u16)(*p++) << 8;
-                    for (k = 0; k < 8; k++)
-                        crc = (crc & 0x8000) ? (u16)((crc << 1) ^ 0x1021) : (u16)(crc << 1);
-                }
+                if (fdc_crc16((const u8*)v_addr[i],
+                              (u16)(v_desc[i]->ondisk_bytes - 128)) == v_crc[i]) ok = 1;
                 bank_restore(prev);
-                if (crc == v_crc[i]) ok = 1;
             }
             if (!ok) { cpct_setBorder((u8)(0x40 + i)); while (1) { } }
         }
@@ -720,10 +717,8 @@ void main(void) {
         }
         last_ticks = g_ticks;
 
-        // MUSICA 50 Hz: 2 ticks per frame de 25 Hz (mateixa taxa mitjana que
-        // 1x50 Hz; la sortida per tick es identica).
-        mus_play();
-        mus_play();
+        // MUSICA: la porta la ISR (50 Hz exactes, independent del frame
+        // rate: moure en Jake ja no canvia el tempo). Res a fer aqui.
 
         cpc_wait_vsync_start();
         crtc_set_display_start((u16)((s_back_page == 1 ? 0x2000 : 0x3000) + g_vram_start));

@@ -35,6 +35,12 @@ FDC_CMD_SEEK            = 0x0F
 FDC_CMD_RECALIBRATE     = 0x07
 FDC_CMD_SENSE_INT       = 0x08
 
+;; HOLD musica ISR (0xBA10, absolut: compartit pels 3 links): el motor
+;; l'activa en entrar i el neteja en sortir (exit + fail). La ISR salta
+;; el tick de player mentre hi ha lectura (bancs a mitges / slot C1
+;; sobreescrint-se). Sense aixo la ISR trepitjaria el stream bancat.
+MUS_HOLD = 0xBA10
+
         .area _CODE
 
 ;; ============================================================
@@ -63,6 +69,8 @@ _assets_bank_restore::
 _assets_fdc_load_generic::
         push ix
         di
+        ld      a, #1
+        ld      (MUS_HOLD), a     ;; musica ISR en pausa (lectura en curs)
 
         ;; Fixar mapa RAM/ROM per defecte (upper ROM off, lower ROM off).
         ;; CRÍTIC: sense això, la upper ROM (AMSDOS) pot estar paginada
@@ -118,14 +126,14 @@ assets_sector_loop:
         dec a
         ld (assets_sectors_left), a
 
-        ;; Llegir (track, head, sid) de la taula CHS
+        ;; Llegir (track, sid) de la taula CHS (parelles; head sempre 0,
+        ;; dieta: 1 B per sector fora de les taules)
         ld a, (assets_tbl_lo)
         ld l, a
         ld a, (assets_tbl_hi)
         ld h, a
         ld b, (hl)              ;; B = track
         inc hl
-        inc hl                  ;; saltar head (sempre 0)
         ld c, (hl)              ;; C = sector ID
         inc hl
         ld a, l
@@ -148,6 +156,7 @@ assets_load_done:
         ld bc, #FDC_MOTOR_PORT
         out (c), a
         ei
+        ld (MUS_HOLD), a          ;; musica ISR lliure (a=0)
         ld a, #1
         ld l, a
         pop ix
@@ -162,8 +171,9 @@ assets_fail:
         out (c), a
         call _assets_bank_restore  ;; restaura home fins i tot en error
         ei                         ;; (callers banked hi sobreviuen; central,
-                                   ;; identic a abans: home=C0)
+                                    ;; identic a abans: home=C0)
         xor a
+        ld (MUS_HOLD), a          ;; musica ISR lliure fins i tot en error
         ld l, a
         pop ix
         ret

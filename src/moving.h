@@ -78,6 +78,15 @@ void moving_popup_restore(u8 page);
 extern u16 bc_a, bc_b, bc_c, bc_d, bc_e;
 extern i16 bc_r;
 
+// Slots fixos de la taula de salts del Banc 5 (engine/bank5_table.s).
+// Font unica (abans duplicats a moving.c): 0x6E00+3k per sempre.
+#define BC_UPDATE ((void*)0x6E00)
+#define BC_RESTORE ((void*)0x6E03)
+#define BC_DRAW   ((void*)0x6E06) // slot 2 sense us (el CRC-hi-va-morir)
+#define BC_PUSH   ((void*)0x6E09)
+#define BC_FIND   ((void*)0x6E0C)
+#define BC_INIT   ((void*)0x6E0F)
+
 extern u16 g_moving_dst;
 extern u16 g_moving_background;
 extern u16 g_moving_sprite;
@@ -93,5 +102,6 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row);
 i8 moving_find_landing(void);
 i16 moving_conveyor_push(void);
 void moving_draw_conveyor_tiles(void);
+u16 fdc_crc16(const u8* p, u16 len); // CRC16-CCITT (moving.c; tambe main.c)
 
 #endif

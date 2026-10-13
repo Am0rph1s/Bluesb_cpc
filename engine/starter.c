@@ -160,6 +160,10 @@ void s_start(void) {
         ld      (0x0038), a     ; stub RET a RST 0x38 (IM1): el FDC fa EI intern
                                 ; amb ROMs OFF i sense ISR instal-lada; sense
                                 ; aixo, un VSYNC entremig = salt a brossa = reboot.
+        xor     a
+        ld      (0xBA10), a     ; HOLD musica ISR = 0 (lliure). La RAM pot
+                                ; portar brossa de reboot calent: sense aixo
+                                ; la ISR saltaria la musica per sempre.
         ld      bc, #0x7F8C
         out     (c), c          ; RMR: Mode 0 + ROMs OFF (RAM a tot arreu).
                                 ; Sense aixo, 0xC000 es llegeix de la ROM alta

@@ -111,8 +111,9 @@ DATA_FILES = [
     # finestra 0x4000-0x7FFF: el motor pagina bancs i s'esborraria ell mateix
     # a 0x7000!) i l'executa alla (F1).
     ("FDC", "BIN", os.path.join(PROJ, "obj", "FDC.BIN")),
-    # TITLE: el títol encara és Mode 1 (16 KB). Quan fem el títol Mode 0 el canviarem.
-    ("TITLE", "BIN", os.path.join(PROJ, "assets", "bbdata", "TITLE.BIN")),
+    # TITLE.BIN (Mode 1, 16 KB) NO va al DSK: cap codi el carrega (el FRONT
+    # mostra SPLASH/SELECT/MAP). Quan fem el titol Mode 0 el re-afegirem
+    # (junt amb g_file_title). Treure'l estalvia 107 B de taules al Bloc 0.
     # Mode 0: tileset 8x16 (64 B/tile, 256 tiles = 16 KB), mapa 128x72.
     ("TILES", "BIN", os.path.join(PROJ, "assets", "bbdata", "TILESET0.BIN")),
     ("MAP",   "BIN", os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN")),
@@ -129,7 +130,9 @@ DATA_FILES = [
     ("FSPLASH", "ZX0", os.path.join(PROJ, "obj", "FSPLASH.ZX0")),
     ("FSELECT", "ZX0", os.path.join(PROJ, "obj", "FSELECT.ZX0")),
     ("FMAP", "ZX0", os.path.join(PROJ, "obj", "FMAP.ZX0")),
-    # MUSICA: MUSBANK (player+intro, starter->C1) + MUSMAIN (GAME->C1 slot).
+    # MUSICA: MUSBANK (player+intro, el FRONT el carrega a C1) + MUSMAIN
+    # (el GAME el carrega a l'slot C1:0x5000). Mai des de l'starter (C1 mata
+    # l'slot 3).
     ("MUSBANK", "BIN", os.path.join(PROJ, "obj", "MUSBANK.BIN")),
     ("MUSMAIN", "BIN", os.path.join(PROJ, "obj", "MUSMAIN.BIN")),
 ]
@@ -546,7 +549,8 @@ def build_front(force):
     resident_map = os.path.join(obj, PROGNAME + ".map")
     syms = map_symbols(resident_map)
     need = {"_fdc_load_file": None, "_g_front_args": None,
-            "_mus_play": None, "_mus_init": None, "_g_ticks": None}
+            "_mus_play": None, "_mus_init": None, "_mus_stop": None,
+            "_g_ticks": None}
     for k in need:
         if k not in syms:
             print("\n[FATAL] FRONT: %s no es al mapa resident. Enllaca GAME primer?" % k)
@@ -697,7 +701,8 @@ def build_music(force):
     open(mainbin, "wb").write(mdata)
     # EQU pel GAME (mus.s crida _akg_init/_akg_play en finestra C1).
     ext_s = os.path.join(obj, "mus_ext.s")
-    need = {"_akg_init": plabels.get("PLY_AKG_Init"), "_akg_play": plabels.get("PLY_AKG_Play")}
+    need = {"_akg_init": plabels.get("PLY_AKG_Init"), "_akg_play": plabels.get("PLY_AKG_Play"),
+            "_akg_stop": plabels.get("PLY_AKG_Stop")}
     if None in need.values():
         print("\n[FATAL] MUSICA: PLY_AKG_Init/Play no trobats al .lst (%s)" % sorted(plabels))
         sys.exit(1)
@@ -942,8 +947,8 @@ def package(starter_path, starter_start, game_path):
             chs = []
             for b in blocs:
                 for (t, sid) in dsk.bloc_to_ts(b):
-                    chs += [t, 0, sid]
-            return (len(payload) + 128, len(chs) // 3, chs)
+                    chs += [t, sid]  # parelles (track,sid): head sempre 0
+            return (len(payload) + 128, len(chs) // 2, chs)
         return None
 
     # BLUESB primer (starter, pistes 0-1): l'únic que carrega el firmware.
@@ -962,8 +967,8 @@ def package(starter_path, starter_start, game_path):
         chs = []
         for b in blocs:
             for (t, sid) in dsk.bloc_to_ts(b):
-                chs += [t, 0, sid]
-        chs_map[name8] = (len(data) + 128, len(chs) // 3, chs, crc16_ccitt(data))
+                chs += [t, sid]  # parelles (track,sid): head sempre 0
+        chs_map[name8] = (len(data) + 128, len(chs) // 2, chs, crc16_ccitt(data))
     dsk.save(dsk_path)
     print("DSK: %s  (RUN\"%s\" -> starter load 0x%04X/run 0x%04X, game=%d bytes)" %
           (dsk_path, DSKNAME8, ST_LOAD, ST_RUN, len(gdata)))

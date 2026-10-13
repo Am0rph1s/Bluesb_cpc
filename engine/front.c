@@ -14,6 +14,7 @@
 void zx0_decompress(const void* src, void* dst); // enllacat AL FRONT (no EQU)
 void mus_play(void); // EQU central (mus.s: pagina C1, 1 tick, restaura)
 void mus_init(void); // EQU central (mus.s: pagina C1, init intro, restaura)
+void mus_stop(void); // EQU central (mus.s: silencia AY, posicio intacta)
 extern volatile u8 g_ticks; // ISR 300 Hz (central _DATA; llegible banked)
 
 static u8 f_fkb[10];
@@ -117,6 +118,8 @@ void front_run(void) {
         mus_init();
     }
     for (t = 0; t < 3 && !ok; t++) {
+        // Silenci pre-lectura (drone): la ISR repren en sortir (HOLD net).
+        mus_stop();
         if (!fdc_load_file(home, f, 0xC0, (void*)0x8400)) continue;
         zx0_decompress((const void*)0x8400, (void*)0xC000);
         ok = 1;
@@ -133,18 +136,12 @@ void front_run(void) {
     }
     f_fpal(palhw);
     // Espera-premut amb TIMEOUT (~4s = 8000 scans): robust en tot cas
-    // (scan be -> tecla; retorn encallat -> auto-avanca). Musica a 50 Hz:
-    // 1 tick de player cada 6 ticks ISR (300 Hz). mus_play pagina C1 i
-    // restaura C4 (nest-safe); crida central sempre visible des del banc.
+    // (scan be -> tecla; retorn encallat -> auto-avanca). La musica la porta
+    // la ISR (50 Hz; el motor posa HOLD durant lectures: aqui corre lliure).
     {
         u16 w = 0;
-        u8 last = g_ticks;
         while (!f_fkey_pressed() && w < 8000) {
             w++;
-            if ((u8)(g_ticks - last) >= 6) {
-                last += 6;
-                mus_play();
-            }
         }
     }
 }

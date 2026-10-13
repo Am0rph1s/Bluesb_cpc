@@ -5,6 +5,8 @@
 ;; 3 bytes (jp) a adreces FIXES per sempre (0x6E00+3k). El resident
 ;; hi crida via call_banked (slot, mai per nom). Afegir al FINAL.
 ;; Slots: 0 update, 1 restore, 2 draw, 3 push, 4 find, 5 init, 6 conv.
+;; (slot 2 sense us: el CRC-hi-va-morir per ordre de carregues (slot no
+;; resident al primer us); CRC inline al GAME (dieta revertida)).
 ;; ============================================================
     .module bank5_table
     .optsdcc -mz80 sdcccall(1)

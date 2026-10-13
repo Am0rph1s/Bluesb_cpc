@@ -8,19 +8,22 @@
 
     .globl _cpc_install_isr
     .globl _g_ticks
+    .globl _g_mus_hold           ;; _DATA: 1 = motor FDC en lectura (pausa tick)
     .globl _mus_play           ;; stub central (mus.s): ISR-only (ja DI)
     .globl _g_mus_ready        ;; main.c: 1 = player iniciat
 
-;; HOLD musica: el motor FDC l'activa (1) en entrar i el neteja (0) en
-;; sortir (exit i fail). Adreca ABSOLUTA compartida (no _DATA: el motor
-;; corre en 3 links diferents amb _DATA diferents). La ISR salta el tick
-;; si HOLD (lectura en curs o slot C1 a mig sobreescriure).
-MUS_HOLD = 0xBA10
+;; HOLD: ABANS era un absolut 0xBA10 (VRAM pag.2!). El memset(0x8000) del
+;; GAME el posava a 0xFF i el render el trepitjava = la ISR no sonava mai
+;; mes al joc + AY congelat = drone persistent (vist 13/10/26). Ara viu a
+;; _DATA (byte propi): el motor (3 links) hi escriu via EQU generat
+;; (obj/fdc_hold.s, patro front_ext) i la ISR el llegeix com a simbol.
 
     .area _DATA
 _g_ticks::
     .db 0
 _mus_div::
+    .db 0
+_g_mus_hold::
     .db 0
 
     .area _CODE
@@ -43,7 +46,7 @@ isr_stub:
     ;; independent del frame rate del joc. Salta si HOLD (motor FDC) o si
     ;; el player no esta iniciat (ready=0: C1 buit = reboot segur).
     ;; _mus_play preserva TOT (push propi); nomes cal af/hl del stub.
-    ld      a, (MUS_HOLD)
+    ld      a, (_g_mus_hold)
     or      a
     jr      nz, isr_done
     ld      a, (_g_mus_ready)

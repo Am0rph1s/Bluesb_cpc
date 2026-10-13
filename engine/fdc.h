@@ -11,7 +11,8 @@
 // Descriptor d'un fitxer resident a la disquetera.
 //   ondisk_bytes : mida total al disc (dades + 128 bytes de capçalera AMSDOS)
 //   sector_count : nombre de sectors físics de 512 B que ocupa
-//   chs_table    : taula plana [track, head, sector_id] de 3 bytes per sector
+//   chs_table    : taula plana [track, sector_id] de 2 bytes per sector
+//                  (parelles; head sempre 0, dieta P0: 1 B/sector menys).
 typedef struct {
     u16 ondisk_bytes;
     u8  sector_count;

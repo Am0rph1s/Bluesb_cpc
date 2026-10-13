@@ -161,7 +161,7 @@ void s_start(void) {
                                 ; amb ROMs OFF i sense ISR instal-lada; sense
                                 ; aixo, un VSYNC entremig = salt a brossa = reboot.
         xor     a
-        ld      (0xBA10), a     ; HOLD musica ISR = 0 (lliure). La RAM pot
+        ld      (MUS_HOLD_ADDR), a ; HOLD musica ISR = 0 (lliure). La RAM pot
                                 ; portar brossa de reboot calent: sense aixo
                                 ; la ISR saltaria la musica per sempre.
         ld      bc, #0x7F8C

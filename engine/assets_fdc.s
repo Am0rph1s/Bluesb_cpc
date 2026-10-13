@@ -9,6 +9,8 @@
         .globl _g_fdc_dest_bank
         .globl _g_fdc_dest_addr
         .globl _g_fdc_home_bank
+        .globl MUS_HOLD          ;; _g_mus_hold del GAME (obj/fdc_hold.s,
+                                 ;; generat del mapa: patro front_ext)
 
 ;; Mapa de RAM:
 ;;   FDC_BUF i FDC_WORK han d'estar en RAM base, no en zona bancable.
@@ -35,11 +37,12 @@ FDC_CMD_SEEK            = 0x0F
 FDC_CMD_RECALIBRATE     = 0x07
 FDC_CMD_SENSE_INT       = 0x08
 
-;; HOLD musica ISR (0xBA10, absolut: compartit pels 3 links): el motor
-;; l'activa en entrar i el neteja en sortir (exit + fail). La ISR salta
-;; el tick de player mentre hi ha lectura (bancs a mitges / slot C1
-;; sobreescrint-se). Sense aixo la ISR trepitjaria el stream bancat.
-MUS_HOLD = 0xBA10
+;; HOLD musica ISR (_g_mus_hold del GAME, via EQU fdc_hold.s): el motor
+;; l'activa en entrar (nomes si dest!=C0: les copies a C0 son a RAM no
+;; bancable i la ISR hi pot sonar pel mig) i el neteja en sortir
+;; (exit + fail). Sense HOLD en copies bancades la ISR trepitjaria
+;; l'stream (pagina C1 a mitja copia i restaura un banc ranci: el motor
+;; no manté _g_bank).
 
         .area _CODE
 
@@ -69,8 +72,15 @@ _assets_bank_restore::
 _assets_fdc_load_generic::
         push ix
         di
+        ;; HOLD nomes si el desti es bancable (!=C0): les carregues FRONT
+        ;; (pantalles a scratch 0x8400, C0) sonen pel mig sense risc (tot
+        ;; fora de la finestra 0x4000-0x7FFF + el motor re-asserta bancs).
+        ld      a, (_g_fdc_dest_bank)
+        cp      #0xC0
+        jr      z, hold_skip$
         ld      a, #1
         ld      (MUS_HOLD), a     ;; musica ISR en pausa (lectura en curs)
+hold_skip$:
 
         ;; Fixar mapa RAM/ROM per defecte (upper ROM off, lower ROM off).
         ;; CRÍTIC: sense això, la upper ROM (AMSDOS) pot estar paginada

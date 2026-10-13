@@ -267,7 +267,7 @@ def crt_addrs_text(map_path):
                 parts = line.split()
                 if len(parts) >= 2 and parts[1] in (
                         "s__DATA", "l__DATA", "s__INITIALIZED",
-                        "s__INITIALIZER", "l__INITIALIZED"):
+                        "s__INITIALIZER", "l__INITIALIZED", "_g_mus_hold"):
                     try:
                         syms[parts[1]] = int(parts[0], 16)
                     except ValueError:
@@ -277,12 +277,16 @@ def crt_addrs_text(map_path):
     idata_dst = syms.get("s__INITIALIZED", 0x382E)
     idata_src = syms.get("s__INITIALIZER", 0x3850)
     idata_len = syms.get("l__INITIALIZED", 0x1E)
+    mus_hold = syms.get("_g_mus_hold", 0x0000)
     return ("#ifndef CRT_ADDRS_H\n#define CRT_ADDRS_H\n"
             "// Generat per tools/build.py des de obj/bluesb.map. NO EDITAR.\n"
             "#define CRT_DATA_START 0x%04X\n#define CRT_DATA_LEN %d\n"
             "#define CRT_IDATA_DST 0x%04X\n#define CRT_IDATA_SRC 0x%04X\n"
-            "#define CRT_IDATA_LEN %d\n#endif\n"
-            % (data_start, data_len, idata_dst, idata_src, idata_len))
+            "#define CRT_IDATA_LEN %d\n"
+            "// Adreca de _g_mus_hold (HOLD musica ISR): la neteja el GAME\n"
+            "// post-memset(0x8000) (era VRAM: 0xBA10 = drone, vist 13/10/26).\n"
+            "#define MUS_HOLD_ADDR 0x%04X\n#endif\n"
+            % (data_start, data_len, idata_dst, idata_src, idata_len, mus_hold))
 
 
 def map_area(map_path, area):
@@ -499,10 +503,37 @@ FDC_BANK_DATA = 0x8300
 FDC_BANK_WINLEN = 0x1000  # scratch 0x8000..0x8FFF (VRAM pag.2; el GAME
                           # l'esborra amb memset post-carregues)
 
+def build_fdc_hold(force):
+    """Genera+assembla obj/fdc_hold.s (MUS_HOLD = _g_mus_hold del GAME).
+    El motor (assets_fdc.s, 3 links: starter/scratch) hi escriu l'HOLD i
+    la ISR el llegeix com a simbol. Patro front_ext (mai hardcoded: l'adreca
+    de _DATA deriva amb cada build). FATAL si el simbol falta al mapa."""
+    obj = os.path.join(PROJ, "obj")
+    syms = map_symbols(os.path.join(obj, PROGNAME + ".map"))
+    addr = syms.get("_g_mus_hold", -1)
+    if addr < 0:
+        print("\n[FATAL] HOLD: _g_mus_hold no es al mapa resident. Enllaca GAME primer?")
+        sys.exit(1)
+    hold_s = os.path.join(obj, "fdc_hold.s")
+    hold_txt = ("    .module fdc_hold\n"
+                "    .globl MUS_HOLD\n"
+                "MUS_HOLD = 0x%04X\n" % addr)
+    if not os.path.exists(hold_s) or open(hold_s).read() != hold_txt:
+        open(hold_s, "w").write(hold_txt)
+    hold_rel = os.path.join(obj, "fdc_hold.rel")
+    if force or is_stale(hold_rel, [hold_s]):
+        run([SDASZ80, "-plosgff", hold_rel, hold_s])
+        mark_fresh(hold_rel, [hold_s])
+    print("FDCHOLD: MUS_HOLD=0x%04X (_g_mus_hold)" % addr)
+    return hold_rel
+
+
 def build_fdcbank(force):
     """Enllaça FDC.BIN (motor FDC sencer) a 0x8000. Retorna FDC.BIN."""
     obj = os.path.join(PROJ, "obj")
-    bank_rels = [os.path.join(obj, "fdc.rel"), os.path.join(obj, "assets_fdc.rel")]
+    hold_rel = build_fdc_hold(force)
+    bank_rels = [os.path.join(obj, "fdc.rel"), os.path.join(obj, "assets_fdc.rel"),
+                 hold_rel]
     ihx = os.path.join(obj, "fdcbank.ihx")
     run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % FDC_BANK_BASE,
          "--data-loc", "0x%04X" % FDC_BANK_DATA] + bank_rels + ["-o", ihx])
@@ -794,6 +825,10 @@ def gen_starter_tables(game_entry, game_start, game_len, game_crc, fdc_entry, fr
     fbytes, fcount, fchs, fcrc = fdc_entry
     rbytes, rcount, rchs, rcrc = front_entry
     mbytes, mcount, mchs, mcrc = mus_entry
+    hold = map_symbols(os.path.join(PROJ, "obj", PROGNAME + ".map")).get("_g_mus_hold", -1)
+    if hold < 0:
+        print("\n[FATAL] HOLD: _g_mus_hold no es al mapa resident (starter_tables).")
+        sys.exit(1)
     lines = ["#ifndef STARTER_TABLES_H", "#define STARTER_TABLES_H",
              '#include "fdc.h"', "",
              "// Generat per tools/build.py. NO EDITAR.",
@@ -805,7 +840,10 @@ def gen_starter_tables(game_entry, game_start, game_len, game_crc, fdc_entry, fr
              "#define FRONT_LEN %d" % rbytes,
              "#define CRC_FRONT 0x%04X" % rcrc,
              "#define MUS_LEN %d" % mbytes,
-             "#define CRC_MUS 0x%04X" % mcrc, "",
+             "#define CRC_MUS 0x%04X" % mcrc,
+             "// HOLD musica ISR (_g_mus_hold del GAME): el starter el neteja a",
+             "// s_start (reboot calent podria dur brossa = ISR muda per sempre).",
+             "#define MUS_HOLD_ADDR 0x%04X" % hold, "",
              "static const u8 g_game_chs[%d] = {" % len(chs)]
     for i in range(0, len(chs), 12):
         lines.append("    " + ",".join("0x%02X" % b for b in chs[i:i + 12]) + ",")
@@ -846,7 +884,8 @@ def placeholder_starter_tables():
               "#define FRONT_LEN 512",
               "#define CRC_FRONT 0x0000",
               "#define MUS_LEN 8192",
-              "#define CRC_MUS 0x0000", "",
+              "#define CRC_MUS 0x0000",
+              "#define MUS_HOLD_ADDR 0x0000", "",
              "static const u8 g_game_chs[%d] = { 0 };" % len(chs),
              "static const DiskFileDesc g_file_game = { 14318, 28, g_game_chs };",
              "static const u8 g_fdc_chs[%d] = { 0 };" % len(fchs),
@@ -884,9 +923,10 @@ def build_starter(force):
         mark_fresh(rel, [src] + headers)
     fdc_rel = os.path.join(obj, "fdc.rel")
     assets_rel = os.path.join(obj, "assets_fdc.rel")
+    hold_rel = os.path.join(obj, "fdc_hold.rel")
     ihx = os.path.join(obj, "starter.ihx")
     run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % ST_RUN,
-         "--data-loc", "0x%04X" % ST_DATA, fdc_rel, assets_rel, rel, "-o", ihx])
+         "--data-loc", "0x%04X" % ST_DATA, fdc_rel, assets_rel, hold_rel, rel, "-o", ihx])
     map_path = os.path.join(obj, "starter.map")
     bin_path = os.path.join(obj, "STARTER.BIN")
     convert_ihx(ihx, bin_path, start_addr=ST_RUN,
@@ -1036,7 +1076,7 @@ def main():
         stab_txt = open(stab_path).read()
     except OSError:
         stab_txt = ""
-    if "GAME_CRC" not in stab_txt or "g_file_fdc" not in stab_txt or "g_file_front" not in stab_txt or "g_file_mus" not in stab_txt:
+    if "GAME_CRC" not in stab_txt or "g_file_fdc" not in stab_txt or "g_file_front" not in stab_txt or "g_file_mus" not in stab_txt or "MUS_HOLD_ADDR" not in stab_txt:
         open(stab_path, "w").write(placeholder_starter_tables())
 
     prev = None

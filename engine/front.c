@@ -118,8 +118,10 @@ void front_run(void) {
         mus_init();
     }
     for (t = 0; t < 3 && !ok; t++) {
-        // Silenci pre-lectura (drone): la ISR repren en sortir (HOLD net).
-        mus_stop();
+        // Sense mus_stop(): el desti es C0 (scratch 0x8400, RAM no bancable)
+        // i el motor ja no posa HOLD (= la ISR continua sonant pel mig, la
+        // musica NO es para en llegir pantalles). En copies bancades el HOLD
+        // si que congela + el caller muta (drone); aqui no cal.
         if (!fdc_load_file(home, f, 0xC0, (void*)0x8400)) continue;
         zx0_decompress((const void*)0x8400, (void*)0xC000);
         ok = 1;
@@ -135,13 +137,11 @@ void front_run(void) {
         while (1) { }
     }
     f_fpal(palhw);
-    // Espera-premut amb TIMEOUT (~4s = 8000 scans): robust en tot cas
-    // (scan be -> tecla; retorn encallat -> auto-avanca). La musica la porta
-    // la ISR (50 Hz; el motor posa HOLD durant lectures: aqui corre lliure).
-    {
-        u16 w = 0;
-        while (!f_fkey_pressed() && w < 8000) {
-            w++;
-        }
-    }
+    // Espera TECLA/BOTO (INFINITA: res de timeouts auto-pass). Primer espera
+    // que no hi hagi res premut (si l'usuari venia prement de la pantalla
+    // anterior, no saltem en cadena) i despres espera la premuda.
+    // f_fkey cobreix teclat + joystick (fila 9 de la matriu). La musica la
+    // porta la ISR (50 Hz) i aqui corre lliure (cap HOLD en C0).
+    while (f_fkey_pressed()) { }
+    while (!f_fkey_pressed()) { }
 }

@@ -514,11 +514,12 @@ void main(void) {
         static const u16 v_crc[8] = { CRC_TILES, CRC_MAP, CRC_TRIG, CRC_PFRAMES, CRC_EXTRA, CRC_ELEV, CRC_BANK5, CRC_MUSMAIN };
         static const DiskFileDesc* const v_desc[8] = { &g_file_tiles, &g_file_map, &g_file_trig, &g_file_pframes, &g_file_extra, &g_file_elev, &g_file_bank5, &g_file_musmain };
         u8 i, t;
+        // Un sol mus_stop() per TOT el loop (no un per fitxer): silenci
+        // continu durant les carregues (l'usuari ho prefereix a
+        // stop-start-stop) i la ISR repren amb mus_init#2.
+        mus_stop();
         for (i = 0; i < 8; i++) {
             u8 ok = 0;
-            // Silenci pre-lectura: el HOLD congela el player pero l'AY
-            // mantindria l'ultima nota (drone). La ISR repren en sortir.
-            mus_stop();
             for (t = 0; t < 3 && !ok; t++) {
                 u8 prev;
                 // Home 0xC0: el GAME corre en central (mai paginat).
@@ -545,6 +546,9 @@ void main(void) {
 
     cpct_memset((void*)0xC000, 0xFF, 0x4000);
     cpct_memset((void*)0x8000, 0xFF, 0x4000);
+    // Blindatge: si l'HOLD arriba a 1 fins aqui (p.ex. load interromput),
+    // la ISR no sonaria mai mes. Cost 0, musica en 20 ms.
+    g_mus_hold = 0;
 
     // Inicialitza posició d'inici, càmera i entitats des del paquet de nivell (Banc 5)
     moving_init();

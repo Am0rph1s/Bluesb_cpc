@@ -78,33 +78,13 @@ static u8 f_fkey_pressed(void) {
     return f_fkres;
 }
 
-// Vora fixa (hardcode, 0 risc ABI: el param en A/L ja ens ha mossegat
-// un cop - la vora sortia blanca). f_fpal la torna negra en sortir.
-static void f_bord_j(void) { // blau 0x44 = Jake
-    __asm
-        ld      bc, #0x7F00
-        ld      a, #0x10
-        out     (c), a
-        ld      a, #0x44
-        out     (c), a
-        ret
-    __endasm;
-}
-static void f_bord_e(void) { // 0x4C = Elwood
-    __asm
-        ld      bc, #0x7F00
-        ld      a, #0x10
-        out     (c), a
-        ld      a, #0x4C
-        out     (c), a
-        ret
-    __endasm;
-}
 extern const u8 fselect_dance_base[]; // EQU front_ext (0x8400+off)
 static u16 f_rowaddr(u8 y, u8 xb);
-// Focus: groc (0x4A) sobre el triat, blau (0x44) l'altre. Cons a pens
-// separats (esq 13 / dret 14): un simple canvi de tinta, instantani,
-// sense parpelleig. Es crida a l'inici i a cada canvi L/R.
+// Focus: groc (0x4A) sobre el triat, blau (0x44) l'altre + terra iluminat
+// (groc palid 0x43) vs no (blau cel 0x57). Cons a pens separats (esq 13 /
+// dret 14), ovals idem (esq 6 / dret 15): un simple canvi de tinta,
+// instantani, sense parpelleig. Es crida a l'inici i a cada canvi L/R.
+// (La vora es la negra standard del joc: el diag blau/vermell ja no cal.)
 static void f_focus(void) {
     __asm
         ld      bc, #0x7F00
@@ -126,6 +106,24 @@ static void f_focus(void) {
         jr      00173$
 00172$: ld      a, #0x4A
 00173$: out     (c), a
+        ld      a, #6
+        out     (c), a
+        ld      a, (#_f_choice)
+        or      a
+        jr      nz, 00174$
+        ld      a, #0x43
+        jr      00175$
+00174$: ld      a, #0x57
+00175$: out     (c), a
+        ld      a, #15
+        out     (c), a
+        ld      a, (#_f_choice)
+        or      a
+        jr      nz, 00176$
+        ld      a, #0x57
+        jr      00177$
+00176$: ld      a, #0x43
+00177$: out     (c), a
         ret
     __endasm;
 }
@@ -379,12 +377,11 @@ void front_run(void) {
     // Escriu g_player_choice directe via EQU (el caller no hi toca res).
     if (g_front_args.select_mode) {
         // SELECT Jake/Elwood: els DOS ballen (seqüències 0135/01d5/00dd/022d
-        // tal qual, blitter rapid estil joc) + focus groc/blau per tinta +
-        // L/R (joy + fletxes) amb vora persistent + FIRE/SPACE confirma.
-        // Default Jake (com DOS).
+        // tal qual, blitter rapid estil joc) + focus groc/blau + terra per
+        // tinta + L/R (joy + fletxes) + FIRE/SPACE confirma. Vora negra
+        // standard (sense diag). Default Jake (com DOS).
         u8 d;
         f_choice = 0;
-        f_bord_j();
         f_focus();
         f_sid = 0; f_fi = f_jd[0]; f_blit();
         f_sid = 1; f_fi = f_ea[0]; f_blit();
@@ -428,11 +425,11 @@ void front_run(void) {
             // (JD 0-5, JI 6-8, EA 9-13, EB 14-19) i el primer frame
             // sempre difereix de f_lj/f_le: redibuix garantit sense reset.
             if (d & 1) {
-                if (f_choice) { f_choice = 0; f_bord_j(); f_focus(); f_jt = 0; f_et = 0; }
+                if (f_choice) { f_choice = 0; f_focus(); f_jt = 0; f_et = 0; }
                 while (f_dir_mask() & 1) { }
             }
             if (d & 2) {
-                if (!f_choice) { f_choice = 1; f_bord_e(); f_focus(); f_jt = 0; f_et = 0; }
+                if (!f_choice) { f_choice = 1; f_focus(); f_jt = 0; f_et = 0; }
                 while (f_dir_mask() & 2) { }
             }
             if (f_fkey_pressed()) break;

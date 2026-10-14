@@ -1002,11 +1002,15 @@ DANCE_LEN = 9600
 
 
 def remap_select(data):
-    """Nomes el split de cons de SELECT.BIN (gen_screens, MEDIANCUT
-    determinista de CHOIX.SQZ): el pen 7 (cons) es parteix en esq/dret
-    (x<72 -> 13 / x>=72 -> 14) pel focus groc/blau per tinta. La resta del
-    quadre es INTACTA (imatge original). Ha de coincidir amb SELECT.PALHW
-    (fitxer versionat): ballarins a 9-12, cons a 13/14."""
+    """Retocs minims de SELECT.BIN (gen_screens, MEDIANCUT determinista de
+    CHOIX.SQZ; la resta del quadre es INTACTA):
+    - pen 7 (cons) partit esq/dret (x<72 -> 13 / x>=72 -> 14) pel focus
+      groc/blau per tinta;
+    - pen 6 (ovals a files 147-157) partit esq (x < 72 -> 6) / dret
+      (x >= 72 -> 15) pel terra iluminat (groc palid) vs no (blau cel);
+      la resta del 6 (linies + confeti blau) -> 7 (blau fix).
+    Ha de coincidir amb SELECT.PALHW (fitxer versionat): ballarins a 9-12,
+    cons a 13/14, ovals a 6/15, blau fix a 7."""
 
     def d0(b):
         return ((b >> 7) & 1) | (((b >> 3) & 1) << 1) | \
@@ -1029,8 +1033,16 @@ def remap_select(data):
             byte = data[base + xb]
             out = []
             for k, v in ((0, d0(byte)), (1, d1(byte))):
+                x = xb * 2 + k
                 if v == 7:
-                    v = 13 if xb * 2 + k < 72 else 14
+                    v = 13 if x < 72 else 14
+                elif v == 6 and 146 <= row <= 158:
+                    if x < 72:
+                        v = 6
+                    elif x >= 72:
+                        v = 15
+                    else:
+                        v = 7
                 out.append(v)
             lin[row * 80 + xb] = pack(out[0], out[1])
     inter = bytearray(16384)

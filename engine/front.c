@@ -19,9 +19,13 @@ extern volatile u8 g_ticks; // ISR 300 Hz (central _DATA; llegible banked)
 extern volatile u8 g_mus_hold; // HOLD ISR (central _DATA; EQU front_ext.s:
 // AKG Play reprendria el so al tick seguent del mus_stop: el mute en
 // lectures ha d'anar amb HOLD=1, si no el glitch torna en 20 ms)
+extern volatile u8 g_player_choice; // tria F1 (central _DATA; l'escriu el
+                                    // select directe: 0=Jake, 1=Elwood)
 
 // Resultat via static (NO en L/A directe!): veure s_fkey_pressed (main.c).
 static volatile u8 f_fkres;
+static volatile u8 f_choice; // tria select: 0=Jake(esq), 1=Elwood(dreta)
+static volatile u8 f_dres; // mascara direccio (file-scope: nom ASM estable)
 
 // Tecla/boto premut? = SPACE (linia 5, bit 7) o Joy0_Fire1 (linia 9,
 // bit 4). Port VERBATIM del Loader de nau_dx (Am0rph1s, provat en HW
@@ -72,6 +76,75 @@ static u8 f_fkey_pressed(void) {
         ei                       ;; fi seccio atomica (veure di de dalt)
     __endasm;
     return f_fkres;
+}
+
+// Vora segons tria (Jake blanc 0x44 / Elwood 0x4C): l'estat es veu sempre,
+// sense geometria ni maths de pens. f_fpal la torna negra en sortir.
+static void f_border(u8 hw) {
+    __asm
+        ld      bc, #0x7F00
+        ld      a, #0x10
+        out     (c), a
+        ld      a, l
+        out     (c), a
+        ret
+    __endasm;
+}
+// Direccio premuda? bit0=esquerra, bit1=dreta (actiu-alt). Joy0 L/R
+// (linia 9, bits 2/3 = 0x0409/0x0809) + fletxes (dreta linia 0 bit 1,
+// esquerra linia 1 bit 0). Mateix read_keyline_e nau_dx + DI atomic.
+static u8 f_dir_mask(void) {
+    f_dres = 0;
+    __asm
+        di
+        ld      e, #9             ;; Joy0 L/R/F (una lectura)
+        call    00020$
+        bit     2, a              ;; Joy0_Left (actiu-baix)
+        jr      nz, 00021$
+        ld      hl, #_f_dres
+        set     0, (hl)
+00021$: bit     3, a              ;; Joy0_Right
+        jr      nz, 00022$
+        ld      hl, #_f_dres
+        set     1, (hl)
+00022$: ld      e, #0             ;; fletxa dreta (linia 0, bit 1)
+        call    00020$
+        bit     1, a
+        jr      nz, 00023$
+        ld      hl, #_f_dres
+        set     1, (hl)
+00023$: ld      e, #1             ;; fletxa esquerra (linia 1, bit 0)
+        call    00020$
+        bit     0, a
+        jr      nz, 00024$
+        ld      hl, #_f_dres
+        set     0, (hl)
+00024$: ei
+        jr      00025$
+00020$: ;; read_keyline_e (copia local: etiquetes per-funcio en SDCC)
+        ld      bc, #0xF40E
+        out     (c), c
+        ld      bc, #0xF6C0
+        out     (c), c
+        xor     a
+        out     (c), a
+        ld      bc, #0xF792
+        out     (c), c
+        ld      a, e
+        add     #0x40
+        ld      c, a
+        ld      b, #0xF6
+        out     (c), c
+        ld      b, #0xF4
+        in      a, (c)
+        ld      bc, #0xF782
+        out     (c), c
+        ld      bc, #0xF600
+        out     (c), c
+        ret
+00025$:
+    __endasm;
+    return f_dres;
 }
 
 // Posa paleta HW (HL = taula 16 INKR) + vora negra.
@@ -163,6 +236,31 @@ void front_run(void) {
     // anterior, no saltem en cadena) i despres espera la premuda (SPACE o
     // foc joystick). La musica la porta la ISR (50 Hz) i aqui corre lliure
     // (la lectura ja es muda: stop+HOLD abans, init despres).
-    while (f_fkey_pressed()) { }
-    while (!f_fkey_pressed()) { }
+    // SELECT (flag EXPLICIT del caller: els statics banked neixen amb
+    // BROSSA - vist 14/10/26: un comptador intern enganxava l'splash).
+    // Escriu g_player_choice directe via EQU (el caller no hi toca res).
+    if (g_front_args.select_mode) {
+        // SELECT Jake/Elwood: L/R (joy + fletxes) canvien la tria (vora
+        // blava/verella persistent), FIRE/SPACE confirma. Default Jake.
+        u8 d;
+        f_choice = 0;
+        f_border(0x44); // blanc = Jake
+        while (f_fkey_pressed() || f_dir_mask()) { }
+        for (;;) {
+            d = f_dir_mask();
+            if (d & 1) {
+                if (f_choice) { f_choice = 0; f_border(0x44); }
+                while (f_dir_mask() & 1) { }
+            }
+            if (d & 2) {
+                if (!f_choice) { f_choice = 1; f_border(0x4C); } // 0x4C
+                while (f_dir_mask() & 2) { }
+            }
+            if (f_fkey_pressed()) break;
+        }
+        g_player_choice = f_choice;
+    } else {
+        while (f_fkey_pressed()) { }
+        while (!f_fkey_pressed()) { }
+    }
 }

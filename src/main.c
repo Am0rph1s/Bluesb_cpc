@@ -227,7 +227,8 @@ void carry_abort(void) {
 
 static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) {
     if (s_dance_timer) {
-        return (s_dance_timer & 4) ? 10 : 11;
+        return (s_dance_timer & 8) ? 10 : 11; // polir 13/10/26: &4 = 6/s
+                                              // massa rapid; &8 = ~3/s
     }
     if (climbing == 1) {
         if (jump || crouch || move != 0) {
@@ -471,6 +472,12 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
 // FRONT banked (C4:0x4000): args centrals + crida absoluta (patro motor).
 // El TILESET sobreescriu C4 quan acaben les 3 pantalles.
 FrontArgs g_front_args;
+volatile u8 g_player_choice; // 0=Jake, 1=Elwood (l'escriu el FRONT al
+                    // select via EQU; el loop la llegeix. VOLATILE: escrita
+                    // en una altra TU; sense volatile l'SDCC la plega a 0
+                    // (vist 14/10/26: el ternari costava 1 B = branca morta
+                    // i l'Elwood no hauria sonat MAI). Sense init: el select
+                    // sempre corre abans del primer us)
 u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
                     // primer mus_init: evita Play sobre C1 buit (reboot).
 static void front_one(const DiskFileDesc* d, const u8* palhw, u8 load_mus) {
@@ -480,6 +487,9 @@ static void front_one(const DiskFileDesc* d, const u8* palhw, u8 load_mus) {
     g_front_args.palhw = palhw;
     g_front_args.musbank = &g_file_musbank;
     g_front_args.load_mus = load_mus;
+    // Select = FSELECT (flag explicit: els statics banked neixen amb
+    // brossa i un comptador intern enganxava l'splash, 14/10/26).
+    g_front_args.select_mode = (d == &g_file_fselect);
     prev = bank_set(0xC4);
     ((void(*)(void))FRONT_RUN)();
     bank_restore(prev);
@@ -526,16 +536,23 @@ void main(void) {
         // toca HOLD en C1 (simetric); re-assegurem HOLD=1 despres de cada
         // lectura (la de MUSMAIN el netejaria en sortir i la ISR faria un
         // Play sobre canco no-iniciada abans del mus_init).
+        // Tria F1: slot 3 = ELWOOD.BIN si g_player_choice (mateix C7:0x4000
+        // i indexos: motor intacte). Dieta Bloc0: PFRAMES/ELWOOD tenen
+        // IDENTIC ondisk_bytes (12608) i sectors (26): nomes cal triar
+        // desc (load) + crc (check). e3 un cop per intent (3 recomputs
+        // costaven mes que el spill); el FRONT escriu la tria via EQU.
         for (i = 0; i < 8; i++) {
             u8 ok = 0;
             for (t = 0; t < 3 && !ok; t++) {
                 u8 prev;
+                u8 e3 = ((i == 3) & g_player_choice);
                 // Home 0xC0: el GAME corre en central (mai paginat).
-                if (!fdc_load_file(0xC0, v_desc[i], v_bank[i], (void*)v_addr[i])) continue;
+                if (!fdc_load_file(0xC0, e3 ? &g_file_elwood : v_desc[i], v_bank[i], (void*)v_addr[i])) continue;
                 g_mus_hold = 1;
                 prev = bank_set(v_bank[i]);
                 if (fdc_crc16((const u8*)v_addr[i],
-                              (u16)(v_desc[i]->ondisk_bytes - 128)) == v_crc[i]) ok = 1;
+                              (u16)(v_desc[i]->ondisk_bytes - 128))
+                    == (e3 ? CRC_ELWOOD : v_crc[i])) ok = 1;
                 bank_restore(prev);
             }
             if (!ok) { cpct_setBorder((u8)(0x40 + i)); while (1) { } }
@@ -557,9 +574,8 @@ void main(void) {
 
     cpct_memset((void*)0xC000, 0xFF, 0x4000);
     cpct_memset((void*)0x8000, 0xFF, 0x4000);
-    // Blindatge: si l'HOLD arriba a 1 fins aqui (p.ex. load interromput),
-    // la ISR no sonaria mai mes. Cost 0, musica en 20 ms.
-    g_mus_hold = 0;
+    // (El blindatge HOLD=0 d'aqui era mort: 561 sempre l'ha netejat abans i
+    // cap codi entremig l'escriu. Fora, 14/10/26: Bloc0 just.)
 
     // Inicialitza posició d'inici, càmera i entitats des del paquet de nivell (Banc 5)
     moving_init();

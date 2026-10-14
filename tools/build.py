@@ -85,7 +85,10 @@ BANK_C_HEADERS = {
 # front.c (show/key/pal, nomes central/VRAM/PPI/GA) + front_table.s (slot JP)
 # + front_ext.s (EQU externs centrals generat del mapa resident).
 FRONT_BASE = 0x4000
-FRONT_DATA = 0x4200
+# FRONT_DATA a 0x4300 (era 0x4200): el select F1 (scan L/R + marcador XOR
+# + branca tria, ~200 B) no cabia en 512 B de _CODE. C4:0x4200-0x4FFF lliure
+# durant el FRONT (nomes hi viu FRONT.BIN; el TILESET el trepitja despres).
+FRONT_DATA = 0x4300
 FRONT_MAXLEN = 0x1000
 FRONT_C_SOURCE = "engine/front.c"
 FRONT_C_HEADERS = ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h"]
@@ -119,6 +122,9 @@ DATA_FILES = [
     ("MAP",   "BIN", os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN")),
     ("TRIG",  "BIN", os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN")),
     ("PFRAMES", "BIN", os.path.join(PROJ, "assets", "bbdata", "PFRAMES.BIN")),
+    # ELWOOD: frames d'Elwood mateix format (26x480 B) -> C7:0x4000 EN COMPTES
+    # de PFRAMES si g_player_choice==1 (mateixos indexos: motor intacte).
+    ("ELWOOD", "BIN", os.path.join(PROJ, "assets", "bbdata", "ELWOOD.BIN")),
     # EXTRA: DOS 39 (480 B) + BOX (128 B) + BALLOON (224 B) -> Banc 7 lliure 0x7AA0.
     ("EXTRA", "BIN", os.path.join(PROJ, "assets", "bbdata", "EXTRA.BIN")),
     # ELEV: 2 frames d'ascensor Mode 0 (2x224 B) -> Banc 7 lliure 0x78E0.
@@ -585,7 +591,8 @@ def build_front(force):
     syms = map_symbols(resident_map)
     need = {"_fdc_load_file": None, "_g_front_args": None,
             "_mus_play": None, "_mus_init": None, "_mus_stop": None,
-            "_g_ticks": None, "_g_mus_hold": None}
+            "_g_ticks": None, "_g_mus_hold": None,
+            "_g_player_choice": None}
     for k in need:
         if k not in syms:
             print("\n[FATAL] FRONT: %s no es al mapa resident. Enllaca GAME primer?" % k)
@@ -1070,7 +1077,10 @@ def main():
         hdr_txt = open(hdr_path).read()
     except OSError:
         hdr_txt = ""
-    if "CRC_TILES" not in hdr_txt or "g_pal_fsplash" not in hdr_txt or "g_file_fselect" not in hdr_txt or "g_file_fmap" not in hdr_txt or "g_file_musmain" not in hdr_txt or "g_file_musbank" not in hdr_txt:
+    # Placeholder si falta qualsevol fitxer de DATA_FILES (p.ex. ELWOOD nou):
+    # compilar-hi a sobre petaria amb 'Undefined identifier' a la iteracio 1
+    # (vist 14/10/26). Generic: no cal afegir un marcador per fitxer nou.
+    if any(("g_file_%s" % name8.lower()) not in hdr_txt for name8, _, _ in DATA_FILES):
         open(hdr_path, "w").write(placeholder_header())
     if not os.path.exists(crt_path):
         open(crt_path, "w").write(crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map")))

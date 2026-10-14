@@ -23,6 +23,8 @@ u16 g_moving_dst;
 u16 g_moving_background;
 u16 g_moving_sprite;
 u8 g_moving_span;
+// HI de la LUT de flip dels walkers (banc C6, l'omple en2_init).
+u8 g_flip_lut_hi;
 
 // Bloc de paràmetres resident per crides bankades (CP-2.2).
 u16 bc_a, bc_b, bc_c, bc_d, bc_e;

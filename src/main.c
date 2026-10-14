@@ -614,7 +614,9 @@ void main(void) {
     // Inicialitza posició d'inici, càmera i entitats des del paquet de nivell (Banc 5)
     moving_init();
     // Walkers C6: init runtime (slot 3) post-carrega (sense crt0 al banc,
-    // els inicialitzadors statics no arriben; vist 10/26).
+    // els inicialitzadors statics no arriben; vist 10/26). La LUT de flip
+    // del banc es a 0x6500 (HI propi; la de Jake continua a 0x7F00 de C7).
+    g_flip_lut_hi = 0x65;
     enemy_init();
     hud_init();
     g_vram_start = camera_ma(g_cam_x4, g_cam_row);

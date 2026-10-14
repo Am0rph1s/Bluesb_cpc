@@ -14,7 +14,7 @@
 // crida post-carrega des del resident) omple spawn+owners.
 // Patrulla horitzontal (6 px/frame = DOS 5 px/f @30fps a 25 Hz) +
 // gravetat (mirall d'en Jake) + gir en paret + snap. Fons
-// save/restore en POOL de 8 slots (4 per pagina): mai hi ha mes
+// save/restore en POOL de 6 slots (3 per pagina): mai hi ha mes
 // de 3 walkers visibles (mapa 1024 px, vista 160); si s'exhaureix
 // es salta el draw (segur). Sense tret ni colisio (slice 2).
 // ============================================================
@@ -29,8 +29,8 @@
 #define ENEMY_GRAV 24
 #define ENEMY_VYMAX (15 * 8)
 
-#define BG_SLOTS 8
-#define BG_PAGESLOTS 4
+#define BG_SLOTS 6
+#define BG_PAGESLOTS 3
 
 typedef struct {
     i16 x;          // esquerra, px mon Mode 0
@@ -47,7 +47,13 @@ typedef struct {
     u8 drawn_row_count[2];
     i16 drawn_x[2];
     i16 drawn_y[2];
+    i16 sx;         // spawn centre x (DOS level_xpos/2): bbox activacio
+    i16 sy;         // spawn peus y (DOS level_ypos): bbox activacio
 } Enemy;
+
+// LUT mirror Mode 0 (256 B a _DATA: engine/enemy_flip_lut.s, primer del
+// link -> 0x6500 alineat; HI 0x65 via _g_flip_lut_hi). L'omple en2_init.
+extern u8 s_flip_lut[256];
 
 // Estat a ZERO (sense init: veure capcalera) i en2_init (slot 3)
 // omple l'spawn a runtime: left=dos_x/2, y8=(dos_y-32)*8; dir=1
@@ -57,26 +63,35 @@ static u8 s_bg_mem[BG_SLOTS][ENEMY_FRAME_SIZE];
 static i8 s_bg_owner[BG_SLOTS];
 
 // Taula d'spawn a CODE (5 B/fila: x, top=y8>>3, kind; dir sempre 1).
-// left=dos_x/2, top=dos_y-32.
+// left=dos_x/2-8 (dos_xpos es el CENTRE: el draw centra l'sprite),
+// top=dos_y-32 (dos_ypos son els peus). Slots DOS L1 1,2,5,11,12,
+// 24,25,26,27,28 (staticres.c).
 static const u8 s_spawn[ENEMY_N * 5] = {
-    208, 1,  64, 4, 15,   // (464, top 1088, k15)
-    120, 2,  64, 4, 15,   // (632, top 1088, k15)
-     88, 2, 192, 3, 15,   // (600, top 960, k15)
-    120, 1, 240, 1,  8,   // (376, top 496, k8)
-     40, 2, 240, 1,  8,   // (552, top 496, k8)
-    176, 1, 224, 1,  8,   // (432, top 480, k8)
-    192, 1, 224, 1,  8,   // (448, top 480, k8)
-    240, 0,  64, 0, 19,   // (240, top 64, k19)
-      8, 2,  48, 0, 19,   // (520, top 48, k19)
+    200, 1,  64, 4, 15,   // s1 (456, top 1088, k15)
+    112, 2,  64, 4, 15,   // s2 (624, top 1088, k15)
+     80, 2, 192, 3, 15,   // s5 (592, top 960, k15)
+    112, 1, 240, 1,  8,   // s11 (368, top 496, k8)
+     64, 2, 240, 1,  8,   // s12 (544, top 496, k8)
+    168, 1, 224, 1,  8,   // s24 (424, top 480, k8)
+    184, 1, 224, 1,  8,   // s25 (440, top 480, k8)
+    232, 0,  64, 0, 19,   // s26 (232, top 64, k19)
+      0, 2,  48, 0, 19,   // s27 (512, top 48, k19)
+     40, 3,  64, 0, 19,   // s28 (808, top 64, k19)
 };
 
 void en2_init(void) {
     u8 i;
+    u16 k;
+    // LUT mirror (mateixa formula que sprite_hflip_init_lut).
+    for (k = 0; k < 256; k++)
+        s_flip_lut[k] = (u8)(((k & 0xAA) >> 1) | ((k & 0x55) << 1));
     for (i = 0; i < ENEMY_N; i++) {
         Enemy* e = &s_enemies[i];
         const u8* s = s_spawn + (u16)i * 5;
         e->x = (i16)((u16)s[0] + ((u16)s[1] << 8));
         e->y8 = (i16)(((u16)s[2] + ((u16)s[3] << 8)) << 3);
+        e->sx = (i16)(e->x + 8);            // centre (DOS level_xpos/2)
+        e->sy = (i16)(((u16)s[2] + ((u16)s[3] << 8)) + 32); // peus
         e->dir = 1;
         e->vy = 0;
         e->on_ground = 0;
@@ -100,18 +115,30 @@ static u8 en2_cell_base(u8 kind) {
 
 void en2_update(void) {
     u8 i;
+    // Finestra camera (mateixa que en2_draw): el bbox d'activacio DOS
+    // la necessita (level.c: bounding_box).
+    i16 view_x = (i16)(g_cam_x4 << 2);
+    i16 view_y = (i16)(g_cam_row << 3);
     for (i = 0; i < ENEMY_N; i++) {
         Enemy* e = &s_enemies[i];
-        i16 y = (i16)(e->y8 >> 3);
+        i16 y;
         i16 nx;
         i16 prev_feet, feet;
         u16 c1, c2;
-        // X: patrulla + gir en paret (DOS: tile(x+2-f*4,y)==1 -> ^=1)
+        // Bbox DOS (origens DOS/2 en x, igual en y; spawn, no posicio):
+        // x [xo-140,xo+320+140], y [yo-100,yo+160+190]. Fora: congelat
+        // (visible=0: ni IA, ni gravetat, ni anim).
+        if (e->sx < (i16)(view_x - 70) || e->sx > (i16)(view_x + 230) ||
+            e->sy < (i16)(view_y - 100) || e->sy > (i16)(view_y + 350))
+            continue;
+        y = (i16)(e->y8 >> 3);
+        // X: patrulla + gir en paret (DOS fixup: sonda a centre+-13 px =
+        // L+14/L+1, files peus i peus-1; bits 1=dreta, 2=esquerra).
         nx = (i16)(e->x + (i16)(e->dir * 6));
         if (nx < 0) { nx = 0; e->dir = 1; }
         if (nx > (i16)(LEVEL_W_PX - ENEMY_W)) { nx = (i16)(LEVEL_W_PX - ENEMY_W); e->dir = -1; }
         {
-            u16 acol = (u16)((e->dir > 0 ? (nx + ENEMY_W) : (nx - 1)) >> 3);
+            u16 acol = (u16)((e->dir > 0 ? (nx + 14) : (nx + 1)) >> 3);
             u8 fl = (u8)(tile_flags(acol, (u16)((y + 8) >> 4)) |
                          tile_flags(acol, (u16)((y + 24) >> 4)));
             if (fl & (e->dir > 0 ? 1 : 2)) {
@@ -226,6 +253,20 @@ void en2_draw(void) {
         row_count = (u8)(clip_y1 - clip_y0);
         frame = ENEMY_FRAMES_BASE +
                 (u16)(en2_cell_base(e->kind) + ((e->tick >> 3) & 1)) * ENEMY_FRAME_SIZE;
+        // DOS: facing_left -> xflip (mateix frame mirroritzat). Les celes
+        // miren a la dreta; dir<0 dibuixa amb el blit amb flip (LUT C6).
+        if (e->dir < 0) {
+            u16 rev = (u16)((u16)start_byte + (u16)byte_count - 1u) << 1;
+            for (y = 0; y < row_count; y++) {
+                u8 sprite_row = (u8)(start_row + y);
+                u16 bg_off = (u16)sprite_row * ENEMY_WB + start_byte;
+                g_moving_dst = (u16)ring_address(page, clip_x0, (i16)(clip_y0 + y));
+                g_moving_background = (u16)(s_bg_mem[(u8)s] + bg_off);
+                g_moving_sprite = (u16)(frame + (u16)((u16)sprite_row * 16u + rev));
+                g_moving_span = byte_count;
+                moving_blit_span_hflip();
+            }
+        } else {
         for (y = 0; y < row_count; y++) {
             u8 sprite_row = (u8)(start_row + y);
             u16 bg_off = (u16)sprite_row * ENEMY_WB + start_byte;
@@ -235,6 +276,7 @@ void en2_draw(void) {
             g_moving_sprite = (u16)(frame + frame_off);
             g_moving_span = byte_count;
             moving_blit_span();
+        }
         }
         e->drawn_start_byte[page] = start_byte;
         e->drawn_byte_count[page] = byte_count;

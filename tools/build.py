@@ -60,7 +60,7 @@ GAME_LINK_SKIP = {"engine/fdc.c", "engine/assets_fdc.s", "engine/zx0_decompress.
 C_HEADERS = {
     "engine/fdc.c": ["engine/fdc.h", "engine/cpctelera.h"],
     "src/render.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h", "src/hud_pkg.h"],
-    "src/moving.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h", "engine/fdc.h"],
+    "src/moving.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h", "engine/fdc.h", "src/level_pkg.h"],
     "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h", "engine/mus.h", "src/disk_tables.h",
                    "src/sprite.h", "src/moving.h", "src/player_frames.h",
                    "engine/stack_canary.h", "src/crt_addrs.h", "src/level_pkg.h"],
@@ -68,6 +68,22 @@ C_HEADERS = {
 
 PROGNAME = "bluesb"
 DSKNAME8 = "BLUESB"
+
+# --- Banc C3 (walkers L1): frames + codi + dades (CP-2.2, com el Banc 5)
+# (C3 i no C2: OUT(0x7F00,0xC2) penja la maquina, vist 10/26.)
+# Frames ENEMI1.BIN (9x512 B) a 0x4000; taula de salts fixa a 0x5200
+# (engine/enemy_table.s, slots init/update/restore/draw); codi+dades
+# fins 0x8000 (pool de fons inclos). ENEMI.BIN = frames + imatge codi.
+ENEMY_BASE = 0x5200
+ENEMY_DATA = 0x62C0  # codi walkers (0x5200..~0x629A amb en2_init); dades despres (OJO scratch: ENEMI.BIN<=13536!)
+ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
+ENEMY_C_SOURCES = ["src/enemy.c", "src/hud_strips.c"]
+ENEMY_ASM_SOURCES = ["engine/enemy_table.s"]
+ENEMY_C_HEADERS = {
+    "src/enemy.c": ["engine/cpctelera.h", "engine/bank.h",
+                    "src/moving.h", "src/sprite.h", "src/enemy.h", "src/level_pkg.h"],
+    "src/hud_strips.c": ["engine/cpctelera.h", "src/hud_pkg.h"],
+}
 
 # --- Banc 5 (CP-2.2): lògica moving.* a 0x6E00; slots fixos 0x6E00+3k
 # (han de coincidir amb engine/bank5_table.s; build_bank() ho verifica).
@@ -105,6 +121,12 @@ MUS_SONG_SLOT = 0x5000
 MUS_PLAYER_SRC = "tools/akg/PlayerAkg.asm"
 MUS_INTRO_SRC = "assets/musica_cpc/The_Blues_Brothers_Intro_CPC.akg"
 MUS_MAIN_SRC = "assets/musica_cpc/The_Blues_Brothers_CPC.akg"
+
+# Taules Bloc 0 justes: el GAME nomes referencia aquests descriptors
+# (FDC/FRONT els usa l'starter via starter_tables.h; MUSBANK el passa el
+# GAME al FRONT i SI cal). Nomes se salten chs+desc (els #define CRC
+# costen 0 B i CRC_FDC el llegeix main.c). Estalvi ~50 B (vist 10/26).
+GAME_TABLE_SKIP = {"FDC", "FRONT"}
 
 # Fitxers de dades al DSK (es carregaran per FDC raw). Ordre = ordre al disc.
 # (L'ordre de dades no afecta el boot; el BLUESB va primer via package().)
@@ -147,6 +169,10 @@ DATA_FILES = [
     # l'slot 3).
     ("MUSBANK", "BIN", os.path.join(PROJ, "obj", "MUSBANK.BIN")),
     ("MUSMAIN", "BIN", os.path.join(PROJ, "obj", "MUSMAIN.BIN")),
+    # ENEMI: imatge C2 (frames 0x4000 + codi 0x5200 + dades, generada per
+    # build_enemybank) -> C2:0x4000 en UNA carrega. Al final: no mou el
+    # CHS de cap altre fitxer.
+    ("ENEMI", "BIN", os.path.join(PROJ, "obj", "ENEMI.BIN")),
     # DANCE: NO es fitxer DSK (taules Bloc0 justes!): build_dance() l'AFEGEIX
     # a la cua de obj/FSELECT.ZX0 (el depack l'ignora: te fi explicita) i el
     # FRONT el llegeix de scratch+off (EQU front_ext, sense FDC ni mute).
@@ -424,7 +450,8 @@ def build_bank_equ(resident_map):
     syms = map_symbols(resident_map)
     lines = [".module bank_equ"]
     bank_local = ("moving_bank_", "_bc_update", "_bc_restore", "_bc_draw",
-                  "_bc_push", "_bc_find", "_bc_init", "_bc_conveyor")
+                  "_bc_push", "_bc_find", "_bc_init", "_bc_conveyor",
+                  "_en2_", "_en_", "_s_hud_strips", "_s_enemies", "_s_bg_")
     for name in sorted(syms):
         if name.startswith(("s__", "l__")):
             continue
@@ -501,6 +528,76 @@ def build_bank(force):
     print("BANC5: 0x%04X (%d bytes, code=%d B, marge_code=%d B)" %
           (BANK5_BASE, size, b5_code_l, (b5_data_s or 0x7F80) - (BANK5_BASE + b5_code_l)))
     return bin_path
+
+
+def build_enemybank(force):
+    """Imatge C6 (walkers L1): frames ENEMI1.BIN a 0x4000 + codi linkat a
+    ENEMY_BASE (taula engine/enemy_table.s primera: slots fixos 0x5200+3k)
+    + dades a ENEMY_DATA. Retorna obj/ENEMI.BIN (concatenat, llest pel DSK).
+    Requereix bank_equ.s fresc (el genera build_bank: cridar despres)."""
+    obj = os.path.join(PROJ, "obj")
+    en_rels = []
+    for rel_src in ENEMY_ASM_SOURCES:
+        src = os.path.join(PROJ, rel_src)
+        rel = os.path.join(obj, os.path.splitext(os.path.basename(src))[0] + ".rel")
+        if force or is_stale(rel, [src]):
+            run([SDASZ80, "-plosgff", rel, src])
+            mark_fresh(rel, [src])
+        en_rels.append(rel)
+    for rel_src in ENEMY_C_SOURCES:
+        src = os.path.join(PROJ, rel_src)
+        rel = os.path.join(obj, os.path.splitext(os.path.basename(src))[0] + ".rel")
+        headers = [os.path.join(PROJ, name) for name in ENEMY_C_HEADERS[rel_src]]
+        if force or is_stale(rel, [src] + headers):
+            run([SDCC] + INCLUDES + CFLAGS + ["-c", src, "-o", rel])
+            mark_fresh(rel, [src] + headers)
+        en_rels.append(rel)
+    en_rels.append(os.path.join(obj, "bank_equ.rel"))
+    ihx = os.path.join(obj, "enemybank.ihx")
+    run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % ENEMY_BASE,
+         "--data-loc", "0x%04X" % ENEMY_DATA] + en_rels + ["-o", ihx])
+    map_path = os.path.join(obj, "enemybank.map")
+    en_code_s, en_code_l = map_area(map_path, "CODE")
+    en_data_s, en_data_l = map_area(map_path, "DATA")
+    if en_code_s is not None and en_data_s is not None and (en_code_s + en_code_l) > en_data_s:
+        print("\n[FATAL] Banc C3 _CODE (0x%04X..0x%04X) envaeix _DATA (0x%04X)!" %
+              (en_code_s, en_code_s + en_code_l, en_data_s))
+        sys.exit(1)
+    syms = map_symbols(map_path)
+    slot_names = {"_en_update": 0, "_en_restore": 1, "_en_draw": 2, "_en_init": 3}
+    for name, slot in slot_names.items():
+        want = ENEMY_BASE + slot * 3
+        got = syms.get(name, -1)
+        if got != want:
+            print("\n[FATAL] Slot %s: esperat 0x%04X, mapa diu %s. Revisa enemy_table.s!" %
+                  (name, want, ("0x%04X" % got) if got >= 0 else "absent"))
+            sys.exit(1)
+    code_path = os.path.join(obj, "ENEMYCODE.BIN")
+    convert_ihx(ihx, code_path, start_addr=ENEMY_BASE,
+                max_length=image_length(map_path, ENEMY_BASE))
+    frames = open(ENEMY_FRAMES, "rb").read()
+    code = open(code_path, "rb").read()
+    assert len(frames) == 9 * 512, len(frames)
+    total = len(frames) + len(code)
+    if 0x4000 + total > 0x8000:
+        print("\n[FATAL] Imatge C3: %d bytes > finestra 0x4000!" % total)
+        sys.exit(1)
+    out_path = os.path.join(obj, "ENEMI.BIN")
+    open(out_path, "wb").write(frames + code)
+    print("ENEMYB: frames %d B + codi %d B = %d B (0x4000..0x%04X)" %
+          (len(frames), len(code), total, 0x4000 + total))
+    # EQU pel GAME (render.c llegeix s_hud_strips amb C2 paginat).
+    ext_s = os.path.join(obj, "enemy_ext.s")
+    addr = syms.get("_s_hud_strips")
+    if addr is None or addr < 0x4000 or addr >= 0x8000:
+        print("\n[FATAL] _s_hud_strips fora de C2: %s" %
+              (("0x%04X" % addr) if addr is not None and addr >= 0 else "absent"))
+        sys.exit(1)
+    ext_txt = ("    .module enemy_ext\n"
+               "    .globl _s_hud_strips\n_s_hud_strips = 0x%04X\n" % addr)
+    if not os.path.exists(ext_s) or open(ext_s).read() != ext_txt:
+        open(ext_s, "w").write(ext_txt)
+    return out_path
 
 
 # --- Banc FDC (F1): motor de disc resident tota la sessio ---
@@ -835,6 +932,17 @@ def compile_and_link(force):
         run([SDASZ80, "-plosgff", mus_ext_rel, mus_ext_s])
         mark_fresh(mus_ext_rel, [mus_ext_s])
     objs.append(mus_ext_rel)
+    # EQU d'enemics/HUD (obj/enemy_ext.s: _s_hud_strips a C2; llavor al
+    # main(), real des de build_enemybank). render.c hi accedeix banked.
+    en_ext_s = os.path.join(obj, "enemy_ext.s")
+    en_ext_rel = os.path.join(obj, "enemy_ext.rel")
+    if not os.path.exists(en_ext_s):
+        print("\n[FATAL] obj/enemy_ext.s no existeix: el main() n'ha de posar llavor!")
+        sys.exit(1)
+    if force or is_stale(en_ext_rel, [en_ext_s]):
+        run([SDASZ80, "-plosgff", en_ext_rel, en_ext_s])
+        mark_fresh(en_ext_rel, [en_ext_s])
+    objs.append(en_ext_rel)
     ihx = os.path.join(obj, PROGNAME + ".ihx")
     run([SDCC] + LINKARGS + objs + ["-o", ihx])
     map_path = os.path.join(obj, PROGNAME + ".map")
@@ -1176,6 +1284,10 @@ def package(starter_path, starter_start, game_path):
 def gen_header(chs_map):
     lines = ["#ifndef DISK_TABLES_H", "#define DISK_TABLES_H", '#include "fdc.h"', ""]
     for name, (obytes, scount, chs, crc) in chs_map.items():
+        if name in GAME_TABLE_SKIP:
+            lines.append("#define CRC_%s 0x%04X" % (name, crc))
+            lines.append("")
+            continue
         var = name.lower()
         lines.append("static const u8 g_%s_chs[%d] = {" % (var, len(chs)))
         for i in range(0, len(chs), 12):
@@ -1195,6 +1307,10 @@ def gen_header(chs_map):
 def placeholder_header():
     lines = ["#ifndef DISK_TABLES_H", "#define DISK_TABLES_H", '#include "fdc.h"', ""]
     for name8, ext3, path in DATA_FILES:
+        if name8 in GAME_TABLE_SKIP:
+            lines.append("#define CRC_%s 0x0000" % name8)
+            lines.append("")
+            continue
         try:
             data_len = os.path.getsize(path)
         except OSError:
@@ -1227,7 +1343,7 @@ def main():
     # Placeholder si falta qualsevol fitxer de DATA_FILES (p.ex. ELWOOD nou):
     # compilar-hi a sobre petaria amb 'Undefined identifier' a la iteracio 1
     # (vist 14/10/26). Generic: no cal afegir un marcador per fitxer nou.
-    if any(("g_file_%s" % name8.lower()) not in hdr_txt for name8, _, _ in DATA_FILES):
+    if any((("g_file_%s" % name8.lower()) not in hdr_txt for name8, _, _ in DATA_FILES if name8 not in GAME_TABLE_SKIP)):
         open(hdr_path, "w").write(placeholder_header())
     if not os.path.exists(crt_path):
         open(crt_path, "w").write(crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map")))
@@ -1239,6 +1355,13 @@ def main():
         stab_txt = ""
     if "GAME_CRC" not in stab_txt or "g_file_fdc" not in stab_txt or "g_file_front" not in stab_txt or "g_file_mus" not in stab_txt or "MUS_HOLD_ADDR" not in stab_txt:
         open(stab_path, "w").write(placeholder_starter_tables())
+    # Llavor enemy_ext.s (EQU _s_hud_strips pel GAME): el real el genera
+    # build_enemybank DESPRES del primer link; sense llavor l'enllac 1
+    # petaria (mateix patro que placeholder_header). Adreca qualsevol a C2.
+    ext_seed = os.path.join(PROJ, "obj", "enemy_ext.s")
+    if not os.path.exists(ext_seed):
+        open(ext_seed, "w").write("    .module enemy_ext\n"
+                                  "    .globl _s_hud_strips\n_s_hud_strips = 0x4000\n")
 
     prev = None
     prev_crt = None
@@ -1253,6 +1376,7 @@ def main():
         build_music(force)  # MUSICA primer (obj/mus_ext.s pel GAME)
         game_path, game_start, game_size = compile_and_link(force)
         build_bank(force)  # Banc 5 (necessita el mapa resident per l'equ)
+        build_enemybank(force)  # Banc C3 (walkers; reutilitza bank_equ.rel)
         build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)
         build_front(force)  # FRONT banked (necessita el mapa resident)
         starter_path, starter_start = build_starter(force)

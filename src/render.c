@@ -10,7 +10,11 @@
 #include "bank.h"
 #include "moving.h"
 #include "sprite.h"
-#include "hud_pkg.h"
+
+// Tires del HUD al banc C3 (src/hud_strips.c via EQU obj/enemy_ext.s):
+// 936 B fora del Bloc 0 (10/26). Llegir nomes amb C3 paginat! (C2 mata:
+// OUT(0x7F00,0xC2) penja la maquina.)
+extern const u8 s_hud_strips[39][24];
 
 #define LEVEL_PKG_DEFS_ONLY
 #include "level_pkg.h"
@@ -88,9 +92,13 @@ void hud_render(u8 page, u8 force) {
     }
 
     ma = (u16)((g_vram_start + 800) & 0x03FF);
-    for (cx = 0; cx < PLAY_CHARS; cx++) {
-        hud_blit_col(s_hud_strips[s_hud_layout[cx]], ma);
-        ma = (u16)((ma + 1) & 0x03FF);
+    {
+        u8 prev_b = bank_set(0xC6);
+        for (cx = 0; cx < PLAY_CHARS; cx++) {
+            hud_blit_col(s_hud_strips[s_hud_layout[cx]], ma);
+            ma = (u16)((ma + 1) & 0x03FF);
+        }
+        bank_restore(prev_b);
     }
 }
 

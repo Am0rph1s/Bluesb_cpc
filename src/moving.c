@@ -13,6 +13,9 @@
 #include "sprite.h"
 #include "fdc.h"
 
+#define LEVEL_PKG_DEFS_ONLY
+#include "level_pkg.h"
+
 // Slots fixos de la taula de salts del Banc 5: a moving.h (font unica).
 
 MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
@@ -152,6 +155,19 @@ void moving_draw_conveyor_tiles(void) { call_banked(0xC5, (void*)0x6E12); }
 i16 moving_conveyor_push(void) { call_banked(0xC5, BC_PUSH); return bc_r; }
 
 i8 moving_find_landing(void) { call_banked(0xC5, BC_FIND); return (i8)bc_r; }
+
+// Trampolins al modul C6 (slots engine/enemy_table.s @0x5200+3k; el banc
+// es C6 perque OUT(0x7F00,0xC2) penja la maquina i C3 reboota, 10/26).
+// Tiles via tile_flags/is_floor_solid de main.c (globals via EQU:
+// estalvia duplicar-los aqui, ~200 B de Bloc 0).
+#define EN_SLOT(n) ((void*)(0x5200 + (n) * 3))
+void enemy_init(void) { call_banked(0xC6, EN_SLOT(3)); }
+void enemy_update(void) { call_banked(0xC6, EN_SLOT(0)); }
+void enemy_restore(u8 page) { bc_a = page; call_banked(0xC6, EN_SLOT(1)); }
+void enemy_draw(u8 page) {
+    bc_a = page;
+    call_banked(0xC6, EN_SLOT(2));
+}
 
 // --- Carregador FDC banquet (F1) ---
 // El motor FDC (fdc.c + assets_fdc.s, TAL QUAL) viu al banc 0xC6 (FDC.BIN,

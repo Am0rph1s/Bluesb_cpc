@@ -17,6 +17,7 @@
 #include "disk_tables.h"
 #include "sprite.h"
 #include "moving.h"
+#include "enemy.h"
 #include "bank.h"
 #include "player_frames.h"
 #include "stack_canary.h"
@@ -103,7 +104,7 @@ void start(void) {
     main();
 }
 
-static u8 tile_flags(u16 col, u16 row) {
+u8 tile_flags(u16 col, u16 row) {
     u8 prev, t, f;
     if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return 0;
     prev = bank_set(0xC5);
@@ -113,7 +114,7 @@ static u8 tile_flags(u16 col, u16 row) {
     return f;
 }
 
-static u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
+u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
     u8 prev, t, op;
     if (row >= (LEVEL_MAP_H - 1)) return (vy >= 0);
     if (col >= LEVEL_MAP_W) return 0;
@@ -534,10 +535,10 @@ void main(void) {
     // (+ MUSMAIN a C1:0x5000: el tema del nivell 1). CRC inline (el helper
     // banked moria per ordre de carregues: slot2 encara no resident).
     {
-        static const u8 v_bank[8] = { 0xC4, 0xC5, 0xC5, 0xC7, 0xC7, 0xC7, 0xC5, 0xC1 };
-        static const u16 v_addr[8] = { 0x4000, 0x4000, 0x6400, 0x4000, 0x7AA0, 0x78E0, 0x6E00, 0x5000 };
-        static const u16 v_crc[8] = { CRC_TILES, CRC_MAP, CRC_TRIG, CRC_PFRAMES, CRC_EXTRA, CRC_ELEV, CRC_BANK5, CRC_MUSMAIN };
-        static const DiskFileDesc* const v_desc[8] = { &g_file_tiles, &g_file_map, &g_file_trig, &g_file_pframes, &g_file_extra, &g_file_elev, &g_file_bank5, &g_file_musmain };
+        static const u8 v_bank[9] = { 0xC4, 0xC5, 0xC5, 0xC7, 0xC7, 0xC7, 0xC5, 0xC1, 0xC0 };
+        static const u16 v_addr[9] = { 0x4000, 0x4000, 0x6400, 0x4000, 0x7AA0, 0x78E0, 0x6E00, 0x5000, 0x8320 };
+        static const u16 v_crc[9] = { CRC_TILES, CRC_MAP, CRC_TRIG, CRC_PFRAMES, CRC_EXTRA, CRC_ELEV, CRC_BANK5, CRC_MUSMAIN, CRC_ENEMI };
+        static const DiskFileDesc* const v_desc[9] = { &g_file_tiles, &g_file_map, &g_file_trig, &g_file_pframes, &g_file_extra, &g_file_elev, &g_file_bank5, &g_file_musmain, &g_file_enemi };
         u8 i, t;
         // LOOP MUT (ve de dalt: stop+HOLD al foc del mapa). El motor nomes
         // toca HOLD en C1 (simetric); re-assegurem HOLD=1 despres de cada
@@ -547,7 +548,7 @@ void main(void) {
         // i indexos: motor intacte). PFRAMES/ELWOOD tenen IDENTIC
         // ondisk_bytes (12608) i sectors (26): nomes cal triar desc (load)
         // + crc (check). El FRONT escriu la tria via EQU.
-        for (i = 0; i < 8; i++) {
+        for (i = 0; i < 9; i++) {
             u8 ok = 0;
             for (t = 0; t < 3 && !ok; t++) {
                 u8 prev;
@@ -563,6 +564,33 @@ void main(void) {
             }
             if (!ok) { cpct_setBorder((u8)(0x40 + i)); while (1) { } }
         }
+    }
+
+    // ENEMI -> C6 per LDIR central (no pel motor): escriure als bancs C2
+    // (motor o bank_set) penja la maquina, i C3 reboota (vist 10/26 en 7
+    // builds); C0/1/4/5/6/7 provats. C6 allotjava FDC.BIN (0x7000-0x7311),
+    // mort post-boot (l'stub corre de scratch 0x8000 amb s_fdc_ready=1 i
+    // no recopia mai): la imatge (0x4000-0x7408) el reaprofta sencer.
+    // a scratch central 0x8320 (lliure: motor a 0x8000-0x8311, buffers a
+    // 0xB800+; 0x8320+13320 = 0xB728 < 0xB800) i es copia a C6:0x4000 amb
+    // memcpy paginat (mateix patro que hud_render: bank_set + feina +
+    // restore; la ISR hi niua consistent via _g_bank). OJO: l'scratch HA
+    // d'acabar abans de 0xB800: el motor llegeix 1 sector de farciment de
+    // mes (28 en comptes de 27) al buffer 0xB800, que trepitjaria la cua
+    // del fitxer (vist 10/26: 8 bytes E5 al final = CRC fail). El prime hi
+    // escriu a sobre despres. El CRC es sobre la copia (el que corre).
+    {
+        u8 prevx = bank_set(0xC6);
+        cpct_memcpy((void*)0x4000, (const void*)0x8320,
+                    (u16)(g_file_enemi.ondisk_bytes - 128));
+        bank_restore(prevx);
+        prevx = bank_set(0xC6);
+        if (fdc_crc16((const u8*)0x4000,
+                      (u16)(g_file_enemi.ondisk_bytes - 128)) != CRC_ENEMI) {
+            cpct_setBorder(0x48);
+            while (1) { }
+        }
+        bank_restore(prevx);
     }
 
     // MUSICA nivell 1: MUSMAIN ja es a l'slot C1:0x5000: obrir so i
@@ -585,6 +613,9 @@ void main(void) {
 
     // Inicialitza posició d'inici, càmera i entitats des del paquet de nivell (Banc 5)
     moving_init();
+    // Walkers C6: init runtime (slot 3) post-carrega (sense crt0 al banc,
+    // els inicialitzadors statics no arriben; vist 10/26).
+    enemy_init();
     hud_init();
     g_vram_start = camera_ma(g_cam_x4, g_cam_row);
     s_pending_x = 0;
@@ -649,6 +680,7 @@ void main(void) {
         bc_c = crouch;
         bc_d = grab;
         moving_update();
+        enemy_update();
 
         if (s_on_ground && s_ground_elevator >= 0) {
             MovingElevator* e = &g_mag_elevators[(u8)s_ground_elevator];
@@ -710,6 +742,7 @@ void main(void) {
             s_have_drawn[s_back_page] = 0;
         }
         moving_restore(s_back_page, (move_x != 0 || move_y != 0));
+        enemy_restore(s_back_page);
         carry_restore(s_back_page);
         moving_popup_restore(s_back_page);
         world_flush_repaints();
@@ -724,6 +757,7 @@ void main(void) {
 
         // Dibuixar objectes mòbils i sprites sobre el fons actualitzat
         moving_draw(s_back_page, g_cam_x4, g_cam_row);
+        enemy_draw(s_back_page);
         carry_fly_draw(s_back_page);
 
         g_spr_y = (u8)dsy;

@@ -85,11 +85,12 @@ BANK_C_HEADERS = {
 # front.c (show/key/pal, nomes central/VRAM/PPI/GA) + front_table.s (slot JP)
 # + front_ext.s (EQU externs centrals generat del mapa resident).
 FRONT_BASE = 0x4000
-# FRONT_DATA a 0x44C0 (era 0x4450): ballarins select F1 en C (~450 B:
-# blitter+bg+anim+pols) no cabien en 1104 B de _CODE. C4:0x4300-0x4FFF
-# lliure durant el FRONT (nomes hi viu FRONT.BIN; el TILESET el trepitja
-# despres). Historial: 0x4200 -> 0x4300 (select L/R) -> 0x4450 -> 0x44C0.
-FRONT_DATA = 0x44C0
+# FRONT_DATA a 0x4700 (era 0x4640): blitter ASM propi + focus per tinta
+# (fora C lent i pols vermell) no cabien en 1600 B de _CODE.
+# C4:0x4300-0x4FFF lliure durant el FRONT (nomes hi viu FRONT.BIN; el
+# TILESET el trepitja despres). Historial: 0x4200 -> 0x4300 (select L/R)
+# -> 0x4450 -> 0x44C0 (mini-DANCE 4f) -> 0x4640 (DANCE20) -> 0x4700.
+FRONT_DATA = 0x4700
 FRONT_MAXLEN = 0x1000
 FRONT_C_SOURCE = "engine/front.c"
 FRONT_C_HEADERS = ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h"]
@@ -982,38 +983,78 @@ FRONT_FILES = {t: b for t, b in FRONT_SCREENS}
 
 
 def build_dance():
-    """Mini-DANCE per al select (F1): 4 frames de 480 B (parelles
-    mascara/imatge, mateix format PFRAMES) = Jake dansa1/2 (PFRAMES[10,11],
-    provats in-game) + Elwood dansa1/2 (ELWOOD[10,11]).
+    """DANCE20 pel select (F1): 20 frames reals DOS de 480 B (parelles
+    mascara/imatge mode0) = assets/bbdata/DANCE20.BIN (tools/gen_select_dance.py
+    des de SPRITE.SQV: Jake dansa 0-5 + idle 6-8 + Elwood dansa-A 9-13 +
+    dansa-B 14-19).
     S'AFEGEIX a la cua de obj/FSELECT.ZX0 dins zx0_pack_all (un sol
     escriptor; el depack ZX0 classic te fi explicita i els ignora). El
     FRONT els llegeix de scratch 0x8400+DANCE_OFF (EQU front_ext).
     Per que no fitxer DSK propi? Taules CHS+desc costen ~15 B de Bloc0 i
     forcen rewrite placeholder de TOTES les taules (+150 B transitori):
     a la cua son 0 B."""
-    pf = os.path.join(PROJ, "assets", "bbdata", "PFRAMES.BIN")
-    ew = os.path.join(PROJ, "assets", "bbdata", "ELWOOD.BIN")
-    pfd = open(pf, "rb").read()
-    ewd = open(ew, "rb").read()
-    assert len(pfd) >= 5760 and len(ewd) >= 5760, (len(pfd), len(ewd))
-    return pfd[4800:5760] + ewd[4800:5760]
+    d20 = os.path.join(PROJ, "assets", "bbdata", "DANCE20.BIN")
+    data = open(d20, "rb").read()
+    assert len(data) == 9600, len(data)
+    return data
 
-DANCE_LEN = 1920
+DANCE_LEN = 9600
+
+
+def remap_select(data):
+    """Nomes el split de cons de SELECT.BIN (gen_screens, MEDIANCUT
+    determinista de CHOIX.SQZ): el pen 7 (cons) es parteix en esq/dret
+    (x<72 -> 13 / x>=72 -> 14) pel focus groc/blau per tinta. La resta del
+    quadre es INTACTA (imatge original). Ha de coincidir amb SELECT.PALHW
+    (fitxer versionat): ballarins a 9-12, cons a 13/14."""
+
+    def d0(b):
+        return ((b >> 7) & 1) | (((b >> 3) & 1) << 1) | \
+               (((b >> 5) & 1) << 2) | (((b >> 1) & 1) << 3)
+
+    def d1(b):
+        return ((b >> 6) & 1) | (((b >> 2) & 1) << 1) | \
+               (((b >> 4) & 1) << 2) | (((b >> 0) & 1) << 3)
+
+    def pack(a, b):
+        return ((a & 1) << 7) | (((a >> 1) & 1) << 3) | (((a >> 2) & 1) << 5) | \
+               (((a >> 3) & 1) << 1) | ((b & 1) << 6) | (((b >> 1) & 1) << 2) | \
+               (((b >> 2) & 1) << 4) | (((b >> 3) & 1) << 0)
+
+    assert len(data) == 16384, len(data)
+    lin = bytearray(16000)
+    for row in range(200):
+        base = (row % 8) * 2048 + (row // 8) * 80
+        for xb in range(80):
+            byte = data[base + xb]
+            out = []
+            for k, v in ((0, d0(byte)), (1, d1(byte))):
+                if v == 7:
+                    v = 13 if xb * 2 + k < 72 else 14
+                out.append(v)
+            lin[row * 80 + xb] = pack(out[0], out[1])
+    inter = bytearray(16384)
+    for row in range(200):
+        base = (row % 8) * 2048 + (row // 8) * 80
+        inter[base:base + 80] = lin[row * 80:(row + 1) * 80]
+    return bytes(inter)
 
 
 def zx0_pack_all():
     """Comprimeix les pantalles FRONT a obj/<TAG>.ZX0 (cache per mtime).
-    FSELECT porta la cua DANCE (4 frames) a sobre: deps inclouen PFRAMES,
-    ELWOOD i aquest fitxer."""
+    FSELECT porta la cua DANCE20 (20 frames) a sobre: deps inclouen el
+    generador i el .BIN."""
     from zx0pkg.zx0 import zx0_compress
-    pf = os.path.join(PROJ, "assets", "bbdata", "PFRAMES.BIN")
-    ew = os.path.join(PROJ, "assets", "bbdata", "ELWOOD.BIN")
+    d20 = os.path.join(PROJ, "assets", "bbdata", "DANCE20.BIN")
+    gen20 = os.path.join(PROJ, "tools", "gen_select_dance.py")
     for tag, base in FRONT_SCREENS:
         src = os.path.join(PROJ, "assets", "bbdata", base + ".BIN")
         dst = os.path.join(PROJ, "obj", tag + ".ZX0")
-        deps = [src] if tag != "FSELECT" else [src, pf, ew, __file__]
+        deps = [src] if tag != "FSELECT" else [src, d20, gen20, __file__]
         if is_stale(dst, deps):
             data = open(src, "rb").read()
+            if tag == "FSELECT":
+                data = remap_select(data)
             out, stats = zx0_compress(bytes(data), classic=True, quick=ZX0_QUICK)
             out = bytes(out)
             if tag == "FSELECT":

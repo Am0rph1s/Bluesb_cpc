@@ -100,53 +100,134 @@ static void f_bord_e(void) { // 0x4C = Elwood
         ret
     __endasm;
 }
-// Tinta paleta (pen f_inkp = f_inkv): pel pols del focus (swap pen0<->pen2:
-// canvi GARANTIT visible sense saber quina tinta es l'oval blau).
-static volatile u8 f_inkp, f_inkv;
-static void f_ink(void) {
+extern const u8 fselect_dance_base[]; // EQU front_ext (0x8400+off)
+static u16 f_rowaddr(u8 y, u8 xb);
+// Focus: groc (0x4A) sobre el triat, blau (0x44) l'altre. Cons a pens
+// separats (esq 13 / dret 14): un simple canvi de tinta, instantani,
+// sense parpelleig. Es crida a l'inici i a cada canvi L/R.
+static void f_focus(void) {
     __asm
         ld      bc, #0x7F00
-        ld      a, (#_f_inkp)
+        ld      a, #13
         out     (c), a
-        ld      a, (#_f_inkv)
+        ld      a, (#_f_choice)
+        or      a
+        jr      nz, 00170$
+        ld      a, #0x4A
+        jr      00171$
+00170$: ld      a, #0x44
+00171$: out     (c), a
+        ld      a, #14
         out     (c), a
+        ld      a, (#_f_choice)
+        or      a
+        jr      nz, 00172$
+        ld      a, #0x44
+        jr      00173$
+00172$: ld      a, #0x4A
+00173$: out     (c), a
         ret
     __endasm;
 }
-// Ballarins select: frames 16x30 (parelles inv,img: dst=(dst&inv)|img) a la
-// cua de FSELECT.ZX0 (mini-DANCE 4x480: Jake 0/1, Elwood 2/3; el depack els
-// ignora); fons a 0x9800 (2x240, pagina oculta). Ovals a x38/86 bytes
-// 19-26/43-50, y118 (files 118..147). Tot C: sense ASM delicat.
-extern const u8 fselect_dance_base[]; // EQU front_ext (0x8400+off)
+// Blitter rapid (nucli sprite_blit_player del joc, sense bancs/camara/reixa:
+// el FRONT corre a C4 i no pot paginar C7). Files de 8 B a xb 19/43,
+// y118..147: MAI wrap (43+8=51 < 80). f_blit desa fons + dibuixa (com el
+// joc: sense passada prèvia); f_unblit restaura amb LDIR.
+static volatile u16 f_row_v, f_row_s, f_row_p;
+static void f_blit_row(void) {
+    __asm
+        ld      de, (#_f_row_v)
+        ld      hl, (#_f_row_s)
+        ld      bc, (#_f_row_p)
+        .rept 8
+        ld      a, (de)
+        ld      (bc), a
+        inc     bc
+        and     (hl)
+        inc     hl
+        or      (hl)
+        inc     hl
+        ld      (de), a
+        inc     de
+        .endm
+        ret
+    __endasm;
+}
+static void f_unblit_row(void) {
+    __asm
+        ld      hl, (#_f_row_p)
+        ld      de, (#_f_row_v)
+        ld      bc, #8
+        ldir
+        ret
+    __endasm;
+}
+static volatile u8 f_sid, f_fi;
+static void f_unblit(void) {
+    u8 r;
+    u8 xb = f_sid ? 43 : 19;
+    u8* bg = (u8*)(f_sid ? 0xB700 : 0xB600);
+    for (r = 0; r < 30; r++) {
+        f_row_v = f_rowaddr((u8)(118 + r), xb);
+        f_row_p = (u16)(bg + (u16)r * 8);
+        f_unblit_row();
+    }
+}
+static void f_blit(void) {
+    u8 r;
+    u8 xb = f_sid ? 43 : 19;
+    u8* bg = (u8*)(f_sid ? 0xB700 : 0xB600);
+    const u8* s = &fselect_dance_base[(u16)f_fi * 480];
+    for (r = 0; r < 30; r++) {
+        f_row_v = f_rowaddr((u8)(118 + r), xb);
+        f_row_s = (u16)(s + (u16)r * 16);
+        f_row_p = (u16)(bg + (u16)r * 8);
+        f_blit_row();
+    }
+}
+// Ballarins select: 20 frames reals DOS 16x30 (parelles inv,img:
+// dst=(dst&inv)|img) a la cua de FSELECT.ZX0 (DANCE20 20x480; el depack els
+// ignora). Ordre: Jake dansa 0-5 + Jake idle 6-8 + Elwood dansa-A 9-13 +
+// Elwood dansa-B 14-19. Fons a 0xB600/0xB700 (2x240, RAM central lliure
+// darrere la cua). Ovals a x38/86 bytes 19-26/43-50, y118 (files 118..147).
+// Seqüències DOS tal qual (game.c: 0135/00dd/01d5/022d, 1-indexades -> aquí
+// 0-indexades). Tot C: sense ASM delicat.
 static u16 f_rowaddr(u8 y, u8 xb) {
     return (u16)0xC000 + (u16)(y >> 3) * 80 + xb + ((u16)(y & 7) << 11);
 }
-static void f_bg(u8 side, u8 save) {
-    u8 r, k;
-    u8 xb = side ? 43 : 19;
-    u8* bg = (u8*)(side ? 0x9900 : 0x9800);
-    for (r = 0; r < 30; r++) {
-        u8* v = (u8*)f_rowaddr((u8)(118 + r), xb);
-        for (k = 0; k < 8; k++) {
-            if (save) bg[(u16)r * 8 + k] = v[k];
-            else v[k] = bg[(u16)r * 8 + k];
-        }
-    }
-}
-static void f_draw(u8 fidx) {
-    u8 r, k;
-    const u8* s = &fselect_dance_base[(u16)fidx * 480];
-    u8 xb = (fidx < 2) ? 19 : 43;
-    for (r = 0; r < 30; r++) {
-        u8* v = (u8*)f_rowaddr((u8)(118 + r), xb);
-        for (k = 0; k < 8; k++) {
-            u8 inv = *s++;
-            u8 img = *s++;
-            v[k] = (v[k] & inv) | img;
-        }
-    }
-}
-static volatile u8 f_dph, f_dlast, f_pul, f_plast;
+// Seqüències DOS (game.c) mapejades a la cua: Jake dansa (0135: 52 passos),
+// Jake idle (00dd: 50, amb wrap a entrada 4 com el DOS), Elwood dansa-A
+// (01d5: 50, Jake triat) i dansa-B (022d: 52, Elwood triat). Generades amb
+// script (cap transcripció manual).
+static const u8 f_jd[52] = {
+    2, 2, 3, 3, 4, 4, 5, 5, 0, 0, 1, 1,
+    2, 2, 3, 3, 4, 4, 5, 5, 0, 0, 1, 1,
+    2, 2, 3, 3, 4, 4, 5, 5, 0, 0, 1, 1,
+    2, 2, 3, 3, 4, 4, 5, 5, 0, 0, 1, 1,
+    2, 2, 3, 3,
+};
+static const u8 f_ji[50] = {
+    6, 6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8, 8, 8, 7, 7, 7, 7, 7, 7, 7, 7,
+    7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 8,
+    8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 8,
+};
+static const u8 f_ea[50] = {
+    9, 9, 9, 9, 10, 10, 11, 11, 11, 11, 12, 12,
+    13, 13, 12, 12, 13, 13, 12, 12, 13, 13, 12, 12,
+    13, 13, 12, 12, 13, 13, 12, 12, 13, 13, 12, 12,
+    13, 13, 12, 12, 11, 11, 11, 11, 10, 10, 9, 9,
+    9, 9,
+};
+static const u8 f_eb[52] = {
+    19, 19, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18,
+    19, 19, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18,
+    19, 19, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18,
+    19, 19, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18,
+    19, 19, 14, 14,
+};
+static volatile u8 f_jt, f_et, f_step, f_lj, f_le;
 // Direccio premuda? bit0=esquerra, bit1=dreta (actiu-alt). Joy0 L/R
 // (linia 9, bits 2/3 = 0x0409/0x0809) + fletxes (dreta linia 0 bit 1,
 // esquerra linia 1 bit 0). Mateix read_keyline_e nau_dx + DI atomic.
@@ -297,43 +378,61 @@ void front_run(void) {
     // BROSSA - vist 14/10/26: un comptador intern enganxava l'splash).
     // Escriu g_player_choice directe via EQU (el caller no hi toca res).
     if (g_front_args.select_mode) {
-        // SELECT Jake/Elwood: ballarins animats (2 frames ~3/s) + focus
-        // polsant (swap pen0<->pen2) + L/R (joy + fletxes) amb vora
-        // persistent + FIRE/SPACE confirma. Default Jake (com DOS).
+        // SELECT Jake/Elwood: els DOS ballen (seqüències 0135/01d5/00dd/022d
+        // tal qual, blitter rapid estil joc) + focus groc/blau per tinta +
+        // L/R (joy + fletxes) amb vora persistent + FIRE/SPACE confirma.
+        // Default Jake (com DOS).
         u8 d;
         f_choice = 0;
         f_bord_j();
-        f_bg(0, 1);
-        f_bg(1, 1);
-        f_draw(0);
-        f_draw(2);
-        f_dph = 0;
-        f_dlast = g_ticks;
-        f_pul = 0;
-        f_plast = g_ticks;
+        f_focus();
+        f_sid = 0; f_fi = f_jd[0]; f_blit();
+        f_sid = 1; f_fi = f_ea[0]; f_blit();
+        f_jt = 0;
+        f_et = 0;
+        f_lj = f_jd[0];
+        f_le = f_ea[0];
+        f_step = g_ticks;
         while (f_fkey_pressed() || f_dir_mask()) { }
         for (;;) {
-            if ((u8)(g_ticks - f_dlast) >= 100) {
-                f_dlast = g_ticks;
-                f_dph ^= 1;
-                f_bg(0, 0);
-                f_bg(1, 0);
-                f_draw(f_dph);
-                f_draw((u8)(2 + f_dph));
-            }
-            if ((u8)(g_ticks - f_plast) >= 150) {
-                f_plast = g_ticks;
-                f_pul ^= 1;
-                if (f_pul) { f_inkp = 0; f_inkv = 0x44; f_ink(); f_inkp = 2; f_inkv = 0x47; f_ink(); }
-                else { f_inkp = 0; f_inkv = 0x47; f_ink(); f_inkp = 2; f_inkv = 0x44; f_ink(); }
+            if ((u8)(g_ticks - f_step) >= 24) {
+                f_step = g_ticks;
+                if (f_choice) {
+                    if (++f_jt >= 50) f_jt = 3; // idle: wrap DOS a entrada 4
+                    if (++f_et >= 52) f_et = 0;
+                    // Nomes si el frame canvia (taules amb holds x2/x4):
+                    // redibuixar igual parpelleja (tear) sense motiu.
+                    if (f_ji[f_jt] != f_lj) {
+                        f_lj = f_ji[f_jt];
+                        f_sid = 0; f_fi = f_lj; f_unblit(); f_blit();
+                    }
+                    if (f_eb[f_et] != f_le) {
+                        f_le = f_eb[f_et];
+                        f_sid = 1; f_fi = f_le; f_unblit(); f_blit();
+                    }
+                } else {
+                    if (++f_jt >= 52) f_jt = 0;
+                    if (++f_et >= 50) f_et = 0;
+                    if (f_jd[f_jt] != f_lj) {
+                        f_lj = f_jd[f_jt];
+                        f_sid = 0; f_fi = f_lj; f_unblit(); f_blit();
+                    }
+                    if (f_ea[f_et] != f_le) {
+                        f_le = f_ea[f_et];
+                        f_sid = 1; f_fi = f_le; f_unblit(); f_blit();
+                    }
+                }
             }
             d = f_dir_mask();
+            // Canvi de taules (dansa<->idle): els rangs son disjunts
+            // (JD 0-5, JI 6-8, EA 9-13, EB 14-19) i el primer frame
+            // sempre difereix de f_lj/f_le: redibuix garantit sense reset.
             if (d & 1) {
-                if (f_choice) { f_choice = 0; f_bord_j(); }
+                if (f_choice) { f_choice = 0; f_bord_j(); f_focus(); f_jt = 0; f_et = 0; }
                 while (f_dir_mask() & 1) { }
             }
             if (d & 2) {
-                if (!f_choice) { f_choice = 1; f_bord_e(); }
+                if (!f_choice) { f_choice = 1; f_bord_e(); f_focus(); f_jt = 0; f_et = 0; }
                 while (f_dir_mask() & 2) { }
             }
             if (f_fkey_pressed()) break;

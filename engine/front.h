@@ -15,12 +15,14 @@
 
 typedef struct {
     u8 home;                  // 0xC4 (el motor hi restaura en sortir)
-    const DiskFileDesc* desc; // .ZX0 (central: llegible des del banc)
     const u8* palhw;          // paleta 16 INKR (central)
     const DiskFileDesc* musbank; // MUSBANK (player+intro, central)
     u8 load_mus;              // 1 = carrega MUSBANK a C1 + mus_init (splash)
-    u8 select_mode;           // 1 = select Jake/Elwood (L/R + marcador + tria)
-    u8 map_mode;              // 1 = mapa (sticker nota + ruta statica DOS)
+    u8 screen;                // 0=splash, 1=select, 2=mapa (depack des de
+                              // RAM: sense FDC, musica intacta)
+    const DiskFileDesc* splash; // FSPLASH.ZX0 (fixa 0x8400, EQU front_ext)
+    const DiskFileDesc* sel;  // FSELECT.ZX0 (banc C4, EQU front_ext)
+    const DiskFileDesc* map;  // FMAP.ZX0 (fixa darrere splash, EQU)
 } FrontArgs;
 
 extern FrontArgs g_front_args; // definit a main.c (central _DATA)

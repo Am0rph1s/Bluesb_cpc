@@ -482,18 +482,18 @@ volatile u8 g_map_level; // 0..5 (el GAME l'escriu abans del mapa; el FRONT
                     // hi pinta sticker nota + ruta statica DOS via EQU)
 u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
                     // primer mus_init: evita Play sobre C1 buit (reboot).
-static void front_one(const DiskFileDesc* d, const u8* palhw, u8 load_mus) {
+static void front_one(u8 screen, const u8* palhw, u8 load_mus) {
     u8 prev;
     g_front_args.home = 0xC4;
-    g_front_args.desc = d;
+    g_front_args.splash = &g_file_fsplash;
+    g_front_args.sel = &g_file_fselect;
+    g_front_args.map = &g_file_fmap;
     g_front_args.palhw = palhw;
     g_front_args.musbank = &g_file_musbank;
     g_front_args.load_mus = load_mus;
-    // Select = FSELECT (flag explicit: els statics banked neixen amb
-    // brossa i un comptador intern enganxava l'splash, 14/10/26).
-    // Mapa = FMAP (sticker nota + ruta statica DOS al nivell g_map_level).
-    g_front_args.select_mode = (d == &g_file_fselect);
-    g_front_args.map_mode = (d == &g_file_fmap);
+    // Pantalla EXPLICITA (0/1/2: els statics banked neixen amb brossa i un
+    // comptador intern enganxava l'splash, 14/10/26).
+    g_front_args.screen = screen;
     prev = bank_set(0xC4);
     ((void(*)(void))FRONT_RUN)();
     bank_restore(prev);
@@ -515,11 +515,13 @@ void main(void) {
 
     // FRONT: SPLASH -> SELECT -> MAP (banked C4, args centrals). El display
     // apunta a 0xC000 (firmware), Mode 0 (starter): el depack hi es visible.
-    // Nomes l'splash carrega MUSBANK (load_mus=1); els altres el reutilitzen.
-    front_one(&g_file_fsplash, g_pal_fsplash, 1);
-    front_one(&g_file_fselect, g_pal_fselect, 0);
+    // L'splash carrega MUSBANK + les 3 pantalles a RAM (load_mus=1, silencios:
+    // la ISR encara no sona); select/mapa depacken des de RAM = la musica
+    // no s'atura mai al prejoc.
+    front_one(0, g_pal_fsplash, 1);
+    front_one(1, g_pal_fselect, 0);
     g_map_level = 0; // nivell 1 (mall): nomes la nota (ruta buida, com DOS)
-    front_one(&g_file_fmap, g_pal_fmap, 0);
+    front_one(2, g_pal_fmap, 0);
 
     // FOC AL MAPA = MUSICA FORA (HW real 13/10/26: les 8 carregues del
     // nivell amb la ISR sonant fan nota suspesa/interferencia, dramatic).

@@ -85,13 +85,13 @@ BANK_C_HEADERS = {
 # front.c (show/key/pal, nomes central/VRAM/PPI/GA) + front_table.s (slot JP)
 # + front_ext.s (EQU externs centrals generat del mapa resident).
 FRONT_BASE = 0x4000
-# FRONT_DATA a 0x4800 (era 0x4700): icones del mapa (sticker nota + ruta
-# statica DOS, blitter one-shot sense save) no cabien en 1792 B de _CODE.
+# FRONT_DATA a 0x4900 (era 0x4800): helper f_load (3 carregues al splash,
+# musica intacta) no cabia en 2048 B de _CODE.
 # C4:0x4300-0x4FFF lliure durant el FRONT (nomes hi viu FRONT.BIN; el
 # TILESET el trepitja despres). Historial: 0x4200 -> 0x4300 (select L/R)
 # -> 0x4450 -> 0x44C0 (mini-DANCE 4f) -> 0x4640 (DANCE20) -> 0x4700
-# -> 0x4800 (map sticker).
-FRONT_DATA = 0x4800
+# -> 0x4800 (map sticker) -> 0x4900 (tot carregat al splash).
+FRONT_DATA = 0x4900
 FRONT_MAXLEN = 0x1000
 FRONT_C_SOURCE = "engine/front.c"
 FRONT_C_HEADERS = ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h"]
@@ -135,7 +135,10 @@ DATA_FILES = [
     # FRONT.BIN: overlay d'arrencada (front.c banked C4:0x4000) -> C4 (el
     # TILESET el sobreescriu quan acaba el FRONT). L'starter el carrega.
     ("FRONT", "BIN", os.path.join(PROJ, "obj", "FRONT.BIN")),
-    # F1-FRONT: les 3 pantalles (el GAME les mostra via FRONT banked).
+    # Prejoc: les 3 pantalles es carreguen TOTES al splash (silenci,
+    # pre-musica) a RAM: splash+mapa a fixa 0x8400+, select al banc C4
+    # (EQU front_ext); el depack es des de RAM = select/mapa sense FDC =
+    # la musica no s'atura mai (14/10/26).
     ("FSPLASH", "ZX0", os.path.join(PROJ, "obj", "FSPLASH.ZX0")),
     ("FSELECT", "ZX0", os.path.join(PROJ, "obj", "FSELECT.ZX0")),
     ("FMAP", "ZX0", os.path.join(PROJ, "obj", "FMAP.ZX0")),
@@ -607,17 +610,38 @@ def build_front(force):
     ext_s = os.path.join(obj, "front_ext.s")
     ext_txt = ("    .module front_ext\n" +
                "".join("    .globl %s\n%s = 0x%04X\n" % (k, k, v) for k, v in need.items()))
-    # DANCE_OFF: offset de la cua DANCE dins FSELECT.ZX0 (= len - 1920).
-    # Literal (no es simbol del mapa): el FRONT llegeix els frames de
-    # scratch 0x8400+DANCE_OFF (el depack els ignora). S'exporta com a
-    # ADRECA (array): `extern const u8 fselect_dance_base[]`.
-    fsel_zx = os.path.join(obj, "FSELECT.ZX0")
-    dance_base = 0x8400 + (os.path.getsize(fsel_zx) - DANCE_LEN) if os.path.exists(fsel_zx) else 0x8400
+    # Layout pantalles (tot carregat al SPLASH en silenci, pre-musica; el
+    # depack es des de RAM = select/mapa sense FDC, musica intacta):
+    # - splash.ZX0 -> fixa 0x8400 (lliure al prejoc);
+    # - select.ZX0 -> banc C4 0x4A00 (propi banc del FRONT: _DATA a 0x4900;
+    #   FATAL post-link si _DATA hi arriba);
+    # - map.ZX0 -> fixa 0x8400+len(splash) (darrere l'splash).
+    # Fixes que creixen amb els assets: FATAL si select+bg passa 0x8000 o
+    # el mapa passa 0xC000 (VRAM). Mides reals dels .ZX0.
+    splash_zx = 0x8400
+    sel_zx = 0x4A00
+    sizes = {}
+    for t, _ in FRONT_SCREENS:
+        p = os.path.join(obj, t + ".ZX0")
+        sizes[t] = os.path.getsize(p) if os.path.exists(p) else 0
+    map_zx = splash_zx + sizes["FSPLASH"]
+    bg0 = sel_zx + sizes["FSELECT"]
+    bg1 = bg0 + 240
+    if bg1 + 240 > 0x8000:
+        print("\n[FATAL] FRONT: select+bg passa 0x8000 (sel=0x%04X len=%d). Aprimar." % (sel_zx, sizes["FSELECT"]))
+        sys.exit(1)
+    if map_zx + sizes["FMAP"] > 0xC000:
+        print("\n[FATAL] FRONT: mapa passa 0xC000 (map=0x%04X len=%d). Aprimar." % (map_zx, sizes["FMAP"]))
+        sys.exit(1)
+    dance_base = sel_zx + (sizes["FSELECT"] - DANCE_LEN)
+    stick_base = map_zx + (sizes["FMAP"] - STICK_LEN)
+    ext_txt += ("    .globl _fsplash_zx\n_fsplash_zx = 0x%04X\n"
+                "    .globl _fsel_zx\n_fsel_zx = 0x%04X\n"
+                "    .globl _fmap_zx\n_fmap_zx = 0x%04X\n"
+                "    .globl _f_bg0\n_f_bg0 = 0x%04X\n"
+                "    .globl _f_bg1\n_f_bg1 = 0x%04X\n"
+                % (splash_zx, sel_zx, map_zx, bg0, bg1))
     ext_txt += "    .globl _fselect_dance_base\n_fselect_dance_base = 0x%04X\n" % dance_base
-    # STICK_OFF: offset de la cua MAPSTICK dins FMAP.ZX0 (= len - 1184).
-    # Mateix patro: el FRONT hi llegeix nota (0..1087) + dash (1088..1183).
-    fmap_zx = os.path.join(obj, "FMAP.ZX0")
-    stick_base = 0x8400 + (os.path.getsize(fmap_zx) - STICK_LEN) if os.path.exists(fmap_zx) else 0x8400
     ext_txt += "    .globl _fmap_stick_base\n_fmap_stick_base = 0x%04X\n" % stick_base
     if not os.path.exists(ext_s) or open(ext_s).read() != ext_txt:
         open(ext_s, "w").write(ext_txt)
@@ -660,6 +684,10 @@ def build_front(force):
     if (f_code_s is not None and f_data_s is not None and
             (f_code_s + f_code_l) > f_data_s):
         print("\n[FATAL] FRONT _CODE envaeix _DATA! Mou --data-loc amunt.")
+        sys.exit(1)
+    if (f_data_s is not None and (f_data_s + f_data_l) > sel_zx):
+        print("\n[FATAL] FRONT _DATA (fi 0x%04X) envaeix select.ZX0 (0x%04X)! Puja sel_zx." %
+              (f_data_s + f_data_l, sel_zx))
         sys.exit(1)
     bin_path = os.path.join(obj, "FRONT.BIN")
     convert_ihx(ihx, bin_path, start_addr=FRONT_BASE,

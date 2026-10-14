@@ -21,7 +21,6 @@ extern volatile u8 g_mus_hold; // HOLD ISR (central _DATA; EQU front_ext.s:
 // lectures ha d'anar amb HOLD=1, si no el glitch torna en 20 ms)
 extern volatile u8 g_player_choice; // tria F1 (central _DATA; l'escriu el
                                     // select directe: 0=Jake, 1=Elwood)
-extern const u8 fmap_stick_base[]; // EQU front_ext (0x8400+off MAPSTICK)
 extern volatile u8 g_map_level; // nivell actual 0..5 (l'escriu el GAME)
 
 // Resultat via static (NO en L/A directe!): veure s_fkey_pressed (main.c).
@@ -80,7 +79,13 @@ static u8 f_fkey_pressed(void) {
     return f_fkres;
 }
 
-extern const u8 fselect_dance_base[]; // EQU front_ext (0x8400+off)
+extern const u8 fsplash_zx[]; // EQU front_ext (fixa 0x8400)
+extern const u8 fsel_zx[]; // EQU front_ext (banc C4 0x4900, propi banc)
+extern const u8 fmap_zx[]; // EQU front_ext (fixa darrere splash)
+extern u8 f_bg0[]; // EQU front_ext (fons ballari 0, C4 darrere select)
+extern u8 f_bg1[]; // EQU front_ext (fons ballari 1, C4 darrere select)
+extern const u8 fselect_dance_base[]; // EQU front_ext (cua DANCE20)
+extern const u8 fmap_stick_base[]; // EQU front_ext (cua MAPSTICK)
 static u16 f_rowaddr(u8 y, u8 xb);
 // Focus: groc (0x4A) sobre el triat, blau (0x44) l'altre + terra iluminat
 // (groc palid 0x43) vs no (blau cel 0x57). Cons a pens separats (esq 13 /
@@ -166,7 +171,7 @@ static volatile u8 f_sid, f_fi;
 static void f_unblit(void) {
     u8 r;
     u8 xb = f_sid ? 43 : 19;
-    u8* bg = (u8*)(f_sid ? 0xB700 : 0xB600);
+    u8* bg = (u8*)(f_sid ? f_bg1 : f_bg0);
     for (r = 0; r < 30; r++) {
         f_row_v = f_rowaddr((u8)(118 + r), xb);
         f_row_p = (u16)(bg + (u16)r * 8);
@@ -176,7 +181,7 @@ static void f_unblit(void) {
 static void f_blit(void) {
     u8 r;
     u8 xb = f_sid ? 43 : 19;
-    u8* bg = (u8*)(f_sid ? 0xB700 : 0xB600);
+    u8* bg = (u8*)(f_sid ? f_bg1 : f_bg0);
     const u8* s = &fselect_dance_base[(u16)f_fi * 480];
     for (r = 0; r < 30; r++) {
         f_row_v = f_rowaddr((u8)(118 + r), xb);
@@ -250,8 +255,9 @@ static void f_map_leg(u8 j) {
 // Ballarins select: 20 frames reals DOS 16x30 (parelles inv,img:
 // dst=(dst&inv)|img) a la cua de FSELECT.ZX0 (DANCE20 20x480; el depack els
 // ignora). Ordre: Jake dansa 0-5 + Jake idle 6-8 + Elwood dansa-A 9-13 +
-// Elwood dansa-B 14-19. Fons a 0xB600/0xB700 (2x240, RAM central lliure
-// darrere la cua). Ovals a x38/86 bytes 19-26/43-50, y118 (files 118..147).
+// Elwood dansa-B 14-19. Fons a f_bg0/f_bg1 (EQU: 2x240 al C4 darrere el
+// select.ZX0; abans 0xB600/0xB700, pero alla hi va el map.ZX0 a fixa).
+// Ovals a x38/86 bytes 19-26/43-50, y118 (files 118..147).
 // Seqüències DOS tal qual (game.c: 0135/00dd/01d5/022d, 1-indexades -> aquí
 // 0-indexades). Tot C: sense ASM delicat.
 static u16 f_rowaddr(u8 y, u8 xb) {
@@ -371,48 +377,17 @@ static void f_fpal(const u8* palhw) {
     __endasm;
 }
 
-// Mostra una pantalla FRONT (.ZX0 a scratch 0x8400, depack a VRAM visible,
-// paleta, espera-premut amb timeout). La pantalla anterior es perd.
+// Mostra una pantalla del prejoc (splash/select/mapa). Al SPLASH: carrega
+// les 3 (FDC silencios: la musica encara no ha arrencat) + MUSBANK, depack
+// splash, mus_init. Select/mapa: depack des de RAM (CAP FDC) = la musica
+// no s'atura mai. Dests (EQU front_ext): splash+mapa a fixa, select al
+// propi banc C4 (l'unic llegible sense paginar).
 // OJO: MAI a 0x8000 (hi viu el motor FDC banked: suicidi, vist 12/10/26).
-void front_run(void) {
-    const DiskFileDesc* f = g_front_args.desc;
-    const u8* palhw = g_front_args.palhw;
-    u8 home = g_front_args.home;
+static void f_load(const DiskFileDesc* f, u8 bank, const void* dst) {
     u8 ok = 0, t;
-    // MUSICA (nomes splash): carrega MUSBANK (player+intro) a C1:0x4000 via
-    // stub CENTRAL (trampoli segur: el stub pagina/restaura; el FRONT (slot 1)
-    // MAI pagina ell mateix (desapareixeria: C1 mapeja slot1->banc1)).
-    // Home propi (C4): el motor hi restaura en sortir. + mus_init central.
-    if (g_front_args.load_mus) {
-        u8 mok = 0, mt;
-        for (mt = 0; mt < 3 && !mok; mt++) {
-            if (fdc_load_file(home, g_front_args.musbank, 0xC1, (void*)0x4000))
-                mok = 1;
-        }
-        if (!mok) {
-            __asm
-                ld      bc, #0x7F00
-                ld      a, #0x10
-                out     (c), a
-                ld      a, #0x4C
-                out     (c), a      ;; vermell (sense cpct_ aqui)
-            __endasm;
-            while (1) { }
-        }
-        // mus_init() DESPRES de la imatge (a baix): la intro arrenca neta,
-        // sense glitch de lectura pel mig. El player encara no iniciat
-        // (g_mus_ready=0): la ISR no sona durant aquestes dues lectures.
-    } else {
-        // MUTE en lectura d'imatge (HW real 13/10/26: amb la ISR sonant la
-        // lectura grinyola/interfereix). mus_stop = silenci immediat (sense
-        // nota clavada) + HOLD = la ISR no fa Play (l'AKG reprendria el so
-        // al tick seguent). Despres: HOLD=0 + mus_init (intro de nou).
-        mus_stop();
-        g_mus_hold = 1;
-    }
+    u8 home = g_front_args.home;
     for (t = 0; t < 3 && !ok; t++) {
-        if (!fdc_load_file(home, f, 0xC0, (void*)0x8400)) continue;
-        zx0_decompress((const void*)0x8400, (void*)0xC000);
+        if (!fdc_load_file(home, f, bank, (void*)dst)) continue;
         ok = 1;
     }
     if (!ok) {
@@ -425,12 +400,37 @@ void front_run(void) {
         __endasm;
         while (1) { }
     }
+}
+void front_run(void) {
+    const u8* palhw = g_front_args.palhw;
+    u8 screen = g_front_args.screen;
+    // MUSICA + PANTALLES (nomes splash): MUSBANK (player+intro) a C1:0x4000
+    // via stub CENTRAL (trampoli segur) + les 3 pantalles a RAM. Tot
+    // silencios (g_mus_ready=0: la ISR encara no sona). Home propi (C4).
+    if (g_front_args.load_mus) {
+        f_load(g_front_args.musbank, 0xC1, (void*)0x4000);
+        f_load(g_front_args.splash, 0xC0, (void*)fsplash_zx);
+        f_load(g_front_args.sel, 0xC4, (void*)fsel_zx);
+        f_load(g_front_args.map, 0xC0, (void*)fmap_zx);
+        // mus_init() DESPRES (a baix): la intro arrenca neta, sense glitch
+        // de lectura pel mig.
+    }
+    // Depack des de RAM (splash ara carregat; select/mapa del splash).
+    if (screen == 0) {
+        zx0_decompress((const void*)fsplash_zx, (void*)0xC000);
+    } else if (screen == 1) {
+        zx0_decompress((const void*)fsel_zx, (void*)0xC000);
+    } else {
+        zx0_decompress((const void*)fmap_zx, (void*)0xC000);
+    }
     f_fpal(palhw);
-    // Lectura feta: reobrir so (intro de nou, des de dalt) i espera amb
-    // musica. Splash (load_mus): HOLD ja a 0 (el motor el neteja simetric
-    // en sortir del C1); select/map: netegem el mute manual d'abans.
-    g_mus_hold = 0;
-    mus_init();
+    // So (nomes splash): la intro arrenca aqui i ja no para fins als loads
+    // del nivell. Select/mapa: ni stop/HOLD ni init (la ISR sona durant el
+    // depack CPU sense interferencia: el mute era pel FDC en HW real).
+    if (screen == 0) {
+        g_mus_hold = 0;
+        mus_init();
+    }
     // Espera TECLA/BOTO (INFINITA: res de timeouts auto-pass). Primer espera
     // que no hi hagi res premut (si l'usuari venia prement de la pantalla
     // anterior, no saltem en cadena) i despres espera la premuda (SPACE o
@@ -439,7 +439,7 @@ void front_run(void) {
     // SELECT (flag EXPLICIT del caller: els statics banked neixen amb
     // BROSSA - vist 14/10/26: un comptador intern enganxava l'splash).
     // Escriu g_player_choice directe via EQU (el caller no hi toca res).
-    if (g_front_args.select_mode) {
+    if (screen == 1) {
         // SELECT Jake/Elwood: els DOS ballen (seqüències 0135/01d5/00dd/022d
         // tal qual, blitter rapid estil joc) + focus groc/blau + terra per
         // tinta + L/R (joy + fletxes) + FIRE/SPACE confirma. Vora negra
@@ -499,7 +499,7 @@ void front_run(void) {
             if (f_fkey_pressed()) break;
         }
         g_player_choice = f_choice;
-    } else if (g_front_args.map_mode) {
+    } else if (screen == 2) {
         // MAPA F2: fons + ruta statica DOS (creus dels nivells superats)
         // + sticker nota al nivell actual (do_inter_screen, sense animacio
         // ni SOUND_2: no hi ha infra SFX). Nivell 1: nomes la nota al mall.

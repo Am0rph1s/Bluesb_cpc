@@ -12,13 +12,15 @@ encoixinades a 8 parells (blitter f_olit_row d'una tirada):
 - dash 8x6 -> files de 8 parells (16 B, 4 reals + 4 no-op) x6 = 96 B
   a offset 1088. Total STICK_LEN = 1184 B.
 
-Pens del MAPA existent (MAP.PALHW, sense tocar paleta):
-  EGA2 verd   (0,170,0)   -> pen 2 (0,128,0)
-  EGA4 vermell(170,0,0)   -> pen 1 (128,0,0)
-  EGA8 gris   (85,85,85)  -> pen 3 (128,128,128)
-  EGA11 cian  (85,255,255)-> pen 14 (128,255,255)
-  EGA12 rosa  (255,85,85) -> pen 8 (255,128,128)
-  EGA13 magenta(255,85,255)-> pen 15 (255,128,255)
+Pens del MAPA existent (MAP.PALHW, sense tocar paleta). La nota va en
+VERMELL FORT (contrast sobre l'edifici, 14/10/26) en comptes del cian
+DOS: cos a pen 11 (255,0,0), ombres a pen 1 (128,0,0):
+  EGA11 cian   -> pen 11 vermell fort
+  EGA12 rosa   -> pen 11 vermell fort
+  EGA4 vermell -> pen 11 vermell fort
+  EGA2 verd    -> pen 1 vermell fosc
+  EGA8 gris    -> pen 1 vermell fosc
+  EGA13 magenta(255,85,255) -> pen 15 (255,128,255) (dash, intacte DOS)
 Geometria: 48->24 / 16->8 (pixel esquerre, com gen_screens).
 """
 import os
@@ -30,7 +32,7 @@ sys.path.insert(0, os.path.join(HERE, 'bbdata'))
 from sprites import load_sqv_frames
 from PIL import Image
 
-VMAP_NOTE = {0: None, 2: 2, 4: 1, 8: 3, 11: 14, 12: 8}
+VMAP_NOTE = {0: None, 2: 1, 4: 11, 8: 1, 11: 11, 12: 11}
 VMAP_DASH = {0: None, 11: 14, 13: 15}
 
 STICK_W, STICK_H = 24, 34
@@ -82,8 +84,8 @@ def main():
     blob = note + dash
     assert len(blob) == STICK_LEN, len(blob)
     open(os.path.join(PROJ, 'assets', 'bbdata', 'MAPSTICK.BIN'), 'wb').write(blob)
-    MPAL = {1: (128, 0, 0), 2: (0, 128, 0), 3: (128, 128, 128),
-            8: (255, 128, 128), 14: (128, 255, 255), 15: (255, 128, 255)}
+    MPAL = {1: (128, 0, 0), 11: (255, 0, 0),
+            14: (128, 255, 255), 15: (255, 128, 255)}
     prev = Image.new('RGB', (24 + 8 + 6, 34), (24, 24, 28))
     for y in range(STICK_H):
         for pi, (a, b) in enumerate(cvn[y]):

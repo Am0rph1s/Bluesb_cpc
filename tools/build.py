@@ -85,10 +85,11 @@ BANK_C_HEADERS = {
 # front.c (show/key/pal, nomes central/VRAM/PPI/GA) + front_table.s (slot JP)
 # + front_ext.s (EQU externs centrals generat del mapa resident).
 FRONT_BASE = 0x4000
-# FRONT_DATA a 0x4300 (era 0x4200): el select F1 (scan L/R + marcador XOR
-# + branca tria, ~200 B) no cabia en 512 B de _CODE. C4:0x4200-0x4FFF lliure
-# durant el FRONT (nomes hi viu FRONT.BIN; el TILESET el trepitja despres).
-FRONT_DATA = 0x4300
+# FRONT_DATA a 0x44C0 (era 0x4450): ballarins select F1 en C (~450 B:
+# blitter+bg+anim+pols) no cabien en 1104 B de _CODE. C4:0x4300-0x4FFF
+# lliure durant el FRONT (nomes hi viu FRONT.BIN; el TILESET el trepitja
+# despres). Historial: 0x4200 -> 0x4300 (select L/R) -> 0x4450 -> 0x44C0.
+FRONT_DATA = 0x44C0
 FRONT_MAXLEN = 0x1000
 FRONT_C_SOURCE = "engine/front.c"
 FRONT_C_HEADERS = ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h"]
@@ -141,6 +142,9 @@ DATA_FILES = [
     # l'slot 3).
     ("MUSBANK", "BIN", os.path.join(PROJ, "obj", "MUSBANK.BIN")),
     ("MUSMAIN", "BIN", os.path.join(PROJ, "obj", "MUSMAIN.BIN")),
+    # DANCE: NO es fitxer DSK (taules Bloc0 justes!): build_dance() l'AFEGEIX
+    # a la cua de obj/FSELECT.ZX0 (el depack l'ignora: te fi explicita) i el
+    # FRONT el llegeix de scratch+off (EQU front_ext, sense FDC ni mute).
 ]
 
 
@@ -601,6 +605,13 @@ def build_front(force):
     ext_s = os.path.join(obj, "front_ext.s")
     ext_txt = ("    .module front_ext\n" +
                "".join("    .globl %s\n%s = 0x%04X\n" % (k, k, v) for k, v in need.items()))
+    # DANCE_OFF: offset de la cua DANCE dins FSELECT.ZX0 (= len - 1920).
+    # Literal (no es simbol del mapa): el FRONT llegeix els frames de
+    # scratch 0x8400+DANCE_OFF (el depack els ignora). S'exporta com a
+    # ADRECA (array): `extern const u8 fselect_dance_base[]`.
+    fsel_zx = os.path.join(obj, "FSELECT.ZX0")
+    dance_base = 0x8400 + (os.path.getsize(fsel_zx) - DANCE_LEN) if os.path.exists(fsel_zx) else 0x8400
+    ext_txt += "    .globl _fselect_dance_base\n_fselect_dance_base = 0x%04X\n" % dance_base
     if not os.path.exists(ext_s) or open(ext_s).read() != ext_txt:
         open(ext_s, "w").write(ext_txt)
     # Compila front.c (cache mtime+hash com la resta).
@@ -970,17 +981,45 @@ FRONT_TAGS = [t for t, b in FRONT_SCREENS]
 FRONT_FILES = {t: b for t, b in FRONT_SCREENS}
 
 
+def build_dance():
+    """Mini-DANCE per al select (F1): 4 frames de 480 B (parelles
+    mascara/imatge, mateix format PFRAMES) = Jake dansa1/2 (PFRAMES[10,11],
+    provats in-game) + Elwood dansa1/2 (ELWOOD[10,11]).
+    S'AFEGEIX a la cua de obj/FSELECT.ZX0 dins zx0_pack_all (un sol
+    escriptor; el depack ZX0 classic te fi explicita i els ignora). El
+    FRONT els llegeix de scratch 0x8400+DANCE_OFF (EQU front_ext).
+    Per que no fitxer DSK propi? Taules CHS+desc costen ~15 B de Bloc0 i
+    forcen rewrite placeholder de TOTES les taules (+150 B transitori):
+    a la cua son 0 B."""
+    pf = os.path.join(PROJ, "assets", "bbdata", "PFRAMES.BIN")
+    ew = os.path.join(PROJ, "assets", "bbdata", "ELWOOD.BIN")
+    pfd = open(pf, "rb").read()
+    ewd = open(ew, "rb").read()
+    assert len(pfd) >= 5760 and len(ewd) >= 5760, (len(pfd), len(ewd))
+    return pfd[4800:5760] + ewd[4800:5760]
+
+DANCE_LEN = 1920
+
+
 def zx0_pack_all():
-    """Comprimeix les pantalles FRONT a obj/<TAG>.ZX0 (cache per mtime)."""
+    """Comprimeix les pantalles FRONT a obj/<TAG>.ZX0 (cache per mtime).
+    FSELECT porta la cua DANCE (4 frames) a sobre: deps inclouen PFRAMES,
+    ELWOOD i aquest fitxer."""
     from zx0pkg.zx0 import zx0_compress
+    pf = os.path.join(PROJ, "assets", "bbdata", "PFRAMES.BIN")
+    ew = os.path.join(PROJ, "assets", "bbdata", "ELWOOD.BIN")
     for tag, base in FRONT_SCREENS:
         src = os.path.join(PROJ, "assets", "bbdata", base + ".BIN")
         dst = os.path.join(PROJ, "obj", tag + ".ZX0")
-        if is_stale(dst, [src]):
+        deps = [src] if tag != "FSELECT" else [src, pf, ew, __file__]
+        if is_stale(dst, deps):
             data = open(src, "rb").read()
             out, stats = zx0_compress(bytes(data), classic=True, quick=ZX0_QUICK)
-            open(dst, "wb").write(bytes(out))
-            mark_fresh(dst, [src])
+            out = bytes(out)
+            if tag == "FSELECT":
+                out = out + build_dance()
+            open(dst, "wb").write(out)
+            mark_fresh(dst, deps)
             print("ZX0: %s %d -> %d B (classic v1, %s)" %
                   (tag, len(data), len(out), "quick" if ZX0_QUICK else "optimal"))
 
@@ -1067,7 +1106,7 @@ def placeholder_header():
 def main():
     force = "-f" in sys.argv or "--force" in sys.argv
     os.makedirs(os.path.join(PROJ, "obj"), exist_ok=True)
-    zx0_pack_all()  # F1-FRONT: pantalles .ZX0 a obj/ (cache mtime)
+    zx0_pack_all()  # F1-FRONT: pantalles .ZX0 a obj/ (FSELECT amb cua DANCE)
     hdr_path = os.path.join(PROJ, "src", "disk_tables.h")
     crt_path = os.path.join(PROJ, "src", "crt_addrs.h")
     stab_path = os.path.join(PROJ, "src", "starter_tables.h")

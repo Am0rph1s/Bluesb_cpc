@@ -78,18 +78,75 @@ static u8 f_fkey_pressed(void) {
     return f_fkres;
 }
 
-// Vora segons tria (Jake blanc 0x44 / Elwood 0x4C): l'estat es veu sempre,
-// sense geometria ni maths de pens. f_fpal la torna negra en sortir.
-static void f_border(u8 hw) {
+// Vora fixa (hardcode, 0 risc ABI: el param en A/L ja ens ha mossegat
+// un cop - la vora sortia blanca). f_fpal la torna negra en sortir.
+static void f_bord_j(void) { // blau 0x44 = Jake
     __asm
         ld      bc, #0x7F00
         ld      a, #0x10
         out     (c), a
-        ld      a, l
+        ld      a, #0x44
         out     (c), a
         ret
     __endasm;
 }
+static void f_bord_e(void) { // 0x4C = Elwood
+    __asm
+        ld      bc, #0x7F00
+        ld      a, #0x10
+        out     (c), a
+        ld      a, #0x4C
+        out     (c), a
+        ret
+    __endasm;
+}
+// Tinta paleta (pen f_inkp = f_inkv): pel pols del focus (swap pen0<->pen2:
+// canvi GARANTIT visible sense saber quina tinta es l'oval blau).
+static volatile u8 f_inkp, f_inkv;
+static void f_ink(void) {
+    __asm
+        ld      bc, #0x7F00
+        ld      a, (#_f_inkp)
+        out     (c), a
+        ld      a, (#_f_inkv)
+        out     (c), a
+        ret
+    __endasm;
+}
+// Ballarins select: frames 16x30 (parelles inv,img: dst=(dst&inv)|img) a la
+// cua de FSELECT.ZX0 (mini-DANCE 4x480: Jake 0/1, Elwood 2/3; el depack els
+// ignora); fons a 0x9800 (2x240, pagina oculta). Ovals a x38/86 bytes
+// 19-26/43-50, y118 (files 118..147). Tot C: sense ASM delicat.
+extern const u8 fselect_dance_base[]; // EQU front_ext (0x8400+off)
+static u16 f_rowaddr(u8 y, u8 xb) {
+    return (u16)0xC000 + (u16)(y >> 3) * 80 + xb + ((u16)(y & 7) << 11);
+}
+static void f_bg(u8 side, u8 save) {
+    u8 r, k;
+    u8 xb = side ? 43 : 19;
+    u8* bg = (u8*)(side ? 0x9900 : 0x9800);
+    for (r = 0; r < 30; r++) {
+        u8* v = (u8*)f_rowaddr((u8)(118 + r), xb);
+        for (k = 0; k < 8; k++) {
+            if (save) bg[(u16)r * 8 + k] = v[k];
+            else v[k] = bg[(u16)r * 8 + k];
+        }
+    }
+}
+static void f_draw(u8 fidx) {
+    u8 r, k;
+    const u8* s = &fselect_dance_base[(u16)fidx * 480];
+    u8 xb = (fidx < 2) ? 19 : 43;
+    for (r = 0; r < 30; r++) {
+        u8* v = (u8*)f_rowaddr((u8)(118 + r), xb);
+        for (k = 0; k < 8; k++) {
+            u8 inv = *s++;
+            u8 img = *s++;
+            v[k] = (v[k] & inv) | img;
+        }
+    }
+}
+static volatile u8 f_dph, f_dlast, f_pul, f_plast;
 // Direccio premuda? bit0=esquerra, bit1=dreta (actiu-alt). Joy0 L/R
 // (linia 9, bits 2/3 = 0x0409/0x0809) + fletxes (dreta linia 0 bit 1,
 // esquerra linia 1 bit 0). Mateix read_keyline_e nau_dx + DI atomic.
@@ -240,20 +297,43 @@ void front_run(void) {
     // BROSSA - vist 14/10/26: un comptador intern enganxava l'splash).
     // Escriu g_player_choice directe via EQU (el caller no hi toca res).
     if (g_front_args.select_mode) {
-        // SELECT Jake/Elwood: L/R (joy + fletxes) canvien la tria (vora
-        // blava/verella persistent), FIRE/SPACE confirma. Default Jake.
+        // SELECT Jake/Elwood: ballarins animats (2 frames ~3/s) + focus
+        // polsant (swap pen0<->pen2) + L/R (joy + fletxes) amb vora
+        // persistent + FIRE/SPACE confirma. Default Jake (com DOS).
         u8 d;
         f_choice = 0;
-        f_border(0x44); // blanc = Jake
+        f_bord_j();
+        f_bg(0, 1);
+        f_bg(1, 1);
+        f_draw(0);
+        f_draw(2);
+        f_dph = 0;
+        f_dlast = g_ticks;
+        f_pul = 0;
+        f_plast = g_ticks;
         while (f_fkey_pressed() || f_dir_mask()) { }
         for (;;) {
+            if ((u8)(g_ticks - f_dlast) >= 100) {
+                f_dlast = g_ticks;
+                f_dph ^= 1;
+                f_bg(0, 0);
+                f_bg(1, 0);
+                f_draw(f_dph);
+                f_draw((u8)(2 + f_dph));
+            }
+            if ((u8)(g_ticks - f_plast) >= 150) {
+                f_plast = g_ticks;
+                f_pul ^= 1;
+                if (f_pul) { f_inkp = 0; f_inkv = 0x44; f_ink(); f_inkp = 2; f_inkv = 0x47; f_ink(); }
+                else { f_inkp = 0; f_inkv = 0x47; f_ink(); f_inkp = 2; f_inkv = 0x44; f_ink(); }
+            }
             d = f_dir_mask();
             if (d & 1) {
-                if (f_choice) { f_choice = 0; f_border(0x44); }
+                if (f_choice) { f_choice = 0; f_bord_j(); }
                 while (f_dir_mask() & 1) { }
             }
             if (d & 2) {
-                if (!f_choice) { f_choice = 1; f_border(0x4C); } // 0x4C
+                if (!f_choice) { f_choice = 1; f_bord_e(); }
                 while (f_dir_mask() & 2) { }
             }
             if (f_fkey_pressed()) break;

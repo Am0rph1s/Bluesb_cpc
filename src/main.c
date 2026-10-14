@@ -537,10 +537,9 @@ void main(void) {
         // lectura (la de MUSMAIN el netejaria en sortir i la ISR faria un
         // Play sobre canco no-iniciada abans del mus_init).
         // Tria F1: slot 3 = ELWOOD.BIN si g_player_choice (mateix C7:0x4000
-        // i indexos: motor intacte). Dieta Bloc0: PFRAMES/ELWOOD tenen
-        // IDENTIC ondisk_bytes (12608) i sectors (26): nomes cal triar
-        // desc (load) + crc (check). e3 un cop per intent (3 recomputs
-        // costaven mes que el spill); el FRONT escriu la tria via EQU.
+        // i indexos: motor intacte). PFRAMES/ELWOOD tenen IDENTIC
+        // ondisk_bytes (12608) i sectors (26): nomes cal triar desc (load)
+        // + crc (check). El FRONT escriu la tria via EQU.
         for (i = 0; i < 8; i++) {
             u8 ok = 0;
             for (t = 0; t < 3 && !ok; t++) {

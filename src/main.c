@@ -478,6 +478,8 @@ volatile u8 g_player_choice; // 0=Jake, 1=Elwood (l'escriu el FRONT al
                     // (vist 14/10/26: el ternari costava 1 B = branca morta
                     // i l'Elwood no hauria sonat MAI). Sense init: el select
                     // sempre corre abans del primer us)
+volatile u8 g_map_level; // 0..5 (el GAME l'escriu abans del mapa; el FRONT
+                    // hi pinta sticker nota + ruta statica DOS via EQU)
 u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
                     // primer mus_init: evita Play sobre C1 buit (reboot).
 static void front_one(const DiskFileDesc* d, const u8* palhw, u8 load_mus) {
@@ -489,7 +491,9 @@ static void front_one(const DiskFileDesc* d, const u8* palhw, u8 load_mus) {
     g_front_args.load_mus = load_mus;
     // Select = FSELECT (flag explicit: els statics banked neixen amb
     // brossa i un comptador intern enganxava l'splash, 14/10/26).
+    // Mapa = FMAP (sticker nota + ruta statica DOS al nivell g_map_level).
     g_front_args.select_mode = (d == &g_file_fselect);
+    g_front_args.map_mode = (d == &g_file_fmap);
     prev = bank_set(0xC4);
     ((void(*)(void))FRONT_RUN)();
     bank_restore(prev);
@@ -514,6 +518,7 @@ void main(void) {
     // Nomes l'splash carrega MUSBANK (load_mus=1); els altres el reutilitzen.
     front_one(&g_file_fsplash, g_pal_fsplash, 1);
     front_one(&g_file_fselect, g_pal_fselect, 0);
+    g_map_level = 0; // nivell 1 (mall): nomes la nota (ruta buida, com DOS)
     front_one(&g_file_fmap, g_pal_fmap, 0);
 
     // FOC AL MAPA = MUSICA FORA (HW real 13/10/26: les 8 carregues del

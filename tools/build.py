@@ -85,12 +85,13 @@ BANK_C_HEADERS = {
 # front.c (show/key/pal, nomes central/VRAM/PPI/GA) + front_table.s (slot JP)
 # + front_ext.s (EQU externs centrals generat del mapa resident).
 FRONT_BASE = 0x4000
-# FRONT_DATA a 0x4700 (era 0x4640): blitter ASM propi + focus per tinta
-# (fora C lent i pols vermell) no cabien en 1600 B de _CODE.
+# FRONT_DATA a 0x4800 (era 0x4700): icones del mapa (sticker nota + ruta
+# statica DOS, blitter one-shot sense save) no cabien en 1792 B de _CODE.
 # C4:0x4300-0x4FFF lliure durant el FRONT (nomes hi viu FRONT.BIN; el
 # TILESET el trepitja despres). Historial: 0x4200 -> 0x4300 (select L/R)
-# -> 0x4450 -> 0x44C0 (mini-DANCE 4f) -> 0x4640 (DANCE20) -> 0x4700.
-FRONT_DATA = 0x4700
+# -> 0x4450 -> 0x44C0 (mini-DANCE 4f) -> 0x4640 (DANCE20) -> 0x4700
+# -> 0x4800 (map sticker).
+FRONT_DATA = 0x4800
 FRONT_MAXLEN = 0x1000
 FRONT_C_SOURCE = "engine/front.c"
 FRONT_C_HEADERS = ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h"]
@@ -597,7 +598,7 @@ def build_front(force):
     need = {"_fdc_load_file": None, "_g_front_args": None,
             "_mus_play": None, "_mus_init": None, "_mus_stop": None,
             "_g_ticks": None, "_g_mus_hold": None,
-            "_g_player_choice": None}
+            "_g_player_choice": None, "_g_map_level": None}
     for k in need:
         if k not in syms:
             print("\n[FATAL] FRONT: %s no es al mapa resident. Enllaca GAME primer?" % k)
@@ -613,6 +614,11 @@ def build_front(force):
     fsel_zx = os.path.join(obj, "FSELECT.ZX0")
     dance_base = 0x8400 + (os.path.getsize(fsel_zx) - DANCE_LEN) if os.path.exists(fsel_zx) else 0x8400
     ext_txt += "    .globl _fselect_dance_base\n_fselect_dance_base = 0x%04X\n" % dance_base
+    # STICK_OFF: offset de la cua MAPSTICK dins FMAP.ZX0 (= len - 1184).
+    # Mateix patro: el FRONT hi llegeix nota (0..1087) + dash (1088..1183).
+    fmap_zx = os.path.join(obj, "FMAP.ZX0")
+    stick_base = 0x8400 + (os.path.getsize(fmap_zx) - STICK_LEN) if os.path.exists(fmap_zx) else 0x8400
+    ext_txt += "    .globl _fmap_stick_base\n_fmap_stick_base = 0x%04X\n" % stick_base
     if not os.path.exists(ext_s) or open(ext_s).read() != ext_txt:
         open(ext_s, "w").write(ext_txt)
     # Compila front.c (cache mtime+hash com la resta).
@@ -1001,6 +1007,21 @@ def build_dance():
 DANCE_LEN = 9600
 
 
+def build_mapstick():
+    """MAPSTICK pel mapa (F2): sticker nota musical 24x34 (1088 B) + dash
+    de ruta 8x6 (96 B), SQV 126/125 a pens del MAPA (tools/gen_map_sticker.py).
+    S'AFEGEIX a la cua de obj/FMAP.ZX0 dins zx0_pack_all (mateix patro
+    DANCE20: el depack els ignora; el FRONT els llegeix de scratch
+    0x8400+STICK_OFF via EQU _fmap_stick_base)."""
+    mst = os.path.join(PROJ, "assets", "bbdata", "MAPSTICK.BIN")
+    data = open(mst, "rb").read()
+    assert len(data) == STICK_LEN, len(data)
+    return data
+
+
+STICK_LEN = 1184
+
+
 def remap_select(data):
     """Retocs minims de SELECT.BIN (gen_screens, MEDIANCUT determinista de
     CHOIX.SQZ; la resta del quadre es INTACTA):
@@ -1059,10 +1080,14 @@ def zx0_pack_all():
     from zx0pkg.zx0 import zx0_compress
     d20 = os.path.join(PROJ, "assets", "bbdata", "DANCE20.BIN")
     gen20 = os.path.join(PROJ, "tools", "gen_select_dance.py")
+    mst = os.path.join(PROJ, "assets", "bbdata", "MAPSTICK.BIN")
+    genmst = os.path.join(PROJ, "tools", "gen_map_sticker.py")
     for tag, base in FRONT_SCREENS:
         src = os.path.join(PROJ, "assets", "bbdata", base + ".BIN")
         dst = os.path.join(PROJ, "obj", tag + ".ZX0")
         deps = [src] if tag != "FSELECT" else [src, d20, gen20, __file__]
+        if tag == "FMAP":
+            deps = [src, mst, genmst, __file__]
         if is_stale(dst, deps):
             data = open(src, "rb").read()
             if tag == "FSELECT":
@@ -1071,6 +1096,8 @@ def zx0_pack_all():
             out = bytes(out)
             if tag == "FSELECT":
                 out = out + build_dance()
+            if tag == "FMAP":
+                out = out + build_mapstick()
             open(dst, "wb").write(out)
             mark_fresh(dst, deps)
             print("ZX0: %s %d -> %d B (classic v1, %s)" %

@@ -21,6 +21,8 @@ extern volatile u8 g_mus_hold; // HOLD ISR (central _DATA; EQU front_ext.s:
 // lectures ha d'anar amb HOLD=1, si no el glitch torna en 20 ms)
 extern volatile u8 g_player_choice; // tria F1 (central _DATA; l'escriu el
                                     // select directe: 0=Jake, 1=Elwood)
+extern const u8 fmap_stick_base[]; // EQU front_ext (0x8400+off MAPSTICK)
+extern volatile u8 g_map_level; // nivell actual 0..5 (l'escriu el GAME)
 
 // Resultat via static (NO en L/A directe!): veure s_fkey_pressed (main.c).
 static volatile u8 f_fkres;
@@ -182,6 +184,68 @@ static void f_blit(void) {
         f_row_p = (u16)(bg + (u16)r * 8);
         f_blit_row();
     }
+}
+// Mapa F2: sticker nota + ruta statica DOS (game.c do_inter_screen).
+// Posicions DOS xpos[]/ypos[] (x CENTRAT, y a BAIX), sprite 126 de 48x34
+// i dashes 125 de 16x6. CPC: sticker xb=(x/2-12)/2, yb=y-34 (24x34);
+// dash xb=x/4-2, 6 files y-6..y-1 (8 reals + 8 pad). Files de MAPSTICK
+// encoixinades a 8 parells: 1 crida f_olit_row per 8 B VRAM.
+static const u8 m_xb[6] = {56, 14, 54, 44, 14, 14};
+static const u8 m_yb[6] = {136, 21, 6, 61, 131, 136};
+static const u8 m_xd[6] = {250, 80, 240, 200, 80, 80};
+static const u8 m_yd[6] = {170, 55, 40, 95, 165, 170};
+// Blitter one-shot (sense save: el mapa es static, no hi ha restore).
+static void f_olit_row(void) {
+    __asm
+        ld      de, (#_f_row_v)
+        ld      hl, (#_f_row_s)
+        ld      b, #8
+00100$: ld      a, (de)
+        and     (hl)
+        inc     hl
+        or      (hl)
+        inc     hl
+        ld      (de), a
+        inc     de
+        djnz    00100$
+        ret
+    __endasm;
+}
+static void f_map_sticker(u8 lvl) {
+    u8 r;
+    u8 xb = m_xb[lvl];
+    u8 yb = m_yb[lvl];
+    const u8* s = fmap_stick_base;
+    for (r = 0; r < 34; r++) {
+        f_row_v = f_rowaddr((u8)(yb + r), xb);
+        f_row_s = (u16)(s + (u16)r * 32);
+        f_olit_row();
+        f_row_v = f_rowaddr((u8)(yb + r), (u8)(xb + 8));
+        f_row_s = (u16)(s + (u16)r * 32 + 16);
+        f_olit_row();
+    }
+}
+// Un dash DOS (X centre, y baix) -> CPC xb=X/4-2, files y-6..y-1.
+static void f_map_dash(u16 x, u8 y) {
+    u8 r;
+    u8 xb = (u8)(x / 4 - 2);
+    u8 yt = (u8)(y - 6);
+    const u8* s = fmap_stick_base + 1088;
+    for (r = 0; r < 6; r++) {
+        f_row_v = f_rowaddr((u8)(yt + r), xb);
+        f_row_s = (u16)(s + (u16)r * 16);
+        f_olit_row();
+    }
+}
+// Creu de ruta DOS (helper c=0, static): 40+40 dashes en X.
+static void f_map_leg(u8 j) {
+    u8 i;
+    u16 x = m_xd[j];
+    u8 y = m_yd[j];
+    for (i = 0; i < 40; i++)
+        f_map_dash(x + 19 - i, (u8)(y - 19 + i));
+    for (i = 0; i < 40; i++)
+        f_map_dash(x - 19 + i, (u8)(y - 19 + i));
 }
 // Ballarins select: 20 frames reals DOS 16x30 (parelles inv,img:
 // dst=(dst&inv)|img) a la cua de FSELECT.ZX0 (DANCE20 20x480; el depack els
@@ -435,6 +499,18 @@ void front_run(void) {
             if (f_fkey_pressed()) break;
         }
         g_player_choice = f_choice;
+    } else if (g_front_args.map_mode) {
+        // MAPA F2: fons + ruta statica DOS (creus dels nivells superats)
+        // + sticker nota al nivell actual (do_inter_screen, sense animacio
+        // ni SOUND_2: no hi ha infra SFX). Nivell 1: nomes la nota al mall.
+        u8 j;
+        u8 lvl = g_map_level;
+        if (lvl > 5) lvl = 5;
+        for (j = 0; j < lvl; j++) f_map_leg(j);
+        if (lvl == 5) f_map_leg(5);
+        else f_map_sticker(lvl);
+        while (f_fkey_pressed()) { }
+        while (!f_fkey_pressed()) { }
     } else {
         while (f_fkey_pressed()) { }
         while (!f_fkey_pressed()) { }

@@ -20,6 +20,7 @@ typedef struct {
     const DiskFileDesc* musbank; // MUSBANK (player+intro, central)
     u8 load_mus;              // 1 = carrega MUSBANK a C1 + mus_init (splash)
     u8 select_mode;           // 1 = select Jake/Elwood (L/R + marcador + tria)
+    u8 map_mode;              // 1 = mapa (sticker nota + ruta statica DOS)
 } FrontArgs;
 
 extern FrontArgs g_front_args; // definit a main.c (central _DATA)

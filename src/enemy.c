@@ -273,6 +273,8 @@ void en2_draw(void) {
         start_row = (u8)(clip_y0 - world_y);
         row_count = (u8)(clip_y1 - clip_y0);
         // Cela walk (parell DOS 2 frames) + facing (flip precalculat F0..F5).
+        // La cela flipejada JA es la imatge mirroritzada: s'indexa igual
+        // (mateix start_byte que sense flip).
         {
             u8 cell = (u8)(en2_cell_base(e->kind) + ((e->tick >> 3) & 1));
             if (e->dir < 0)

@@ -24,7 +24,7 @@
 #include "enemy.h"
 #include "level_pkg.h"
 
-#define ENEMY_VX 48 // 6 px/frame @SUB8 (DOS 40>>3=5 px/f @30fps -> 150 px/s)
+#define ENEMY_VX 24 // 3 px/frame @SUB8 (DOS 40>>3=5 DOSpx/f @30fps = 150 px/s; 3*2*25 = 150)
 #define ENEMY_SUB 8
 #define ENEMY_GRAV 24
 #define ENEMY_VYMAX (15 * 8)
@@ -40,6 +40,7 @@ typedef struct {
     u8 on_ground;
     u8 tick;
     u8 kind;        // DOS 8/15/19
+    u8 unk2E;       // DOS unk2E: 1 quan hi ha aire sobre els peus (sonda F-1)
     i8 slot[2];     // slot de fons per pagina (-1 = no dibuixat)
     u8 drawn_start_byte[2];
     u8 drawn_byte_count[2];
@@ -118,6 +119,7 @@ void en2_init(void) {
         e->on_ground = 0;
         e->tick = 0;
         e->kind = s[4];
+        e->unk2E = 0;
         e->slot[0] = -1;
         e->slot[1] = -1;
         e->drawn_row_count[0] = 0;
@@ -153,19 +155,38 @@ void en2_update(void) {
             e->sy < (i16)(view_y - 100) || e->sy > (i16)(view_y + 350))
             continue;
         y = (i16)(e->y8 >> 3);
-        // X: patrulla + gir en paret (DOS fixup: sonda vora d'atac
-        // L+14/L+1, files peus i peus-1; bits 1=dreta, 2=esquerra).
-        nx = (i16)(e->x + (i16)(e->dir * 6));
+        // X DOS 1:1 (level.c fixup_xpos16 + object_func_op0/op1):
+        // - penya-segat: tile_type==1 (aire) a (x>>3)+-2, fila peus -> gir.
+        // - paret: tile_flags bit (1 dreta / 2 esquerra) a (nx+-4)>>3,
+        //   files peus i peus-1 (unk2E) -> gir sense avancar.
+        // Velocitat DOS (xmaxvelocity 40>>3 @30fps): 3 CPC px/f @25Hz.
+        nx = (i16)(e->x + (i16)((e->dir * ENEMY_VX) >> 3));
         if (nx < 0) { nx = 0; e->dir = 1; }
         if (nx > (i16)(LEVEL_W_PX - ENEMY_W)) { nx = (i16)(LEVEL_W_PX - ENEMY_W); e->dir = -1; }
         {
-            u16 acol = (u16)((e->dir > 0 ? (nx + 14) : (nx + 1)) >> 3);
-            u8 fl = (u8)(tile_flags(acol, (u16)((y + 8) >> 4)) |
-                         tile_flags(acol, (u16)((y + 24) >> 4)));
-            if (fl & (e->dir > 0 ? 1 : 2)) {
-                e->dir = (i8)-e->dir;
+            u16 frow = (u16)(((i16)(y + ENEMY_HT)) >> 4);
+            u16 lcol = (u16)(((e->x >> 3) + (e->dir > 0 ? 2 : -2)));
+            u16 acol = (u16)(((nx + (e->dir > 0 ? 4 : -4)) >> 3));
+            u8 bit = (u8)(e->dir > 0 ? 1 : 2);
+            if (tile_type(lcol, frow) == 1) {
+                e->dir = (i8)-e->dir;   // fi de terra: mitja volta (i avanca)
+                nx = (i16)(e->x + (i16)((e->dir * ENEMY_VX) >> 3));
+                if (nx < 0) { nx = 0; e->dir = 1; }
+                if (nx > (i16)(LEVEL_W_PX - ENEMY_W)) { nx = (i16)(LEVEL_W_PX - ENEMY_W); e->dir = -1; }
+            }
+            if (tile_flags(acol, frow) & bit) {
+                e->dir = (i8)-e->dir;   // paret a peus: mitja volta, quiet
+            } else if (e->unk2E == 1 && (tile_flags(acol, (u16)(frow - 1)) & bit)) {
+                e->dir = (i8)-e->dir;   // paret 2a fila (aire sobre peus)
             } else {
                 e->x = nx;
+            }
+            // unk2E DOS (update_unk2E): aire sobre els peus -> 1;
+            // tipus 11/12 -> 0.
+            {
+                u8 tt = tile_type(acol, frow);
+                if (tt == 11 || tt == 12) e->unk2E = 0;
+                else if (tile_flags(acol, (u16)(frow - 1)) == 0) e->unk2E = 1;
             }
         }
         // Y: gravetat + snap (mateix que en Jake, alcada 32)
@@ -222,8 +243,11 @@ void en2_restore(void) {
     u8 page = (u8)bc_a;
     u8 k, y;
     if (page > 1) return;
-    for (k = 0; k < BG_PAGESLOTS; k++) {
-        i8 s = (i8)(page * BG_PAGESLOTS + k);
+    // LIFO (ordre invers al draw): sprites solapats es restauren del
+    // darrer al primer; en ordre directe el segon reescriu el fantasma
+    // del primer (esteles).
+    for (k = BG_PAGESLOTS; k > 0; k--) {
+        i8 s = (i8)(page * BG_PAGESLOTS + (k - 1));
         i8 idx = s_bg_owner[(u8)s];
         Enemy* e;
         if (idx < 0) continue;

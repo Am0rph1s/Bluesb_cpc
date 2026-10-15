@@ -67,8 +67,9 @@ void moving_restore(u8 page, u8 force) {
     if (page > 1) return;
 
     prev_bank = bank_set(0xC7);
-    for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
-        MovingElevator* e = &g_mag_elevators[i];
+    // LIFO com els enemics: ordre invers al draw (solapaments nets).
+    for (i = MAG_ELEVATOR_COUNT; i > 0; i--) {
+        MovingElevator* e = &g_mag_elevators[i - 1];
         if (!e->drawn[page]) continue;
         if (!force) {
             i16 x = (i16)(e->center_x - ELEVATOR_SPR_HALF_W);

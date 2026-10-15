@@ -105,6 +105,7 @@ void moving_draw_conveyor_tiles(void);
 u16 fdc_crc16(const u8* p, u16 len); // CRC16-CCITT (moving.c; tambe main.c)
 
 // Tiles de main.c compartits amb el modul C6 (via EQU banked).
+u8 tile_type(u16 col, u16 row);
 u8 tile_flags(u16 col, u16 row);
 u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
 

@@ -75,7 +75,7 @@ DSKNAME8 = "BLUESB"
 # (engine/enemy_table.s, slots init/update/restore/draw); codi+dades
 # fins 0x8000 (pool de fons inclos). ENEMI.BIN = frames + imatge codi.
 ENEMY_BASE = 0x5200
-ENEMY_DATA = 0x6510  # codi (0x5200..~0x64F9 amb pre-flip) + dades minimes (sense LUT/pool); (OJO scratch: ENEMI.BIN<=13536!)
+ENEMY_DATA = 0x6590  # codi (0x5200..~0x656E amb sonda DOS) + dades minimes (sense LUT/pool); (OJO scratch: ENEMI.BIN<=13536!)
 ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 ENEMY_C_SOURCES = ["src/enemy.c", "src/hud_strips.c"]
 ENEMY_ASM_SOURCES = ["engine/enemy_table.s"]

@@ -104,8 +104,20 @@ void start(void) {
     main();
 }
 
-u8 tile_flags(u16 col, u16 row) {
-    u8 prev, t, f;
+// Tipus de tile (byte 0 TRIG; DOS tile_type): 1 = aire (sonda de
+// penya-segat dels walkers, DOS object_func_op0). Mateix patro que
+// tile_flags (banc C5 via globals, cridable des de C6).
+u8 tile_type(u16 col, u16 row) {
+    u8 prev, t;
+    if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return 1;
+    prev = bank_set(0xC5);
+    t = MAP_PTR[(row << 7) + col];
+    t = TRIG_PTR[((u16)t) * 10];
+    bank_restore(prev);
+    return t;
+}
+
+u8 tile_flags(u16 col, u16 row) {    u8 prev, t, f;
     if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return 0;
     prev = bank_set(0xC5);
     t = MAP_PTR[(row << 7) + col];
@@ -741,8 +753,10 @@ void main(void) {
             sprite_restore_player();
             s_have_drawn[s_back_page] = 0;
         }
-        moving_restore(s_back_page, (move_x != 0 || move_y != 0));
+        // Restore LIFO (invers al draw world->enemic->jugador):
+        // l'enemic abans que els ascensors (els dibuixa a sobre).
         enemy_restore(s_back_page);
+        moving_restore(s_back_page, (move_x != 0 || move_y != 0));
         carry_restore(s_back_page);
         moving_popup_restore(s_back_page);
         world_flush_repaints();

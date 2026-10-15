@@ -51,46 +51,67 @@ typedef struct {
     i16 sy;         // spawn peus y (DOS level_ypos): bbox activacio
 } Enemy;
 
-// LUT mirror Mode 0 (256 B a _DATA: engine/enemy_flip_lut.s, primer del
-// link -> 0x6500 alineat; HI 0x65 via _g_flip_lut_hi). L'omple en2_init.
-extern u8 s_flip_lut[256];
+// LUT mirror Mode 0 (la calculava en2_init; ara inline: menys _DATA).
+#define M0FLIP(b) (u8)((((u16)(b) & 0xAAu) >> 1) | (((u16)(b) & 0x55u) << 1))
 
 // Estat a ZERO (sense init: veure capcalera) i en2_init (slot 3)
 // omple l'spawn a runtime: left=dos_x/2, y8=(dos_y-32)*8; dir=1
 // (dreta DOS); slot {-1,-1} lliure; owners -1.
 static Enemy s_enemies[ENEMY_N];
-static u8 s_bg_mem[BG_SLOTS][ENEMY_FRAME_SIZE];
+// Pool de fons a SCRATCH CENTRAL 0x8320 (6x512, lliure post-carrega:
+// el motor es a 0x8000-0x8311; _DATA no el paga al fitxer).
+#define BG_BASE ((u16)0x8320)
+#define BG_SLOT(s) (BG_BASE + (u16)((u8)(s)) * 512u)
 static i8 s_bg_owner[BG_SLOTS];
+// Celes walk mirroritzades (6: k8{0,1}, k15{2,3}, k19{7,8} -> F0..F5).
+// _DATA (sense init: 0 bytes al fitxer); les omple en2_init un cop
+// (el flip per LUT a cada frame era massa car i feia flamarades).
+static u8 s_flip_frames[6][ENEMY_FRAME_SIZE];
 
 // Taula d'spawn a CODE (5 B/fila: x, top=y8>>3, kind; dir sempre 1).
-// left=dos_x/2-8 (dos_xpos es el CENTRE: el draw centra l'sprite),
-// top=dos_y-32 (dos_ypos son els peus). Slots DOS L1 1,2,5,11,12,
-// 24,25,26,27,28 (staticres.c).
+// left=dos_x/2, top=dos_y-32. EVIDENCIA landing (10/26): amb centre
+// (dos_x/2-8) s27 cau de la 2a planta a terra (peus 515-524, cols
+// 64-65, fora de la plataforma col66); amb left els peus toquen
+// col66 (tile 10/op20) i aterra a 528 = 2+1 del DOS. Slots DOS L1
+// 1,2,5,11,12,24,25,26,27,28 (staticres.c).
 static const u8 s_spawn[ENEMY_N * 5] = {
-    200, 1,  64, 4, 15,   // s1 (456, top 1088, k15)
-    112, 2,  64, 4, 15,   // s2 (624, top 1088, k15)
-     80, 2, 192, 3, 15,   // s5 (592, top 960, k15)
-    112, 1, 240, 1,  8,   // s11 (368, top 496, k8)
-     64, 2, 240, 1,  8,   // s12 (544, top 496, k8)
-    168, 1, 224, 1,  8,   // s24 (424, top 480, k8)
-    184, 1, 224, 1,  8,   // s25 (440, top 480, k8)
-    232, 0,  64, 0, 19,   // s26 (232, top 64, k19)
-      0, 2,  48, 0, 19,   // s27 (512, top 48, k19)
-     40, 3,  64, 0, 19,   // s28 (808, top 64, k19)
+    208, 1,  64, 4, 15,   // s1 (464, top 1088, k15)
+    120, 2,  64, 4, 15,   // s2 (632, top 1088, k15)
+     88, 2, 192, 3, 15,   // s5 (600, top 960, k15)
+    120, 1, 240, 1,  8,   // s11 (376, top 496, k8)
+     40, 2, 240, 1,  8,   // s12 (552, top 496, k8)
+    176, 1, 224, 1,  8,   // s24 (432, top 480, k8)
+    192, 1, 224, 1,  8,   // s25 (448, top 480, k8)
+    240, 0,  64, 0, 19,   // s26 (240, top 64, k19)
+      8, 2,  48, 0, 19,   // s27 (520, top 48, k19)
+     48, 3,  64, 0, 19,   // s28 (816, top 64, k19)
 };
 
 void en2_init(void) {
     u8 i;
-    u16 k;
-    // LUT mirror (mateixa formula que sprite_hflip_init_lut).
-    for (k = 0; k < 256; k++)
-        s_flip_lut[k] = (u8)(((k & 0xAA) >> 1) | ((k & 0x55) << 1));
+    // Pre-flip de les 6 celes walk (un cop; el draw tria punter).
+    {
+        u8 c, r, p;
+        for (c = 0; c < 6; c++) {
+            u8 sc = c >= 4 ? (u8)(c + 3) : c;
+            const u8* s = ENEMY_FRAMES_BASE + (u16)sc * ENEMY_FRAME_SIZE;
+            u8* d = s_flip_frames[c];
+            for (r = 0; r < 32; r++) {
+                const u8* sp = s + (u16)r * 16u;
+                u8* dp = d + (u16)r * 16u;
+                for (p = 0; p < 8; p++) {
+                    dp[(u8)((u8)(7u - p) * 2u)] = M0FLIP(sp[(u8)(p * 2u)]);
+                    dp[(u8)((u8)(7u - p) * 2u + 1u)] = M0FLIP(sp[(u8)(p * 2u + 1u)]);
+                }
+            }
+        }
+    }
     for (i = 0; i < ENEMY_N; i++) {
         Enemy* e = &s_enemies[i];
         const u8* s = s_spawn + (u16)i * 5;
         e->x = (i16)((u16)s[0] + ((u16)s[1] << 8));
         e->y8 = (i16)(((u16)s[2] + ((u16)s[3] << 8)) << 3);
-        e->sx = (i16)(e->x + 8);            // centre (DOS level_xpos/2)
+        e->sx = e->x;                   // DOS level_xpos/2 (bbox)
         e->sy = (i16)(((u16)s[2] + ((u16)s[3] << 8)) + 32); // peus
         e->dir = 1;
         e->vy = 0;
@@ -132,7 +153,7 @@ void en2_update(void) {
             e->sy < (i16)(view_y - 100) || e->sy > (i16)(view_y + 350))
             continue;
         y = (i16)(e->y8 >> 3);
-        // X: patrulla + gir en paret (DOS fixup: sonda a centre+-13 px =
+        // X: patrulla + gir en paret (DOS fixup: sonda vora d'atac
         // L+14/L+1, files peus i peus-1; bits 1=dreta, 2=esquerra).
         nx = (i16)(e->x + (i16)(e->dir * 6));
         if (nx < 0) { nx = 0; e->dir = 1; }
@@ -213,7 +234,7 @@ void en2_restore(void) {
             g_moving_dst = (u16)ring_address(page,
                 (i16)(e->drawn_x[page] + e->drawn_start_byte[page] * 2),
                 (i16)(e->drawn_y[page] + sprite_row));
-            g_moving_background = (u16)(s_bg_mem[(u8)s] + bg_off);
+            g_moving_background = (u16)(BG_SLOT(s) + bg_off);
             g_moving_span = e->drawn_byte_count[page];
             moving_restore_span();
         }
@@ -251,32 +272,23 @@ void en2_draw(void) {
         byte_count = (u8)((clip_x1 - clip_x0) >> 1);
         start_row = (u8)(clip_y0 - world_y);
         row_count = (u8)(clip_y1 - clip_y0);
-        frame = ENEMY_FRAMES_BASE +
-                (u16)(en2_cell_base(e->kind) + ((e->tick >> 3) & 1)) * ENEMY_FRAME_SIZE;
-        // DOS: facing_left -> xflip (mateix frame mirroritzat). Les celes
-        // miren a la dreta; dir<0 dibuixa amb el blit amb flip (LUT C6).
-        if (e->dir < 0) {
-            u16 rev = (u16)((u16)start_byte + (u16)byte_count - 1u) << 1;
-            for (y = 0; y < row_count; y++) {
-                u8 sprite_row = (u8)(start_row + y);
-                u16 bg_off = (u16)sprite_row * ENEMY_WB + start_byte;
-                g_moving_dst = (u16)ring_address(page, clip_x0, (i16)(clip_y0 + y));
-                g_moving_background = (u16)(s_bg_mem[(u8)s] + bg_off);
-                g_moving_sprite = (u16)(frame + (u16)((u16)sprite_row * 16u + rev));
-                g_moving_span = byte_count;
-                moving_blit_span_hflip();
-            }
-        } else {
+        // Cela walk (parell DOS 2 frames) + facing (flip precalculat F0..F5).
+        {
+            u8 cell = (u8)(en2_cell_base(e->kind) + ((e->tick >> 3) & 1));
+            if (e->dir < 0)
+                frame = (const u8*)s_flip_frames[cell >= 7 ? (u8)(cell - 3) : cell];
+            else
+                frame = ENEMY_FRAMES_BASE + (u16)cell * ENEMY_FRAME_SIZE;
+        }
         for (y = 0; y < row_count; y++) {
             u8 sprite_row = (u8)(start_row + y);
             u16 bg_off = (u16)sprite_row * ENEMY_WB + start_byte;
             u16 frame_off = bg_off << 1;
             g_moving_dst = (u16)ring_address(page, clip_x0, (i16)(clip_y0 + y));
-            g_moving_background = (u16)(s_bg_mem[(u8)s] + bg_off);
+            g_moving_background = (u16)(BG_SLOT(s) + bg_off);
             g_moving_sprite = (u16)(frame + frame_off);
             g_moving_span = byte_count;
             moving_blit_span();
-        }
         }
         e->drawn_start_byte[page] = start_byte;
         e->drawn_byte_count[page] = byte_count;

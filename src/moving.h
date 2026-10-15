@@ -91,9 +91,7 @@ extern u16 g_moving_dst;
 extern u16 g_moving_background;
 extern u16 g_moving_sprite;
 extern u8 g_moving_span;
-extern u8 g_flip_lut_hi; // HI LUT flip walkers (C6; la de Jake es 0x7F)
 extern void moving_blit_span(void);
-extern void moving_blit_span_hflip(void);
 extern void moving_restore_span(void);
 extern u8* ring_address(u8 page, i16 x, i16 y);
 

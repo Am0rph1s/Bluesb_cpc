@@ -75,10 +75,10 @@ DSKNAME8 = "BLUESB"
 # (engine/enemy_table.s, slots init/update/restore/draw); codi+dades
 # fins 0x8000 (pool de fons inclos). ENEMI.BIN = frames + imatge codi.
 ENEMY_BASE = 0x5200
-ENEMY_DATA = 0x6500  # LUT flip primera a _DATA (alineada: HI 0x64); codi (0x5200..~0x6478) + dades despres (OJO scratch: ENEMI.BIN<=13536!)
+ENEMY_DATA = 0x6510  # codi (0x5200..~0x64F9 amb pre-flip) + dades minimes (sense LUT/pool); (OJO scratch: ENEMI.BIN<=13536!)
 ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 ENEMY_C_SOURCES = ["src/enemy.c", "src/hud_strips.c"]
-ENEMY_ASM_SOURCES = ["engine/enemy_flip_lut.s", "engine/enemy_table.s"]
+ENEMY_ASM_SOURCES = ["engine/enemy_table.s"]
 ENEMY_C_HEADERS = {
     "src/enemy.c": ["engine/cpctelera.h", "engine/bank.h",
                     "src/moving.h", "src/sprite.h", "src/enemy.h", "src/level_pkg.h"],
@@ -572,12 +572,6 @@ def build_enemybank(force):
             print("\n[FATAL] Slot %s: esperat 0x%04X, mapa diu %s. Revisa enemy_table.s!" %
                   (name, want, ("0x%04X" % got) if got >= 0 else "absent"))
             sys.exit(1)
-    # LUT de flip: ha de ser la PRIMERA de _DATA i alineada (HI constant).
-    lut = syms.get("_s_flip_lut", -1)
-    if lut != ENEMY_DATA or (ENEMY_DATA & 0xFF) != 0:
-        print("\n[FATAL] _s_flip_lut a 0x%04X (esperat 0x%04X alineat). Revisa ordre del link!" %
-              (lut, ENEMY_DATA))
-        sys.exit(1)
     code_path = os.path.join(obj, "ENEMYCODE.BIN")
     convert_ihx(ihx, code_path, start_addr=ENEMY_BASE,
                 max_length=image_length(map_path, ENEMY_BASE))

@@ -308,10 +308,17 @@ void moving_bank_update(void) {
             s_carry_vx = (g_face == 0) ? 154 : -154;
             s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
             s_carry_state = 1;
-        } else if (s_carry_kind == 2 || s_carry_kind == 8) {
+        } else if (s_carry_kind == 2) {
+            if (!s_carry_state) {
+                s_carry_x = s_px8;
+                s_carry_y = s_py8;
+                s_carry_state = 1;
+                s_vy = 0;
+            }
+        } else if (s_carry_kind == 8) {
             sprite_abort_balloon();
             s_carry_kind = 0;
-        } else if (!s_carry_kind && crouch && s_on_ground && tt == 5) {
+        } else if (!s_carry_kind && s_on_ground && tt == 5) {
             b5_world_reset_tile(col, row);
             s_carry_kind = 1; s_carry_state = 0;
             s_anim_idx = 0; s_anim_timer = 0;
@@ -350,13 +357,23 @@ void moving_bank_conveyor(void) {
         s_page_conveyor_phase[page] = s_conveyor_phase;
     }
 
-    // 2. Globus: POP de sostre DOS (basat en TRIG_PTR)
+    // 2. Globus: vol lliure i POP només en tocar sostre dur real (op == 20..28) o sortida
     if (s_carry_kind == 2) {
-        u16 py = (u16)(s_py8 >> 3);
-        if (py <= 32 || b5_tile_type((u8)(((s_px8 >> 3) + 8) >> 3), (u8)(((py - 1) >> 4) - 2)) > 5) {
-            sprite_abort_balloon();
-            s_carry_kind = 0;
-            s_vy = 0;
+        if (s_carry_state == 1) {
+            s_carry_y = (i16)(s_carry_y - 32); // ascens lliure ràpid (4 px/frame)
+        }
+        {
+            u16 cur_px = (u16)((s_carry_state ? s_carry_x : s_px8) >> 3);
+            i16 cur_py = (i16)((s_carry_state ? s_carry_y : s_py8) >> 3);
+            i16 b_top = (i16)(cur_py - 28);
+            u8 bcol = (u8)((cur_px + 8) >> 3);
+            u8 brow = (b_top > 0) ? (u8)(b_top >> 4) : 0;
+            const u8* tp = b5_trig_ptr(bcol, brow);
+            if (b_top <= 16 || (tp && (tp[2] == 20 || tp[2] == 21 || tp[2] == 27 || tp[2] == 28))) {
+                s_carry_kind = 0;
+                s_carry_state = 0;
+                s_vy = 0;
+            }
         }
     }
 

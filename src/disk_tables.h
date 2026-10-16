@@ -7,7 +7,7 @@ static const u8 g_bank5_chs[20] = {
     0x04,0xC9,0x05,0xC1,0x05,0xC2,0x05,0xC3,
 };
 static const DiskFileDesc g_file_bank5 = { 4676, 10, g_bank5_chs };
-#define CRC_BANK5 0xB4AF
+#define CRC_BANK5 0x48E0
 
 #define CRC_FDC 0xD1A9
 

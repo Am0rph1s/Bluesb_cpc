@@ -271,7 +271,7 @@ static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) 
         s_anim_timer = 0;
         return s_on_ground ? 25 : 21;
     }
-    if (s_carry_kind == 2) {
+    if (s_carry_kind == 2 && !s_carry_state) {
         return 20;
     }
     if (s_carry_kind == 8) {
@@ -383,7 +383,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
         i16 prev_feet = (i16)(py + PH);
         u16 prev_head = (u16)(py >> 4);
         if (!climbing) {
-            if (s_carry_kind == 2) {
+            if (s_carry_kind == 2 && !s_carry_state) {
                 s_vy = -8;
                 s_on_ground = 0;
                 s_ground_elevator = -1;
@@ -826,7 +826,24 @@ void main(void) {
             bank_restore(prev_b);
         }
         s_have_drawn[s_back_page] = 1;
-        if (s_carry_kind == 2) sprite_blit_balloon();
+        if (s_carry_kind == 2) {
+            if (!s_carry_state) {
+                sprite_blit_balloon();
+            } else {
+                i16 bx = (i16)(( (s_carry_x >> 3) - (i16)(g_cam_x4 * 4) ) >> 1);
+                i16 by = (i16)((s_carry_y >> 3) - (i16)(g_cam_row * 8));
+                if (bx >= 0 && bx <= (80 - SPR_WB) && by >= 28 && by < 180) {
+                    g_spr_x = (u8)bx;
+                    g_spr_y = (u8)by;
+                    sprite_blit_balloon();
+                    g_spr_x = (u8)dsx;
+                    g_spr_y = (u8)dsy;
+                } else {
+                    s_carry_kind = 0;
+                    s_carry_state = 0;
+                }
+            }
+        }
         else if (s_carry_kind == 8) sprite_blit_umbrella();
 
                 // Sincronització vertical fluida a 25 Hz (2 VSYNCs = 40 ms)

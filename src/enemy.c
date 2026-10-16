@@ -103,7 +103,7 @@ static const Spawn s_spawn[ENEMY_N] = {
     { 600,  976 << 3, 1008, 15, 36,  1 }, //  2: Iaia 3 (1r pis botiga)
 
     // 5 Policies (kind 4):
-    { 288, 1104 << 3, 1136,  4, 24,  3 }, //  3: Policia 1 (PB esquerra prop escala)
+    { 752, 1104 << 3, 1136,  4, 24,  3 }, //  3: Policia 1 (PB dreta botigues)
     { 824,  768 << 3,  800,  4, 24,  3 }, //  4: Policia 2 (replà racó 1r ascensor)
     { 280,  976 << 3, 1008,  4, 24,  3 }, //  5: Policia 3 (1r pis sota escala)
     { 776,  512 << 3,  544,  4,  0,  3 }, //  6: Policia 4 (2n pis replà ascensors: ESTÀTIC)
@@ -123,7 +123,7 @@ static const Spawn s_spawn[ENEMY_N] = {
     { 504,  336 << 3,  368, 18, 24,  7 }, // 14: Granger 2 (escala vinils dreta)
 
     // 1 Cambrera (kind 17):
-    {  80,  624 << 3,  656, 17, 20,  9 }, // 15: Cambrera (Bar/Restaurant 1r pis)
+    {  72,  624 << 3,  656, 17, 20,  9 }, // 15: Cambrera (Bar/Restaurant 1r pis)
 
     // 4 Rockers (kind 20):
     { 440,  976 << 3, 1008, 20, 24, 11 }, // 16: Rocker 1 (1r pis davant botiga)
@@ -154,7 +154,7 @@ void en2_init(void) {
         e->y8 = sp->y8;
         e->dir = 1;
         e->vy = 0;
-        e->on_ground = (sp->kind == 8 || sp->kind == 19) ? 1 : 0;
+        e->on_ground = (sp->kind == 8 || sp->kind == 19 || sp->kind == 17) ? 1 : 0;
         e->tick = 0;
         e->slot[0] = -1;
         e->slot[1] = -1;

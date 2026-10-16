@@ -223,6 +223,9 @@ _moving_restore_box::
     or      a
     ret     z
     ld      b, a                ;; B = row_count
+    ld      a, (_g_moving_span)
+    or      a
+    ret     z
     ld      hl, (_g_moving_background)
     ld      de, (_g_moving_dst)
 

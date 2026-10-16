@@ -390,6 +390,7 @@ void en2_draw(void) {
         byte_count = (u8)((clip_x1 - clip_x0) >> 1);
         start_row = (u8)(clip_y0 - world_y);
         row_count = (u8)(clip_y1 - clip_y0);
+        if (!byte_count || !row_count) continue;
 
         // Selecció de cela i flip dinàmic amb cache de cela:
         {
@@ -427,26 +428,28 @@ void en2_draw(void) {
         i16 clip_x0 = world_x > view_x ? world_x : view_x;
         i16 clip_x1 = world_x + 8 < view_x + 160 ? (i16)(world_x + 8) : (i16)(view_x + 160);
         i16 clip_y0 = world_y > view_y ? world_y : view_y;
-        i16 clip_y1 = world_y + s_proj.ht < view_y + 160 ? (i16)(world_y + s_proj.ht) : (i16)(view_y + 160);
+        i16 clip_y1 = world_y + s_proj.ht < view_y + 160 ? (i16)(world_y + s_proj.ht) : (i16)(view_x + 160);
         if (clip_x0 < clip_x1 && clip_y0 < clip_y1) {
             u8 start_byte = (u8)((clip_x0 - world_x) >> 1);
             u8 byte_count = (u8)((clip_x1 - clip_x0) >> 1);
             u8 start_row = (u8)(clip_y0 - world_y);
             u8 row_count = (u8)(clip_y1 - clip_y0);
-            // Cela 13: base + offset files projectil + 4 (centrat horitzontal 8 px Mode 0)
-            const u8* frame = ENEMY_FRAMES_BASE + (13 << 9) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
+            if (byte_count && row_count) {
+                // Cela 13: base + offset files projectil + 4 (centrat horitzontal 8 px Mode 0)
+                const u8* frame = ENEMY_FRAMES_BASE + (13 << 9) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
 
-            g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
-            s_proj.drawn_dst[page] = g_moving_dst;
-            g_moving_background = (u16)(&s_proj_bg[page][0]);
-            g_moving_sprite = (u16)frame;
-            g_moving_span = byte_count;
-            g_moving_rows = row_count;
-            g_moving_spr_skip = (u8)(16 - (byte_count << 1));
-            moving_blit_box();
+                g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
+                s_proj.drawn_dst[page] = g_moving_dst;
+                g_moving_background = (u16)(&s_proj_bg[page][0]);
+                g_moving_sprite = (u16)frame;
+                g_moving_span = byte_count;
+                g_moving_rows = row_count;
+                g_moving_spr_skip = (u8)(16 - (byte_count << 1));
+                moving_blit_box();
 
-            s_proj.drawn_byte_count[page] = byte_count;
-            s_proj.drawn_row_count[page] = row_count;
+                s_proj.drawn_byte_count[page] = byte_count;
+                s_proj.drawn_row_count[page] = row_count;
+            }
         }
     }
 }

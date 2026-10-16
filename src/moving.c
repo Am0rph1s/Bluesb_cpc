@@ -104,6 +104,7 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
         byte_count = (u8)((clip_x1 - clip_x0) >> 1);
         start_row = (u8)(clip_y0 - world_y);
         row_count = (u8)(clip_y1 - clip_y0);
+        if (!byte_count || !row_count) continue;
         frame = e->frame ? (ELEVATOR_FRAMES_BASE + ELEVATOR_FRAME_SIZE)
                            : ELEVATOR_FRAMES_BASE;
 

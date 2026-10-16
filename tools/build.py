@@ -71,18 +71,17 @@ DSKNAME8 = "BLUESB"
 
 # --- Banc C3 (walkers L1): frames + codi + dades (CP-2.2, com el Banc 5)
 # (C3 i no C2: OUT(0x7F00,0xC2) penja la maquina, vist 10/26.)
-# Frames ENEMI1.BIN (9x512 B) a 0x4000; taula de salts fixa a 0x5200
+# Frames ENEMI1.BIN (14x512 B) a 0x4000; taula de salts fixa a 0x5C00
 # (engine/enemy_table.s, slots init/update/restore/draw); codi+dades
 # fins 0x8000 (pool de fons inclos). ENEMI.BIN = frames + imatge codi.
-ENEMY_BASE = 0x5200
-ENEMY_DATA = 0x6590  # codi (0x5200..~0x656E amb sonda DOS) + dades minimes (sense LUT/pool); (OJO scratch: ENEMI.BIN<=13536!)
+ENEMY_BASE = 0x5C00
+ENEMY_DATA = 0x7300  # codi (0x5C00..~0x72FF) + dades C6 (fins ~0x77BF, marge fins BG_BASE 0x7A00)
 ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
-ENEMY_C_SOURCES = ["src/enemy.c", "src/hud_strips.c"]
+ENEMY_C_SOURCES = ["src/enemy.c"]
 ENEMY_ASM_SOURCES = ["engine/enemy_table.s"]
 ENEMY_C_HEADERS = {
     "src/enemy.c": ["engine/cpctelera.h", "engine/bank.h",
                     "src/moving.h", "src/sprite.h", "src/enemy.h", "src/level_pkg.h"],
-    "src/hud_strips.c": ["engine/cpctelera.h", "src/hud_pkg.h"],
 }
 
 # --- Banc 5 (CP-2.2): lògica moving.* a 0x6E00; slots fixos 0x6E00+3k
@@ -563,6 +562,10 @@ def build_enemybank(force):
         print("\n[FATAL] Banc C3 _CODE (0x%04X..0x%04X) envaeix _DATA (0x%04X)!" %
               (en_code_s, en_code_s + en_code_l, en_data_s))
         sys.exit(1)
+    if en_data_s is not None and (en_data_s + en_data_l) > 0x7A00:
+        print("\n[FATAL] Banc C6 _DATA (0x%04X..0x%04X) envaeix BG_BASE (0x7A00)!" %
+              (en_data_s, en_data_s + en_data_l))
+        sys.exit(1)
     syms = map_symbols(map_path)
     slot_names = {"_en_update": 0, "_en_restore": 1, "_en_draw": 2, "_en_init": 3}
     for name, slot in slot_names.items():
@@ -574,10 +577,10 @@ def build_enemybank(force):
             sys.exit(1)
     code_path = os.path.join(obj, "ENEMYCODE.BIN")
     convert_ihx(ihx, code_path, start_addr=ENEMY_BASE,
-                max_length=image_length(map_path, ENEMY_BASE))
+                max_length=en_code_l)
     frames = open(ENEMY_FRAMES, "rb").read()
     code = open(code_path, "rb").read()
-    assert len(frames) == 9 * 512, len(frames)
+    assert len(frames) == 14 * 512, len(frames)
     total = len(frames) + len(code)
     if 0x4000 + total > 0x8000:
         print("\n[FATAL] Imatge C3: %d bytes > finestra 0x4000!" % total)
@@ -586,15 +589,10 @@ def build_enemybank(force):
     open(out_path, "wb").write(frames + code)
     print("ENEMYB: frames %d B + codi %d B = %d B (0x4000..0x%04X)" %
           (len(frames), len(code), total, 0x4000 + total))
-    # EQU pel GAME (render.c llegeix s_hud_strips amb C2 paginat).
+    # EQU pel GAME (render.c llegeix s_hud_strips a 0x6000 paginant Banc C1 / C0).
     ext_s = os.path.join(obj, "enemy_ext.s")
-    addr = syms.get("_s_hud_strips")
-    if addr is None or addr < 0x4000 or addr >= 0x8000:
-        print("\n[FATAL] _s_hud_strips fora de C2: %s" %
-              (("0x%04X" % addr) if addr is not None and addr >= 0 else "absent"))
-        sys.exit(1)
     ext_txt = ("    .module enemy_ext\n"
-               "    .globl _s_hud_strips\n_s_hud_strips = 0x%04X\n" % addr)
+               "    .globl _s_hud_strips\n_s_hud_strips = 0x6000\n")
     if not os.path.exists(ext_s) or open(ext_s).read() != ext_txt:
         open(ext_s, "w").write(ext_txt)
     return out_path
@@ -880,10 +878,24 @@ def build_music(force):
     pad = MUS_SONG_SLOT - (MUS_PLAYER_BASE + len(pdata))
     assert pad >= 0
     open(mbin, "wb").write(pdata + bytes(pad) + idata)
-    # MUSMAIN = tema sol (mateix slot).
+    # MUSMAIN = tema sol + tires del HUD a offset 0x1000 (C1:0x6000).
     mainbin = os.path.join(obj, "MUSMAIN.BIN")
     mdata = open(songs["main"][0], "rb").read()
-    open(mainbin, "wb").write(mdata)
+    assert len(mdata) <= 0x1000, "Tema main massa gran per deixar slot 0x1000"
+    hud_h = os.path.join(PROJ, "src", "hud_pkg.h")
+    hud_src = open(hud_h, "r").read()
+    m_hud = re.search(r"const u8 s_hud_strips\[39\]\[24\] = \{(.*?)\};", hud_src, re.DOTALL)
+    hud_raw = bytearray()
+    for hl in m_hud.group(1).strip().split("\n"):
+        hl_clean = re.sub(r"//.*", "", hl).strip()
+        m_r = re.search(r"\{(.*?)\}", hl_clean)
+        if m_r:
+            nums = [int(x.strip(), 16) for x in m_r.group(1).split(",") if x.strip()]
+            assert len(nums) == 24
+            hud_raw.extend(nums)
+    assert len(hud_raw) == 39 * 24
+    pad_main = bytes(0x1000 - len(mdata))
+    open(mainbin, "wb").write(mdata + pad_main + hud_raw)
     # EQU pel GAME (mus.s crida _akg_init/_akg_play en finestra C1).
     ext_s = os.path.join(obj, "mus_ext.s")
     need = {"_akg_init": plabels.get("PLY_AKG_Init"), "_akg_play": plabels.get("PLY_AKG_Play"),
@@ -1361,7 +1373,7 @@ def main():
     ext_seed = os.path.join(PROJ, "obj", "enemy_ext.s")
     if not os.path.exists(ext_seed):
         open(ext_seed, "w").write("    .module enemy_ext\n"
-                                  "    .globl _s_hud_strips\n_s_hud_strips = 0x4000\n")
+                                  "    .globl _s_hud_strips\n_s_hud_strips = 0x6000\n")
 
     prev = None
     prev_crt = None

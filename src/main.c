@@ -75,7 +75,7 @@ u8  s_carry_state;
 i16 s_carry_x, s_carry_y;
 i16 s_carry_vx;
 u8  s_carry_drawn[2];
-static i16 s_carry_dx[2], s_carry_dy[2];
+static u16 s_carry_dst[2];
 static u8  s_crate_bg[2][64];
 
 i8  s_ground_elevator = -1;
@@ -104,20 +104,8 @@ void start(void) {
     main();
 }
 
-// Tipus de tile (byte 0 TRIG; DOS tile_type): 1 = aire (sonda de
-// penya-segat dels walkers, DOS object_func_op0). Mateix patro que
-// tile_flags (banc C5 via globals, cridable des de C6).
-u8 tile_type(u16 col, u16 row) {
-    u8 prev, t;
-    if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return 1;
-    prev = bank_set(0xC5);
-    t = MAP_PTR[(row << 7) + col];
-    t = TRIG_PTR[((u16)t) * 10];
-    bank_restore(prev);
-    return t;
-}
-
-u8 tile_flags(u16 col, u16 row) {    u8 prev, t, f;
+u8 tile_flags(u16 col, u16 row) {
+    u8 prev, t, f;
     if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return 0;
     prev = bank_set(0xC5);
     t = MAP_PTR[(row << 7) + col];
@@ -141,7 +129,6 @@ u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
     }
     return 0;
 }
-
 #define is_ceiling_solid(col, row) is_floor_solid((col), (row), -1, 0)
 
 static void world_flush_repaints(void) {
@@ -199,35 +186,29 @@ static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
 }
 
 static void carry_restore(u8 page) {
-    u8 r;
     if (!s_carry_drawn[page]) return;
-    for (r = 0; r < 16; r++) {
-        g_moving_dst = (u16)ring_address(page, s_carry_dx[page], (i16)(s_carry_dy[page] + r));
-        g_moving_background = (u16)(s_crate_bg[page] + ((u16)r << 2));
-        g_moving_span = 4;
-        moving_restore_span();
-    }
+    g_moving_dst = s_carry_dst[page];
+    g_moving_background = (u16)s_crate_bg[page];
+    g_moving_span = 4;
+    g_moving_rows = 16;
+    moving_restore_box();
     s_carry_drawn[page] = 0;
 }
 
 static void carry_fly_draw(u8 page) {
-    i16 cx, cy;
-    u8 prev, r;
+    u8 prev;
     if (s_carry_kind != 1 || !s_carry_state) return;
-    cx = (i16)(s_carry_x >> 3);
-    cy = (i16)(s_carry_y >> 3);
     prev = bank_set(0xC7);
-    for (r = 0; r < 16; r++) {
-        g_moving_dst = (u16)ring_address(page, cx, (i16)(cy + r));
-        g_moving_background = (u16)(s_crate_bg[page] + ((u16)r << 2));
-        g_moving_sprite = (u16)(CRATE_FLY_FRAME + ((u16)r << 3));
-        g_moving_span = 4;
-        moving_blit_span();
-    }
+    g_moving_dst = (u16)ring_address(page, (i16)(s_carry_x >> 3), (i16)(s_carry_y >> 3));
+    s_carry_dst[page] = g_moving_dst;
+    g_moving_background = (u16)s_crate_bg[page];
+    g_moving_sprite = (u16)CRATE_FLY_FRAME;
+    g_moving_span = 4;
+    g_moving_rows = 16;
+    g_moving_spr_skip = 0;
+    moving_blit_box();
     bank_restore(prev);
     s_carry_drawn[page] = 1;
-    s_carry_dx[page] = cx;
-    s_carry_dy[page] = cy;
 }
 
 void carry_abort(void) {
@@ -797,15 +778,12 @@ void main(void) {
         if (s_carry_kind == 2) sprite_blit_balloon();
         else if (s_carry_kind == 8) sprite_blit_umbrella();
 
-        // --- Sincronització fixa a 25 Hz (12 ticks = 40 ms) i canvi de pàgina ---
-        while ((u8)(g_ticks - last_ticks) < 12) {
+                // Sincronització vertical fluida a 25 Hz (2 VSYNCs = 40 ms)
+        cpc_wait_vsync_start();
+        if ((u8)(g_ticks - last_ticks) < 10) {
+            cpc_wait_vsync_start();
         }
         last_ticks = g_ticks;
-
-        // MUSICA: la porta la ISR (50 Hz exactes, independent del frame
-        // rate: moure en Jake ja no canvia el tempo). Res a fer aqui.
-
-        cpc_wait_vsync_start();
         crtc_set_display_start((u16)((s_back_page == 1 ? 0x2000 : 0x3000) + g_vram_start));
 
         s_back_page ^= 1;

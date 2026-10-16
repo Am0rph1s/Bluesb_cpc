@@ -11,9 +11,8 @@
 #include "moving.h"
 #include "sprite.h"
 
-// Tires del HUD al banc C3 (src/hud_strips.c via EQU obj/enemy_ext.s):
-// 936 B fora del Bloc 0 (10/26). Llegir nomes amb C3 paginat! (C2 mata:
-// OUT(0x7F00,0xC2) penja la maquina.)
+// Tires del HUD al banc C1/C0 a 0x6000 (carregades amb MUSMAIN.BIN):
+// 936 B fora del Bloc 0. Visibles en C0 (sense tocar Banc 7 ni buffers d'sprites).
 extern const u8 s_hud_strips[39][24];
 
 #define LEVEL_PKG_DEFS_ONLY
@@ -35,6 +34,7 @@ static u8 s_hud_lives[2];
 static u8 s_hud_vinyls[2];
 static u8 s_hud_hearts[2];
 static u8 s_hud_inst[2];
+static u16 s_hud_vram_start[2];
 
 static void hud_set_digits(u8 col, u8 val) {
     u8 tens = 9;
@@ -56,18 +56,21 @@ void hud_init(void) {
     s_hud_layout[19] = 6;
     s_hud_layout[39] = 2;
     s_hud_lives[0] = s_hud_lives[1] = 0xFF;
+    s_hud_vram_start[0] = s_hud_vram_start[1] = 0xFFFF;
 }
 
 void hud_render(u8 page, u8 force) {
     u8 cx, i;
     u16 ma;
     if (!force &&
+        s_hud_vram_start[page] == g_vram_start &&
         s_hud_lives[page] == g_lives_count &&
         s_hud_vinyls[page] == g_vinyls_count &&
         s_hud_hearts[page] == g_hearts_count &&
         s_hud_inst[page] == g_has_instrument) {
         return;
     }
+    s_hud_vram_start[page] = g_vram_start;
     s_hud_lives[page]  = g_lives_count;
     s_hud_vinyls[page] = g_vinyls_count;
     s_hud_hearts[page] = g_hearts_count;
@@ -93,7 +96,7 @@ void hud_render(u8 page, u8 force) {
 
     ma = (u16)((g_vram_start + 800) & 0x03FF);
     {
-        u8 prev_b = bank_set(0xC6);
+        u8 prev_b = bank_set(0xC0);
         for (cx = 0; cx < PLAY_CHARS; cx++) {
             hud_blit_col(s_hud_strips[s_hud_layout[cx]], ma);
             ma = (u16)((ma + 1) & 0x03FF);
@@ -156,77 +159,12 @@ void render_tile_world(u8 tile_index, u16 col, u16 row,
     bank_restore(prev_b);
 }
 
-// Llegeix una tira de 4 px: un caràcter CRTC d'ample per cada fila de tile.
-static void render_map_char_column(u16 cam_x4, u16 cam_row, u16 screen_char) {
-    u8 tile_ids[PLAY_ROWS];
-    u16 sy;
-    u16 ma;
-    u16 world_char_x = (u16)(cam_x4 + screen_char);
-    u16 map_col = (u16)(world_char_x >> 1);
-    u8 tile_half_x = (u8)(world_char_x & 1);
-
-    cpc_bank_set(0xC5);
-    for (sy = 0; sy < PLAY_ROWS; sy++) {
-        u16 world_subrow = (u16)(cam_row + sy);
-        u16 map_row = (u16)(world_subrow >> 1);
-        if (map_col < 128 && map_row < 72)
-            tile_ids[sy] = GMAP[(map_row << 7) + map_col];
-        else
-            tile_ids[sy] = 0;
-    }
-
-    cpc_bank_set(0xC4);
-    ma = (u16)(((cam_row * 40) + world_char_x) & 0x03FF);
-    for (sy = 0; sy < PLAY_ROWS; sy++) {
-        draw_char(tile_ids[sy], ma, (u8)((cam_row + sy) & 1), tile_half_x);
-        ma = (u16)((ma + 40) & 0x03FF);
-    }
-}
+extern void render_column(u16 cam_x4, u16 cam_row, u16 sx);
 
 void render_all(u16 cam_x4, u16 cam_row) {
     u16 sx;
-
     for (sx = 0; sx < PLAY_CHARS; sx++) {
-        render_map_char_column(cam_x4, cam_row, sx);
+        render_column(cam_x4, cam_row, sx);
     }
-    cpc_bank_restore();
 }
 
-void render_column(u16 cam_x4, u16 cam_row, u16 sx) {
-    if (sx >= PLAY_CHARS) return;
-    render_map_char_column(cam_x4, cam_row, sx);
-    cpc_bank_restore();
-}
-
-void render_row(u16 cam_x4, u16 cam_row, u16 sy) {
-    u16 sx;
-    u16 world_subrow;
-    u16 map_row;
-    u8 tile_half_y;
-    u8 tile_ids[PLAY_CHARS];
-
-    if (sy >= PLAY_ROWS) return;
-
-    world_subrow = (u16)(cam_row + sy);
-    map_row = (u16)(world_subrow >> 1);
-    tile_half_y = (u8)(world_subrow & 1);
-    world_subrow = (u16)(((world_subrow * 40) + cam_x4) & 0x03FF);
-
-    cpc_bank_set(0xC5);
-    for (sx = 0; sx < PLAY_CHARS; sx++) {
-        u16 world_char_x = (u16)(cam_x4 + sx);
-        u16 map_col = (u16)(world_char_x >> 1);
-        if (map_col < 128 && map_row < 72)
-            tile_ids[sx] = GMAP[(map_row << 7) + map_col];
-        else
-            tile_ids[sx] = 0;
-    }
-
-    cpc_bank_set(0xC4);
-    for (sx = 0; sx < PLAY_CHARS; sx++) {
-        draw_char(tile_ids[sx], world_subrow, tile_half_y,
-                  (u8)((cam_x4 + sx) & 1));
-        world_subrow = (u16)((world_subrow + 1) & 0x03FF);
-    }
-    cpc_bank_restore();
-}

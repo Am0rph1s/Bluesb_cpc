@@ -19,9 +19,16 @@ SQV = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.SQV")
 OUT_BIN = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 
 # (kind, sqv_idx) en ordre de cela
-CELLS = [(8, 2), (8, 14),
-         (15, 3), (15, 4),
-         (19, 15), (19, 16), (19, 17), (19, 18), (19, 19)]
+CELLS = [
+    (8, 2),               # 0: Peix (dreta; esquerra es flip)
+    (15, 3), (15, 4),     # 1, 2: Iaia walk
+    (4, 5), (4, 6),       # 3, 4: Policia walk
+    (19, 18), (19, 19),   # 5, 6: Ocell fly
+    (18, 27), (18, 28),   # 7, 8: Granger walk
+    (17, 35), (17, 36),   # 9, 10: Cambrera walk
+    (20, 41), (20, 42),   # 11, 12: Rocker walk
+]
+# Cela 13: composite projectils (Ou r0..12, Bala r13..18, Plat r19..29)
 
 CELL_W, CELL_H = 16, 32
 
@@ -56,6 +63,41 @@ def pack_cell(px, w, h):
     return bytes(raw)
 
 
+def pack_projectiles_cell(frames):
+    box = [[None] * CELL_W for _ in range(CELL_H)]
+    projs = [
+        (20, 0),   # Ou (kind 19) a files 0..12 (h=13)
+        (12, 13),  # Bala (kind 4) a files 13..18 (h=6)
+        (40, 19),  # Plat (kind 17) a files 19..29 (h=11)
+    ]
+    for sqv_idx, row_start in projs:
+        w, h, px = frames[sqv_idx]
+        w_m0 = (w + 1) // 2
+        x_shift = (CELL_W - w_m0) // 2
+        for y in range(h):
+            oy = row_start + y
+            for xm in range(CELL_W):
+                xdos = (xm - x_shift) * 2
+                p0 = px[y][xdos] if 0 <= xdos < w else 0
+                p1 = px[y][xdos + 1] if 0 <= (xdos + 1) < w else 0
+                val = 0
+                if p0 != 0 and p1 != 0:
+                    val = p0 if p0 not in (3, 11) else p1
+                elif p0 != 0:
+                    val = p0
+                elif p1 != 0:
+                    val = p1
+                if val != 0:
+                    box[oy][xm] = dos_to_cpc_pen.get(val)
+    raw = bytearray()
+    for y in range(CELL_H):
+        for xb in range(CELL_W // 2):
+            inv, img = encode_pair(box[y][xb * 2], box[y][xb * 2 + 1])
+            raw.append(inv)
+            raw.append(img)
+    return bytes(raw)
+
+
 def main():
     frames = load_sqv_frames(SQV)
     out = bytearray()
@@ -63,11 +105,13 @@ def main():
         w, h, px = frames[idx]
         assert w <= 32 and h <= 32, (idx, w, h)
         out += pack_cell(px, w, h)
-    assert len(out) == len(CELLS) * 512, len(out)
+    out += pack_projectiles_cell(frames)
+    total_cells = len(CELLS) + 1
+    assert len(out) == total_cells * 512, len(out)
     open(OUT_BIN, "wb").write(out)
-    print("escrit %s: %d bytes (%d celes 512 B)" % (OUT_BIN, len(out), len(CELLS)))
+    print("escrit %s: %d bytes (%d celes 512 B)" % (OUT_BIN, len(out), total_cells))
 
-    # Preview: renderitza les 9 celes com Mode 0 amb paleta MAG
+    # Preview: renderitza les celes com Mode 0 amb paleta MAG
     try:
         from PIL import Image
         HW = {0x54: (0, 0, 0), 0x44: (0, 0, 128), 0x55: (0, 0, 255), 0x5C: (128, 0, 0),
@@ -89,8 +133,8 @@ def main():
 
         def d1(b):
             return ((b >> 6) & 1) | (((b >> 2) & 1) << 1) | (((b >> 4) & 1) << 2) | (((b >> 0) & 1) << 3)
-        im = Image.new("RGB", (len(CELLS) * CELL_W, CELL_H), (255, 0, 255))
-        for c in range(len(CELLS)):
+        im = Image.new("RGB", (total_cells * CELL_W, CELL_H), (255, 0, 255))
+        for c in range(total_cells):
             base = c * 512
             for y in range(CELL_H):
                 for xb in range(8):

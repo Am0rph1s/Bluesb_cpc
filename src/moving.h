@@ -16,20 +16,15 @@
 typedef struct {
     i16 center_x;               // coordenades de joc Mode 0 (px)
     i16 y;                      // origen vertical de l'objecte (px)
-    i16 delta_y;
+    i8 delta_y;
     i8 direction;               // -1 amunt, +1 avall
     u8 map_col;                 // columna original per als triggers de parada
     u8 wait;
     u8 anim_tick;
     u8 frame;
     u8 drawn[2];
-    u8 drawn_frame[2];
-    u8 drawn_start_byte[2];
     u8 drawn_byte_count[2];
-    u8 drawn_start_row[2];
     u8 drawn_row_count[2];
-    i16 drawn_x[2];
-    i16 drawn_y[2];
 } MovingElevator;
 
 #define ELEVATOR_BG_BASE 0x70C0
@@ -91,8 +86,10 @@ extern u16 g_moving_dst;
 extern u16 g_moving_background;
 extern u16 g_moving_sprite;
 extern u8 g_moving_span;
-extern void moving_blit_span(void);
-extern void moving_restore_span(void);
+extern u8 g_moving_rows;
+extern u8 g_moving_spr_skip;
+extern void moving_blit_box(void);
+extern void moving_restore_box(void);
 extern u8* ring_address(u8 page, i16 x, i16 y);
 
 void moving_init(void);
@@ -108,5 +105,7 @@ u16 fdc_crc16(const u8* p, u16 len); // CRC16-CCITT (moving.c; tambe main.c)
 u8 tile_type(u16 col, u16 row);
 u8 tile_flags(u16 col, u16 row);
 u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
+u8 enemy_probe_turn(u8 acol, u8 lcol, u8 r_feet, u8 r_floor, u8 r_head, u8 bit, u8 on_ground);
+u8 enemy_probe_floor(u8 c1, u8 c2, u8 trow);
 
 #endif

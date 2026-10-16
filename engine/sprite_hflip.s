@@ -15,6 +15,7 @@
 
     .area _DATA
 _g_hflip_lut_hi::  .db 0x7F        ;; Per defecte apunta a 0x7F00 (Banc 7)
+s_last_hflip_src:  .dw 0           ;; Cache de l'últim frame girat a 0x7700
 
     .area _CODE
 
@@ -40,6 +41,8 @@ init_loop$:
     ld      (hl), a                 ;; Desa a lut[L]
     inc     l
     jr      nz, init_loop$          ;; 256 iteracions (0..255)
+    ld      hl, #0
+    ld      (s_last_hflip_src), hl  ;; Invalida el cache de frame girat
     ret
 
 ;; ============================================================
@@ -49,8 +52,19 @@ init_loop$:
 ;;
 ;; Algorisme directe amb taula BC (B = 0x7F constant):
 ;; ld c, (hl) -> ld a, (bc) [LUT lookup ultra-ràpid, 7 T]
+;; Cacheja l'últim src girat per estalviar 11.500 T-states quan
+;; es repeteix el mateix frame (segona pàgina o frame estàtic).
 ;; ============================================================
 _sprite_hflip::
+    ld      a, (s_last_hflip_src)
+    cp      l
+    jr      nz, 0$
+    ld      a, (s_last_hflip_src + 1)
+    cp      h
+    ret     z                       ;; Ja està girat a 0x7700!
+0$:
+    ld      (s_last_hflip_src), hl
+
     ;; Ajustar HL a la primera màscara 7 (src + 14)
     ld      bc, #14
     add     hl, bc
@@ -58,10 +72,11 @@ _sprite_hflip::
     ld      a, (_g_hflip_lut_hi)
     ld      b, a                    ;; B = 0x7F (byte alt de la LUT constant!)
 
-    ld      a, #30
-    ex      af, af'                 ;; A' = 30 (comptador de línies de trama)
+    ld      a, #30                  ;; 30 línies de trama
 
 hflip_line_loop$:
+    push    af                      ;; Desa comptador (segur davant ISR AKG)
+
     .rept 8
     ld      c, (hl)                 ;; C = mask font
     inc     hl                      ;; HL = img font
@@ -84,10 +99,8 @@ hflip_line_loop$:
     jr      nc, 1$
     inc     h
 1$:
-    ex      af, af'
+    pop     af
     dec     a
-    jr      z, 2$
-    ex      af, af'
-    jr      hflip_line_loop$
-2$:
+    jr      nz, hflip_line_loop$
     ret
+

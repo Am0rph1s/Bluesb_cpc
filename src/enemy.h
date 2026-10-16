@@ -8,7 +8,7 @@
 // Tot el modul viu al BANC C6 (frames 0x4000 + codi 0x5200 + dades);
 // el resident hi crida via call_banked (slots enemy_table.s) i li
 // dona tiles via helpers centrals (CP-2.2: banked no niua).
-#define ENEMY_N 10
+#define ENEMY_N 20
 #define ENEMY_W 16
 #define ENEMY_HT 32
 #define ENEMY_WB 8

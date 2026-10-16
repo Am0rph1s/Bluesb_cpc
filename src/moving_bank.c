@@ -28,54 +28,19 @@ extern void render_tile_world(u8 tile_index, u16 col, u16 row,
 
 // --- Consultes directes al Banc 5 (MAP_PTR i TRIG_PTR ja mapejats) ---
 
-static const u8* b5_trig_ptr(u8 col, u8 row) {
-    u8 t;
-    if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return 0;
-    t = MAP_PTR[((u16)row << 7) + col];
-    return &TRIG_PTR[((u16)t << 3) + ((u16)t << 1)];
-}
-
-static u8 b5_tile_type(u8 col, u8 row) {
-    const u8* p = b5_trig_ptr(col, row);
-    return p ? p[0] : 0;
-}
-
-static void b5_set_tile(u8 col, u8 row, u8 new_tile) {
-    u8 i;
-    if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return;
-    MAP_MUT[((u16)row << 7) + col] = new_tile;
-    i = s_rep_n;
-    if (i < 3) {
-        s_rep_col[i] = col;
-        s_rep_row[i] = row;
-        s_rep_tile[i] = new_tile;
-        s_rep_pages[i] = 3;
-        s_rep_n = (u8)(i + 1);
-    }
-}
-
-static void b5_world_reset_tile(u8 col, u8 row) {
-    const u8* mp;
-    u8 n, m, c;
-    if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return;
-    mp = &MAP_PTR[((u16)row << 7) + col];
-    n = *mp;
-    for (c = (u8)(col + 1); c < LEVEL_MAP_W; c++) {
-        m = *++mp;
-        if (m != n) {
-            b5_set_tile(col, row, m);
-            return;
-        }
-    }
-}
+extern const u8* b5_trig_ptr(u8 col, u8 row);
+extern u8 b5_tile_type(u8 col, u8 row);
+extern void b5_set_tile(u8 col, u8 row, u8 new_tile);
+extern void b5_world_reset_tile(u8 col, u8 row);
+extern void moving_bank_push(void);
 
 static u8  s_popup_timer;
 static u8  s_popup_idx;
 static i16 s_popup_wx;
 static i16 s_popup_wy;
-static u8  s_popup_drawn[2];
-static u16 s_popup_dst[2][7];
-static u8  s_popup_bg[2][28];
+u8  s_popup_drawn[2];
+u16 s_popup_dst[2];
+u8  s_popup_bg[2][28];
 
 void moving_bank_init(void) {
     u8 i;
@@ -119,57 +84,19 @@ void moving_bank_init(void) {
     }
 }
 
-void moving_bank_popup_restore(void) {
-    u8 page = (u8)bc_a;
-    u8 r;
-    const u16* dst_p;
-    const u8* bg_p;
-    if (page > 1 || !s_popup_drawn[page]) return;
-    dst_p = s_popup_dst[page];
-    bg_p = s_popup_bg[page];
-    for (r = 0; r < 7; r++) {
-        g_moving_dst = *dst_p++;
-        g_moving_background = (u16)bg_p;
-        g_moving_span = 4;
-        moving_restore_span();
-        bg_p += 4;
-    }
-    s_popup_drawn[page] = 0;
-}
-
-void moving_bank_push(void) {
-    u8 row = (u8)bc_c;
-    const u8* p0 = b5_trig_ptr((u8)bc_a, row);
-    const u8* p1 = b5_trig_ptr((u8)bc_b, row);
-    i8 direction = 0;
-    if (p0 && p1) {
-        u8 op0 = p0[2];
-        u8 op1 = p1[2];
-        if (op0 == 27 || op1 == 27) direction++;
-        if (op0 == 28 || op1 == 28) direction--;
-    }
-    bc_r = (i16)(direction * 16);
-}
-
 void moving_bank_find(void) {
-    i16 player_x = (i16)bc_a;
-    i16 previous_feet = (i16)bc_b;
-    i16 current_feet = (i16)bc_c;
-    i16 vy = (i16)bc_d;
-    i16* player_top = (i16*)bc_e;
     u8 i;
-    if (vy < 0) { bc_r = -1; return; }
+    const MovingElevator* e = g_mag_elevators;
+    if ((i16)bc_d < 0) { bc_r = -1; return; }
 
-    for (i = 0; i < LEVEL_ELEVATOR_COUNT; i++) {
-        const MovingElevator* e = &g_mag_elevators[i];
-        i16 left = (i16)(e->center_x - ELEVATOR_HALF_W);
-        i16 right = (i16)(left + ELEVATOR_WIDTH_PX);
-        i16 surface = (i16)(e->y - ELEVATOR_OBJECT_H);
-        if ((i16)(player_x + 16) <= left || player_x >= right) continue;
-        if (previous_feet <= (i16)(surface + 8) && current_feet >= surface) {
-            *player_top = (i16)(surface - 30);
-            bc_r = (i16)(i8)i;
-            return;
+    for (i = 0; i < LEVEL_ELEVATOR_COUNT; i++, e++) {
+        if ((u16)(e->center_x - bc_a + 8) < 33) {
+            i16 surface = (i16)(e->y - ELEVATOR_OBJECT_H);
+            if ((i16)bc_b <= (i16)(surface + 8) && (i16)bc_c >= surface) {
+                *(i16*)bc_e = (i16)(surface - 30);
+                bc_r = i;
+                return;
+            }
         }
     }
     bc_r = -1;
@@ -198,7 +125,7 @@ static void b5_update_entities_and_spans(void) {
                 continue;
             }
             e->y = (i16)(e->y - step);
-            e->delta_y = (i16)-(i8)step;
+            e->delta_y = (i8)-(i8)step;
         } else {
             if (b5_tile_type(e->map_col, (u8)(row + 1)) == 10) {
                 e->direction = -1;
@@ -206,7 +133,7 @@ static void b5_update_entities_and_spans(void) {
                 continue;
             }
             e->y = (i16)(e->y + step);
-            e->delta_y = step;
+            e->delta_y = (i8)step;
         }
 
         e->frame = (u8)((e->anim_tick >> 2) & 1);
@@ -215,12 +142,12 @@ static void b5_update_entities_and_spans(void) {
 
     if (++s_conveyor_tick >= 4) {
         u8 s;
+        const LevelAnimSpan* sp = s_level_anim_spans;
         s_conveyor_tick = 0;
         if (++s_conveyor_phase >= 6) {
             s_conveyor_phase = 0;
         }
-        for (s = 0; s < LEVEL_ANIM_SPAN_COUNT; s++) {
-            const LevelAnimSpan* sp = &s_level_anim_spans[s];
+        for (s = 0; s < LEVEL_ANIM_SPAN_COUNT; s++, sp++) {
             u8 tile = s_level_anim_seqs[sp->seq][s_conveyor_phase];
             u8* dst = &MAP_MUT[((u16)sp->row << 7) + sp->col_start];
             u8 n = (u8)(sp->col_end - sp->col_start + 1);
@@ -403,15 +330,13 @@ void moving_bank_conveyor(void) {
 
     // 1. Repintar spans animats visibles (cintes + superfície d'aigua + vores)
     if (page <= 1 && s_page_conveyor_phase[page] != s_conveyor_phase) {
-        for (s = 0; s < LEVEL_ANIM_SPAN_COUNT; s++) {
-            const LevelAnimSpan* sp = &s_level_anim_spans[s];
-            u16 subrow = (u16)sp->row << 1;
+        const LevelAnimSpan* sp = s_level_anim_spans;
+        for (s = 0; s < LEVEL_ANIM_SPAN_COUNT; s++, sp++) {
             u8 tile;
-            if (subrow + 2 <= g_cam_row || subrow >= g_cam_row + 20) continue;
+            if ((u16)(((u16)sp->row << 1) - g_cam_row + 1) >= 21) continue;
             tile = s_level_anim_seqs[sp->seq][s_conveyor_phase];
             for (c = sp->col_start; c <= sp->col_end; c++) {
-                u16 char_x = (u16)c << 1;
-                if (char_x + 2 <= g_cam_x4 || char_x >= g_cam_x4 + 40) continue;
+                if ((u16)(((u16)c << 1) - g_cam_x4 + 1) >= 41) continue;
                 render_tile_world(tile, c, sp->row, g_cam_x4, g_cam_row);
             }
         }
@@ -420,14 +345,8 @@ void moving_bank_conveyor(void) {
 
     // 2. Globus: POP de sostre DOS (basat en TRIG_PTR)
     if (s_carry_kind == 2) {
-        i16 bb = (i16)((s_py8 >> 3) - 1);
-        u8 pop = (bb < 32);
-        if (!pop) {
-            u8 bcol = (u8)(((s_px8 >> 3) + 8) >> 3);
-            u8 brow = (u8)((bb >> 4) - 2);
-            pop = (b5_tile_type(bcol, brow) > 5);
-        }
-        if (pop) {
+        u16 py = (u16)(s_py8 >> 3);
+        if (py <= 32 || b5_tile_type((u8)(((s_px8 >> 3) + 8) >> 3), (u8)(((py - 1) >> 4) - 2)) > 5) {
             sprite_abort_balloon();
             s_carry_kind = 0;
             s_vy = 0;
@@ -436,11 +355,11 @@ void moving_bank_conveyor(void) {
 
     // 3. Reixes de primer pla dirigides per TRIG.BIN (byte 9: avt_num 12..17)
     {
-        i16 px = (i16)(s_px8 >> 3);
-        i16 py = (i16)(s_py8 >> 3);
+        u16 px = (u16)(s_px8 >> 3);
+        u16 py = (u16)(s_py8 >> 3);
         const u8* tp = b5_trig_ptr((u8)((px + 8) >> 3), (u8)((py + 16) >> 4));
         u8 avt = tp ? tp[9] : 255;
-        if (avt >= 12 && avt <= 17) {
+        if ((u8)(avt - 12) <= 5) {
             g_grate_enable = 1;
             g_grate_phase_x = (u8)((px >> 1) & 1);
             g_grate_base_y = (u8)(py & 7);
@@ -451,25 +370,16 @@ void moving_bank_conveyor(void) {
 
     // 4. Dibuixar sprite emergent (popup -10, -20, +50) si està actiu i visible
     if (s_popup_timer && page <= 1) {
-        i16 view_x = (i16)(g_cam_x4 << 2);
-        i16 view_y = (i16)(g_cam_row << 3);
-        if (s_popup_wx >= view_x && s_popup_wx + 8 <= view_x + 160 &&
-            s_popup_wy >= view_y && s_popup_wy + 7 <= view_y + 160) {
-            u8 r;
-            const u8* spr = s_popup_sprites[s_popup_idx];
-            u16* dst_p = s_popup_dst[page];
-            u8* bg_p = s_popup_bg[page];
-            for (r = 0; r < 7; r++) {
-                u16 dst = (u16)ring_address(page, s_popup_wx, (i16)(s_popup_wy + r));
-                *dst_p++ = dst;
-                g_moving_dst = dst;
-                g_moving_background = (u16)bg_p;
-                g_moving_sprite = (u16)spr;
-                g_moving_span = 4;
-                moving_blit_span();
-                bg_p += 4;
-                spr += 8;
-            }
+        if ((u16)(s_popup_wx - (g_cam_x4 << 2)) <= 152 &&
+            (u16)(s_popup_wy - (g_cam_row << 3)) <= 153) {
+            g_moving_dst = (u16)ring_address(page, s_popup_wx, s_popup_wy);
+            s_popup_dst[page] = g_moving_dst;
+            g_moving_background = (u16)s_popup_bg[page];
+            g_moving_sprite = (u16)s_popup_sprites[s_popup_idx];
+            g_moving_span = 4;
+            g_moving_rows = 7;
+            g_moving_spr_skip = 0;
+            moving_blit_box();
             s_popup_drawn[page] = 1;
         }
     }

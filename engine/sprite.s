@@ -92,45 +92,24 @@ _sprite_restore_player::
     ld      a, (_g_vram_base_hi)
     cp      #0x80
     jr      z, 9$
+    ld      a, (_s_old_x_c0)
+    ld      (s_cur_y), a        ;; reutilitzat temporalment per x
     ld      a, (_s_old_y_c0)
-    ld      (s_cur_y), a
     ld      hl, #_s_player_bg_c0
-    ld      (s_bg_read_ptr), hl
     jr      8$
 9$:
-    ld      a, (_s_old_y_80)
+    ld      a, (_s_old_x_80)
     ld      (s_cur_y), a
+    ld      a, (_s_old_y_80)
     ld      hl, #_s_player_bg_80
-    ld      (s_bg_read_ptr), hl
 8$:
-    ld      a, (s_cur_y)
-    call    scr_raw_first
+    ld      (s_bg_read_ptr), hl
+    call    sprite_calc_de      ;; A = y, (s_cur_y) = x -> DE = VRAM física
+    ld      hl, (s_bg_read_ptr)
     ld      b, #30              ;; 30 linies
 rst_line_loop:
     push    bc
-
-    ;; Adreça base de línia i posició circular de càmera (bump per fila).
-    ld      de, (s_raw_de)
-    call    sprite_map_line
-
-    ld      a, (_g_vram_base_hi)
-    cp      #0x80
-    jr      z, 3$
-    ld      a, (_s_old_x_c0)
-    jr      4$
-3$:
-    ld      a, (_s_old_x_80)
-4$:
-    add     a, e
-    ld      e, a
-    ld      a, d
-    adc     a, #0
-    and     #0x07
-    ld      d, a
-    ld      a, (s_addr_segment)
-    or      d                   ;; DE = adreça física, ajustada al ring
-    ld      d, a
-    ld      hl, (s_bg_read_ptr) ;; HL = buffer fons font
+    push    de
 
     ld      a, d
     and     #0x07
@@ -152,18 +131,53 @@ rst_byte_loop:
     call    sprite_inc_de_ring
     djnz    rst_byte_loop
 rst_copy_done:
-    ld      (s_bg_read_ptr), hl
-    ld      de, (s_raw_de)
-    call    scr_raw_next
-    ld      (s_raw_de), de
-
-    ld      hl, #s_cur_y
-    inc     (hl)
-
+    pop     de
+    call    sprite_step_de
     pop     bc
     djnz    rst_line_loop
     pop     af
     call    _bank_restore       ;; restaura el banc anterior
+    ret
+
+;; ============================================================
+;; Calcula l'adreça física VRAM mapejada al ring per a la 1a línia:
+;; IN: A = y (0..199), (s_cur_y) = x en bytes (0..79)
+;; OUT: DE = adreça física VRAM mapejada
+;; ============================================================
+sprite_calc_de:
+    call    scr_raw_first
+    call    sprite_map_line
+    ld      a, (s_cur_y)
+    add     a, e
+    ld      e, a
+    ld      a, d
+    adc     a, #0
+    and     #0x07
+    ld      d, a
+    ld      a, (s_addr_segment)
+    or      d
+    ld      d, a
+    ret
+
+;; Avança DE (adreça física mapejada) 1 scanline cap avall dins el ring CRTC.
+;; Clobbers: A, D, E. Preserva BC i HL!
+sprite_step_de:
+    ld      a, d
+    and     #0x38
+    cp      #0x38
+    jr      z, 1$
+    ld      a, d
+    add     a, #0x08
+    ld      d, a
+    ret
+1$:
+    ld      a, e
+    add     a, #0x50
+    ld      e, a
+    ld      a, d
+    adc     a, #0xC8            ;; +0x08 - 0x40 = -0x38 (+ carry)
+    and     #0xC7               ;; manté pàgina (0xC0/0x80), RA=0 i wrap 2KB
+    ld      d, a
     ret
 
 ;; DE = adreça de línia del mapa base. Retorna DE amb l'offset MA circular
@@ -195,16 +209,7 @@ sprite_map_line:
     ex      de, hl
     ret
 
-;; ============================================================
-;; Adreça VRAM crua (sense mapejar) d'una linia y (0..199):
-;;   DE = 0xC000 + (y>>3)*0x50 + (y&7)*0x800  (bit-identic a _scr_addr_table)
-;; S'usa un sol cop per sprite (primera linia); les seguents avancent
-;; amb scr_raw_next (+0x800, o +0x50 de MA al wrap de trama).
-;; Estalvia els 400 B de la taula.
-;; ============================================================
-s_raw_de: .dw 0
-
-;; IN: A = y. OUT: DE = adreca crua (i desada a s_raw_de).
+;; IN: A = y. OUT: DE = adreca crua.
 ;; Clobbers: A,B,C,H,L.
 scr_raw_first:
     push    bc
@@ -238,31 +243,7 @@ scr_raw_first:
     add     a, d
     ld      d, a
     ld      e, l
-    ld      (s_raw_de), de
     pop     bc
-    ret
-
-;; Avança s_raw_de a la linia seguent (y+1). OUT: DE = adreca crua.
-;; Clobbers: A,D,E.
-scr_raw_next:
-    ld      de, (s_raw_de)
-    ld      a, d
-    and     #0x38
-    cp      #0x38
-    jr      nz, raw_adv1
-    ld      a, e          ;; wrap de trama: MA += 0x50, RA 7->0
-    add     a, #0x50
-    ld      e, a
-    ld      a, d
-    adc     a, #0xC8      ;; +8-0x40 = -0x38 (+carry de E)
-    ld      d, a
-    jr      raw_saved
-raw_adv1:
-    ld      a, d
-    add     a, #8
-    ld      d, a
-raw_saved:
-    ld      (s_raw_de), de
     ret
 
 ;; Incrementa DE i torna al començament de la mateixa línia de trama al wrap.
@@ -274,7 +255,8 @@ sprite_inc_de_ring:
     ld      a, d
     and     #0x07
     ret     nz
-    ld      a, (s_addr_segment)
+    ld      a, d
+    sub     #0x08
     ld      d, a
     ret
 
@@ -306,9 +288,6 @@ _cpc_wait_vsync_start::
 _sprite_blit_player::
     ld      (s_spr_ptr), hl
 
-    ld      a, (_g_spr_y)
-    ld      (s_cur_y), a
-
     ld      a, (_g_vram_base_hi)
     cp      #0x80
     jr      z, 1$
@@ -333,28 +312,16 @@ _sprite_blit_player::
 3$:
     ld      a, #30              ;; 30 linies
     ld      (s_line_cnt), a
-    ld      a, (s_cur_y)
-    call    scr_raw_first
+    push    bc
+    ld      a, (_g_spr_x)
+    ld      (s_cur_y), a
+    ld      a, (_g_spr_y)
+    call    sprite_calc_de      ;; DE = adreça física VRAM de la 1a línia
+    pop     bc
 
 blit_line:
-    push    bc
-
-    ld      de, (s_raw_de)
-    call    sprite_map_line
-
-    ld      a, (_g_spr_x)
-    add     a, e
-    ld      e, a
-    ld      a, d
-    adc     a, #0
-    and     #0x07
-    ld      d, a
-    ld      a, (s_addr_segment)
-    or      d
-    ld      d, a
+    push    de                  ;; Desa DE d'inici de línia
     ld      hl, (s_spr_ptr)     ;; HL = sprite [inv_mask, img_masked]
-
-    pop     bc                  ;; Recuperar BC = bg_write_ptr
 
     ;; Comprovar si cal aplicar la reixa per sobre d'en Jake
     ld      a, (_g_grate_enable)
@@ -489,12 +456,8 @@ blit_line_done:
     ld      (s_spr_ptr), hl
 
 blit_next_line:
-
-    ld      hl, #s_cur_y
-    inc     (hl)
-    ld      de, (s_raw_de)
-    call    scr_raw_next
-    ld      (s_raw_de), de
+    pop     de                  ;; Recupera DE d'inici de línia
+    call    sprite_step_de      ;; Avança 1 scanline (preserva BC!)
 
     ld      hl, #s_line_cnt
     dec     (hl)
@@ -594,63 +557,48 @@ _sprite_restore_carry::
     jr      nz, umbr_rst_start
 
     ;; Ballon restore: 28 linies, 4 bytes
-    ld      b, #28
     call    carry_calc_first
+    ld      hl, (s_bg_read_ptr)
+    ld      b, #28
 bloon_rst_line_loop:
     push    bc
-    call    carry_calc_next
-    ld      hl, (s_bg_read_ptr)
+    push    de
     ldi
     ldi
     ldi
     ldi
-    ld      (s_bg_read_ptr), hl
-    ld      hl, #s_cur_y
-    inc     (hl)
+    pop     de
+    call    sprite_step_de
     pop     bc
     djnz    bloon_rst_line_loop
     ret
 
 umbr_rst_start:
     ;; Umbrella restore: 32 linies, 10 bytes
-    ld      b, #32
     call    carry_calc_first
+    ld      hl, (s_bg_read_ptr)
+    ld      b, #32
 umbr_rst_line_loop:
     push    bc
-    call    carry_calc_next
-    ld      hl, (s_bg_read_ptr)
+    push    de
     ld      bc, #10
     ldir
-    ld      (s_bg_read_ptr), hl
-    ld      hl, #s_cur_y
-    inc     (hl)
+    pop     de
+    call    sprite_step_de
     pop     bc
     djnz    umbr_rst_line_loop
     ret
 
 
-;; Rutines auxiliars comunes per a les linies de carry (sense taula):
-;; first = primera linia (calcul complet), next = seguents (bump +1).
+;; Calcula el DE inicial per a carry (globus/paraigua) a (s_bloon_cur_x, s_cur_y + 1):
 carry_calc_first:
     ld      a, (s_cur_y)
-    call    scr_raw_first
-    jr      carry_calc_tail
-carry_calc_next:
-    call    scr_raw_next
-carry_calc_tail:
-    call    sprite_map_line
-
-    ld      a, (s_bloon_cur_x)
-    add     a, e
+    inc     a
     ld      e, a
-    ld      a, d
-    adc     a, #0
-    and     #0x07
-    ld      d, a
-    ld      a, (s_addr_segment)
-    or      d
-    ld      d, a
-    ret
+    ld      a, (s_bloon_cur_x)
+    ld      (s_cur_y), a
+    ld      a, e
+    jp      sprite_calc_de
 
 
 ;; ============================================================
@@ -694,6 +642,8 @@ _sprite_blit_balloon::
     ld      a, #0xC7
     call    _bank_set
 
+    call    carry_calc_first
+
     ld      a, (_g_vram_base_hi)
     cp      #0x80
     ld      bc, #_s_carry_bg_c0
@@ -702,17 +652,11 @@ _sprite_blit_balloon::
 3$:
 
     ld      hl, #0x7B20         ;; BALLOON_SPRITE_FRAME al Banc 7 (0x7AA0+128)
-    ld      (s_spr_ptr), hl
-
     ld      a, #28              ;; 28 linies
     ld      (s_line_cnt), a
-    call    carry_calc_first
 
 bloon_blit_line:
-    push    bc
-    call    carry_calc_next
-    ld      hl, (s_spr_ptr)
-    pop     bc                  ;; BC = bg_write_ptr
+    push    de
 
     .rept 4
     ld      a, (de)             ;; llegeix fons net
@@ -726,10 +670,8 @@ bloon_blit_line:
     inc     de
     .endm
 
-    ld      (s_spr_ptr), hl
-
-    ld      hl, #s_cur_y
-    inc     (hl)
+    pop     de
+    call    sprite_step_de
 
     ld      a, (s_line_cnt)
     dec     a
@@ -785,6 +727,8 @@ _sprite_blit_umbrella::
     ld      a, #0xC7
     call    _bank_set
 
+    call    carry_calc_first
+
     ld      a, (_g_vram_base_hi)
     cp      #0x80
     ld      bc, #_s_carry_bg_c0
@@ -793,21 +737,15 @@ _sprite_blit_umbrella::
 6$:
 
     ld      hl, #0x7C00         ;; UMBRELLA_FRAME al Banc 7 (0x7AA0+128+224)
-    ld      (s_spr_ptr), hl
-
     ld      a, #32              ;; 32 linies
     ld      (s_line_cnt), a
-    call    carry_calc_first
 
 umbr_blit_line:
-    push    bc
-    call    carry_calc_next
-    ld      hl, (s_spr_ptr)
-    pop     bc                  ;; BC = bg_write_ptr
+    push    de
 
     ld      a, #10
+    ld      (s_byte_cnt), a
 1$:
-    ex      af, af'
     ld      a, (de)             ;; llegeix fons net
     ld      (bc), a             ;; desa a buffer de fons
     inc     bc
@@ -817,14 +755,13 @@ umbr_blit_line:
     inc     hl
     ld      (de), a             ;; escriu a VRAM
     inc     de
-    ex      af, af'
+    ld      a, (s_byte_cnt)
     dec     a
+    ld      (s_byte_cnt), a
     jr      nz, 1$
 
-    ld      (s_spr_ptr), hl
-
-    ld      hl, #s_cur_y
-    inc     (hl)
+    pop     de
+    call    sprite_step_de
 
     ld      a, (s_line_cnt)
     dec     a
@@ -848,7 +785,3 @@ _sprite_abort_balloon::
     ld      (_s_bloon_drawn_80), a
     ret
 
-
-
-;; (Taula _scr_addr_table de 400 B eliminada: adreça calculada amb
-;; scr_raw_first/scr_raw_next, bit-identica. Veure a dalt.)

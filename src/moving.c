@@ -19,10 +19,7 @@
 // Slots fixos de la taula de salts del Banc 5: a moving.h (font unica).
 
 MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
-u16 g_moving_dst;
-u16 g_moving_background;
-u16 g_moving_sprite;
-u8 g_moving_span;
+static u16 s_elev_dst[2][MAG_ELEVATOR_COUNT];
 
 // Bloc de paràmetres resident per crides bankades (CP-2.2).
 u16 bc_a, bc_b, bc_c, bc_d, bc_e;
@@ -40,14 +37,6 @@ u8 g_level_complete;
 u8 g_checkpoint;
 u8 s_dance_timer;
 
-u8* ring_address(u8 page, i16 x, i16 y) {
-    u16 x_byte = (u16)(x >> 1);
-    u16 ma = (u16)((((u16)(y >> 3) * 40) + (x_byte >> 1)) & 0x03FF);
-    u16 offset = (u16)(((ma << 1) + (x_byte & 1)) & 0x07FF);
-    u16 base = page ? 0x8000 : 0xC000;
-    return (u8*)(base + (((u16)y & 7) << 11) + offset);
-}
-
 void moving_init(void) { call_banked(0xC5, BC_INIT); }
 
 void moving_update(void) { call_banked(0xC5, BC_UPDATE); }
@@ -63,33 +52,22 @@ void moving_popup_restore(u8 page) { bc_a = page; call_banked(0xC5, BC_RESTORE);
 // aquí són segurs (codi central, sempre mapejat).
 void moving_restore(u8 page, u8 force) {
     u8 prev_bank;
-    u8 i, y;
+    u8 i;
     if (page > 1) return;
+    (void)force;
 
     prev_bank = bank_set(0xC7);
     // LIFO com els enemics: ordre invers al draw (solapaments nets).
     for (i = MAG_ELEVATOR_COUNT; i > 0; i--) {
-        MovingElevator* e = &g_mag_elevators[i - 1];
+        u8 idx = (u8)(i - 1);
+        MovingElevator* e = &g_mag_elevators[idx];
         if (!e->drawn[page]) continue;
-        if (!force) {
-            i16 x = (i16)(e->center_x - ELEVATOR_SPR_HALF_W);
-            i16 yy = (i16)(e->y - ELEVATOR_OBJECT_H);
-            if (e->drawn_x[page] == x && e->drawn_y[page] == yy &&
-                e->drawn_frame[page] == e->frame) continue;
-        }
 
-        for (y = 0; y < e->drawn_row_count[page]; y++) {
-            u8 sprite_row;
-            u16 bg_off;
-            sprite_row = (u8)(e->drawn_start_row[page] + y);
-            bg_off = (u16)sprite_row * ELEVATOR_W_BYTES + e->drawn_start_byte[page];
-            g_moving_dst = (u16)ring_address(page,
-                (i16)(e->drawn_x[page] + e->drawn_start_byte[page] * 2),
-                (i16)(e->drawn_y[page] + sprite_row));
-            g_moving_background = (u16)(elevator_bg_ptr(i, page) + bg_off);
-            g_moving_span = e->drawn_byte_count[page];
-            moving_restore_span();
-        }
+        g_moving_dst = s_elev_dst[page][idx];
+        g_moving_background = (u16)elevator_bg_ptr(idx, page);
+        g_moving_span = e->drawn_byte_count[page];
+        g_moving_rows = e->drawn_row_count[page];
+        moving_restore_box();
         e->drawn[page] = 0;
     }
     bank_restore(prev_bank);
@@ -97,7 +75,7 @@ void moving_restore(u8 page, u8 force) {
 
 void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
     u8 prev_bank;
-    u8 i, y;
+    u8 i;
     i16 view_x = (i16)(cam_x4 << 2);
     i16 view_y = (i16)(cam_row << 3);
     if (page > 1) return;
@@ -129,23 +107,17 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
         frame = e->frame ? (ELEVATOR_FRAMES_BASE + ELEVATOR_FRAME_SIZE)
                            : ELEVATOR_FRAMES_BASE;
 
-        for (y = 0; y < row_count; y++) {
-            u8 sprite_row = (u8)(start_row + y);
-            u16 bg_off = (u16)sprite_row * ELEVATOR_W_BYTES + start_byte;
-            u16 frame_off = bg_off << 1;
-            g_moving_dst = (u16)ring_address(page, clip_x0, (i16)(clip_y0 + y));
-            g_moving_background = (u16)(elevator_bg_ptr(i, page) + bg_off);
-            g_moving_sprite = (u16)(frame + frame_off);
-            g_moving_span = byte_count;
-            moving_blit_span();
-        }
-        e->drawn_start_byte[page] = start_byte;
+        g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
+        s_elev_dst[page][i] = g_moving_dst;
+        g_moving_background = (u16)elevator_bg_ptr(i, page);
+        g_moving_sprite = (u16)(frame + ((u16)start_row << 4) + (start_byte << 1));
+        g_moving_span = byte_count;
+        g_moving_rows = row_count;
+        g_moving_spr_skip = (u8)(16 - (byte_count << 1));
+        moving_blit_box();
+
         e->drawn_byte_count[page] = byte_count;
-        e->drawn_start_row[page] = start_row;
         e->drawn_row_count[page] = row_count;
-        e->drawn_x[page] = world_x;
-        e->drawn_y[page] = world_y;
-        e->drawn_frame[page] = e->frame;
         e->drawn[page] = 1;
     }
     bank_restore(prev_bank);
@@ -157,11 +129,11 @@ i16 moving_conveyor_push(void) { call_banked(0xC5, BC_PUSH); return bc_r; }
 
 i8 moving_find_landing(void) { call_banked(0xC5, BC_FIND); return (i8)bc_r; }
 
-// Trampolins al modul C6 (slots engine/enemy_table.s @0x5200+3k; el banc
+// Trampolins al modul C6 (slots engine/enemy_table.s @0x5C00+3k; el banc
 // es C6 perque OUT(0x7F00,0xC2) penja la maquina i C3 reboota, 10/26).
 // Tiles via tile_flags/is_floor_solid de main.c (globals via EQU:
 // estalvia duplicar-los aqui, ~200 B de Bloc 0).
-#define EN_SLOT(n) ((void*)(0x5200 + (n) * 3))
+#define EN_SLOT(n) ((void*)(0x5C00 + (n) * 3))
 void enemy_init(void) { call_banked(0xC6, EN_SLOT(3)); }
 void enemy_update(void) { call_banked(0xC6, EN_SLOT(0)); }
 void enemy_restore(u8 page) { bc_a = page; call_banked(0xC6, EN_SLOT(1)); }

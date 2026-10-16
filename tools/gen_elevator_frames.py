@@ -6,12 +6,14 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJ = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(HERE, "bbdata"))
+sys.path.insert(0, HERE)
 
-from mode0 import encode_mode0_byte  # noqa: E402
 from sprites import load_sqv_frames  # noqa: E402
+from gen_extra_frames import encode_pair, dos_to_cpc_pen  # noqa: E402
 
 SQV = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.SQV")
 OUT = os.path.join(PROJ, "src", "elevator_frames.h")
+OUT_BIN = os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")
 
 
 def convert_frame(frame):
@@ -19,18 +21,18 @@ def convert_frame(frame):
     if width != 32 or height != 14:
         raise ValueError("Unexpected lift frame size: %dx%d" % (width, height))
 
-    data = []
+    data = bytearray()
     for y in range(height):
         # Original 320-pixel art is halved horizontally for CPC Mode 0.
         row = pixels[y][0::2]
         for bx in range(8):
-            left, right = row[bx * 2:bx * 2 + 2]
-            inv_mask = encode_mode0_byte(15 if left == 0 else 0,
-                                         15 if right == 0 else 0)
-            image = encode_mode0_byte(left if left else 0,
-                                      right if right else 0)
-            data.extend((inv_mask, image & (~inv_mask & 0xFF)))
-    return data
+            left = row[bx * 2]
+            right = row[bx * 2 + 1]
+            pen_l = None if left in (0, 11) else dos_to_cpc_pen.get(left, 0)
+            pen_r = None if right in (0, 11) else dos_to_cpc_pen.get(right, 0)
+            inv_mask, image = encode_pair(pen_l, pen_r)
+            data.extend((inv_mask, image))
+    return bytes(data)
 
 
 def main():
@@ -57,6 +59,12 @@ def main():
     with open(OUT, "w", encoding="ascii", newline="\n") as f:
         f.write("\n".join(lines))
     print("Generated %s" % OUT)
+
+    raw_bin = converted[0] + converted[1]
+    assert len(raw_bin) == 448
+    with open(OUT_BIN, "wb") as f:
+        f.write(raw_bin)
+    print("Generated %s (%d bytes)" % (OUT_BIN, len(raw_bin)))
 
 
 if __name__ == "__main__":

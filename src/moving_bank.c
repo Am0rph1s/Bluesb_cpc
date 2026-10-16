@@ -264,7 +264,14 @@ void moving_bank_update(void) {
 
     // --- Escala (tt==7 -> climbing=1) i Aigua/Peixera (tt==11 -> climbing=2) ---
     tt = b5_tile_type(col, row);
-    if (tt != 7 && b5_tile_type(col, (u8)((py + PH) >> 4)) == 7) tt = 7;
+    // Prioritat absoluta a l'escala sobre l'aigua si qualsevol part del cos toca un tile de tipus 7:
+    if (tt != 7) {
+        if (b5_tile_type(col, (u8)((py + 8) >> 4)) == 7 ||
+            b5_tile_type(col, (u8)((py + 20) >> 4)) == 7 ||
+            b5_tile_type(col, (u8)((py + PH) >> 4)) == 7) {
+            tt = 7;
+        }
+    }
     if (tt == 7 || tt == 11) {
         climbing = (tt == 7) ? 1 : 2;
         if (s_carry_kind) carry_abort();
@@ -276,9 +283,7 @@ void moving_bank_update(void) {
             s_on_ground = 0;
         }
         if (jump) {
-            u8 arow = (u8)(((tt == 7) ? (py - 2) : (py + 12)) >> 4);
-            u8 ok = (b5_tile_type(col, arow) == tt);
-            s_vy = (tt == 7) ? (ok ? -24 : -12) : (ok ? -12 : 0);
+            s_vy = (tt == 7) ? -24 : -12;
             s_on_ground = 0;
         } else if (crouch) {
             s_vy = (tt == 7) ? 24 : 16;

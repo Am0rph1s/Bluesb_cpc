@@ -105,7 +105,7 @@ static const Spawn s_spawn[ENEMY_N] = {
 
     // 5 Policies (kind 4):
     { 752, 1104 << 3, 1136,  4, 24,  3 }, //  3: Policia 1 (PB dreta botigues)
-    { 824,  784 << 3,  816,  4,  0,  3 }, //  4: Policia 2 (replà racó 1r ascensor: ESTÀTIC 1:1 DOS)
+    { 816,  784 << 3,  816,  4,  0,  3 }, //  4: Policia 2 (replà racó 1r ascensor: ESTÀTIC 1:1 DOS)
     { 280,  976 << 3, 1008,  4, 24,  3 }, //  5: Policia 3 (1r pis sota escala)
     { 776,  512 << 3,  544,  4,  0,  3 }, //  6: Policia 4 (2n pis replà ascensors: ESTÀTIC)
     { 696,  336 << 3,  368,  4, 24,  3 }, //  7: Policia 5 (3r pis replà superior ascensors)
@@ -153,7 +153,7 @@ void en2_init(void) {
     for (i = 0; i < ENEMY_N; i++, e++, sp++) {
         e->x = sp->x;
         e->y8 = sp->y8;
-        e->dir = 1;
+        e->dir = (sp->vx == 0) ? -1 : 1;
         e->vy = 0;
         e->on_ground = (sp->kind == 8 || sp->kind == 19 || sp->kind == 17 || sp->vx == 0) ? 1 : 0;
         e->tick = 0;
@@ -204,10 +204,9 @@ void en2_update(void) {
             i16 dy = jake_y - y;
             if (dy >= -24 && dy <= 32) {
                 i16 dx_jake = jake_x - e->x;
-                if (dx_jake > -120 && dx_jake < 120) {
-                    e->dir = (dx_jake >= 0) ? 1 : -1;
-                }
-            } else if ((e->tick & 63) == 0) {
+                if (dx_jake < -16) e->dir = -1;
+                else if (dx_jake > 16) e->dir = 1;
+            } else if ((e->tick & 127) == 0) {
                 e->dir = (i8)-e->dir;
             }
         } else if (sp->kind == 8 || sp->kind == 19) {

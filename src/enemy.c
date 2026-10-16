@@ -86,6 +86,10 @@ static i8 s_bg_owner[BG_SLOTS];
 static u8 s_flip_buffer[ENEMY_FRAME_SIZE];
 static u8 s_flipped_cell;
 
+extern u8 tile_type(u16 col, u16 row);
+extern u8 tile_flags(u16 col, u16 row);
+extern u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
+
 // Rutines ràpides en ASM per flipejar la cela a s_flip_buffer (engine/enemy_table.s):
 extern void en2_init_lut(void);
 extern void en2_flip_cell(const u8* src, u8* dst);
@@ -206,21 +210,15 @@ void en2_update(void) {
             if (nx < 0) { nx = 0; e->dir = 1; }
             if (nx > (i16)(LEVEL_W_PX - ENEMY_W)) { nx = (i16)(LEVEL_W_PX - ENEMY_W); e->dir = -1; }
             {
-                u8 r_head = (u8)(y >> 4);
-                u8 r_feet = (u8)((y + 16) >> 4);
-                u8 r_floor = (u8)((y + 32) >> 4);
-                u8 acol, lcol, bit;
-                if (e->dir > 0) {
-                    acol = (u8)((nx + 15) >> 3);
-                    lcol = (u8)((nx + 16) >> 3);
-                    bit = 1;
-                } else {
-                    acol = (u8)(nx >> 3);
-                    lcol = (u8)((nx - 8) >> 3);
-                    bit = 2;
-                }
-                if (enemy_probe_turn(acol, lcol, r_feet, r_floor, r_head, bit, e->on_ground)) {
-                    e->dir = (i8)-e->dir;
+                u16 frow = (u16)(((i16)(y + ENEMY_HT)) >> 4);
+                u16 brow = (u16)(((i16)(y + ENEMY_HT - 1)) >> 4);
+                u16 pcol = (u16)(((e->x >> 3) + (e->dir > 0 ? 2 : -2)));
+                u16 acol = (u16)(((nx + (e->dir > 0 ? 12 : 2)) >> 3));
+                u8 bit = (u8)(e->dir > 0 ? 1 : 2);
+                if (tile_type(pcol, brow) == 1 || tile_type(pcol, frow) == 1) {
+                    e->dir = (i8)-e->dir;   // trigger Titus DOS o fi de terra
+                } else if ((tile_flags(acol, brow) & bit) || (brow > 0 && (tile_flags(acol, (u16)(brow - 1)) & bit))) {
+                    e->dir = (i8)-e->dir;   // paret davant
                 } else {
                     e->x = nx;
                 }
@@ -229,18 +227,18 @@ void en2_update(void) {
             if (!e->on_ground) {
                 i16 prev_feet = (i16)(y + ENEMY_HT);
                 i16 feet;
-                u8 c1, c2, trow;
+                u16 c1, c2, trow;
                 e->vy = (i16)(e->vy + ENEMY_GRAV);
                 if (e->vy > ENEMY_VYMAX) e->vy = ENEMY_VYMAX;
                 e->y8 = (i16)(e->y8 + e->vy);
                 y = (i16)(e->y8 >> 3);
                 feet = (i16)(y + ENEMY_HT);
-                c1 = (u8)((e->x + 3) >> 3);
-                c2 = (u8)((e->x + 12) >> 3);
-                trow = (u8)(feet >> 4);
+                c1 = (u16)((e->x + 3) >> 3);
+                c2 = (u16)((e->x + 12) >> 3);
+                trow = (u16)(feet >> 4);
                 if (trow < LEVEL_MAP_H) {
                     i16 surf = (i16)(trow << 4);
-                    if (enemy_probe_floor(c1, c2, trow) &&
+                    if ((is_floor_solid(c1, trow, 0, 0) || is_floor_solid(c2, trow, 0, 0)) &&
                         prev_feet <= (surf + 8) && feet >= surf) {
                         e->y8 = (i16)((surf - ENEMY_HT) << 3);
                         e->vy = 0;
@@ -248,10 +246,10 @@ void en2_update(void) {
                     }
                 }
             } else if ((e->tick & 3) == 0) {
-                u8 c1 = (u8)((e->x + 3) >> 3);
-                u8 c2 = (u8)((e->x + 12) >> 3);
-                u8 trow = (u8)((y + ENEMY_HT) >> 4);
-                if (trow < LEVEL_MAP_H && !enemy_probe_floor(c1, c2, trow)) {
+                u16 c1 = (u16)((e->x + 3) >> 3);
+                u16 c2 = (u16)((e->x + 12) >> 3);
+                u16 trow = (u16)((y + ENEMY_HT) >> 4);
+                if (trow < LEVEL_MAP_H && !is_floor_solid(c1, trow, 0, 0) && !is_floor_solid(c2, trow, 0, 0)) {
                     e->on_ground = 0;
                 }
             }
@@ -305,7 +303,7 @@ void en2_update(void) {
             } else if (s_proj.kind == 10) {
                 u16 trow = (u16)((py + s_proj.ht) >> 4);
                 u16 tcol = (u16)((s_proj.x + 4) >> 3);
-                if (trow < LEVEL_MAP_H && enemy_probe_floor(tcol, tcol, trow)) {
+                if (trow < LEVEL_MAP_H && is_floor_solid(tcol, trow, 0, 0)) {
                     s_proj.kind = 0;
                 }
             }

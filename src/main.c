@@ -104,6 +104,16 @@ void start(void) {
     main();
 }
 
+u8 tile_type(u16 col, u16 row) {
+    u8 prev, t;
+    if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return 1;
+    prev = bank_set(0xC5);
+    t = MAP_PTR[(row << 7) + col];
+    t = TRIG_PTR[((u16)t) * 10];
+    bank_restore(prev);
+    return t;
+}
+
 u8 tile_flags(u16 col, u16 row) {
     u8 prev, t, f;
     if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return 0;

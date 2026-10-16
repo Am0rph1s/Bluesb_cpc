@@ -41,6 +41,7 @@ typedef struct {
     i16 vy;         // subpixels/frame
     u8 on_ground;
     u8 tick;
+    u8 shoot_timer; // aturat per disparar (1:1 DOS)
     i8 slot[2];     // slot de fons per pagina (-1 = no dibuixat)
     u8 drawn_byte_count[2];
     u8 drawn_row_count[2];
@@ -104,7 +105,7 @@ static const Spawn s_spawn[ENEMY_N] = {
 
     // 5 Policies (kind 4):
     { 752, 1104 << 3, 1136,  4, 24,  3 }, //  3: Policia 1 (PB dreta botigues)
-    { 824,  768 << 3,  800,  4, 24,  3 }, //  4: Policia 2 (replà racó 1r ascensor)
+    { 824,  784 << 3,  816,  4,  0,  3 }, //  4: Policia 2 (replà racó 1r ascensor: ESTÀTIC 1:1 DOS)
     { 280,  976 << 3, 1008,  4, 24,  3 }, //  5: Policia 3 (1r pis sota escala)
     { 776,  512 << 3,  544,  4,  0,  3 }, //  6: Policia 4 (2n pis replà ascensors: ESTÀTIC)
     { 696,  336 << 3,  368,  4, 24,  3 }, //  7: Policia 5 (3r pis replà superior ascensors)
@@ -154,8 +155,9 @@ void en2_init(void) {
         e->y8 = sp->y8;
         e->dir = 1;
         e->vy = 0;
-        e->on_ground = (sp->kind == 8 || sp->kind == 19 || sp->kind == 17) ? 1 : 0;
+        e->on_ground = (sp->kind == 8 || sp->kind == 19 || sp->kind == 17 || sp->vx == 0) ? 1 : 0;
         e->tick = 0;
+        e->shoot_timer = 0;
         e->slot[0] = -1;
         e->slot[1] = -1;
         e->drawn_row_count[0] = 0;
@@ -187,9 +189,15 @@ void en2_update(void) {
 
         y = (i16)(e->y8 >> 3);
 
-        dx = (i16)(sp->vx >> 3);
-        if (e->dir < 0) dx = (i16)-dx;
-        nx = (i16)(e->x + dx);
+        if (e->shoot_timer) {
+            e->shoot_timer--;
+            dx = 0;
+            nx = e->x;
+        } else {
+            dx = (i16)(sp->vx >> 3);
+            if (e->dir < 0) dx = (i16)-dx;
+            nx = (i16)(e->x + dx);
+        }
 
         if (sp->vx == 0) {
             // Estàtic (ex: policia replà ascensors): gira encarant Jake o periòdicament
@@ -277,17 +285,22 @@ void en2_update(void) {
                     }
                 }
             } else if (sp->kind == 4 || sp->kind == 17) {
-                // Policia / Cambrera: dispara bala o llança plat si en Jake està al davant
+                // Policia / Cambrera: s'atura a una certa distància per disparar (1:1 DOS)
                 i16 dy = jake_y - y;
                 if (dy >= -16 && dy <= 24) {
-                    i16 dx = jake_x - e->x;
-                    if ((e->dir > 0 && dx > 0 && dx < 75) ||
-                        (e->dir < 0 && dx < 0 && dx > -75)) {
-                        i16 sx = (e->dir > 0) ? (i16)(e->x + 14) : (i16)(e->x - 6);
-                        if (sp->kind == 4) {
-                            en2_spawn_proj(4, 6, 13, sx, (i16)(y + 14), (e->dir > 0) ? 64 : -64, 0, 50);
-                        } else {
-                            en2_spawn_proj(9, 11, 19, sx, (i16)(y + 12), (e->dir > 0) ? 40 : -40, 0, 50);
+                    i16 dx_jake = jake_x - e->x;
+                    i16 abs_dx = (dx_jake >= 0) ? dx_jake : -dx_jake;
+                    u8 max_dist = (sp->kind == 4) ? 75 : 85;
+                    if (abs_dx > 8 && abs_dx < max_dist) {
+                        e->dir = (dx_jake >= 0) ? 1 : -1;
+                        e->shoot_timer = 24; // S'atura completament per disparar
+                        {
+                            i16 sx = (e->dir > 0) ? (i16)(e->x + 14) : (i16)(e->x - 6);
+                            if (sp->kind == 4) {
+                                en2_spawn_proj(4, 6, 13, sx, (i16)(y + 14), (e->dir > 0) ? 64 : -64, 0, 50);
+                            } else {
+                                en2_spawn_proj(9, 11, 19, sx, (i16)(y + 12), (e->dir > 0) ? 40 : -40, 0, 50);
+                            }
                         }
                     }
                 }
@@ -405,7 +418,7 @@ void en2_draw(void) {
 
         // Selecció de cela i flip dinàmic amb cache de cela:
         {
-            u8 step = (sp->kind == 8 || sp->vx == 0) ? 0 : (u8)((e->tick >> 2) & 1);
+            u8 step = (sp->kind == 8 || sp->vx == 0 || e->shoot_timer) ? 0 : (u8)((e->tick >> 2) & 1);
             u8 cell = (u8)(sp->base_cell + step);
             const u8* src = ENEMY_FRAMES_BASE + ((u16)cell << 9);
             if (e->dir < 0) {
@@ -439,7 +452,7 @@ void en2_draw(void) {
         i16 clip_x0 = world_x > view_x ? world_x : view_x;
         i16 clip_x1 = world_x + 8 < view_x + 160 ? (i16)(world_x + 8) : (i16)(view_x + 160);
         i16 clip_y0 = world_y > view_y ? world_y : view_y;
-        i16 clip_y1 = world_y + s_proj.ht < view_y + 160 ? (i16)(world_y + s_proj.ht) : (i16)(view_x + 160);
+        i16 clip_y1 = world_y + s_proj.ht < view_y + 160 ? (i16)(world_y + s_proj.ht) : (i16)(view_y + 160);
         if (clip_x0 < clip_x1 && clip_y0 < clip_y1) {
             u8 start_byte = (u8)((clip_x0 - world_x) >> 1);
             u8 byte_count = (u8)((clip_x1 - clip_x0) >> 1);

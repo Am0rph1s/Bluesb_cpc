@@ -7,7 +7,7 @@ static const u8 g_bank5_chs[20] = {
     0x04,0xC9,0x05,0xC1,0x05,0xC2,0x05,0xC3,
 };
 static const DiskFileDesc g_file_bank5 = { 4676, 10, g_bank5_chs };
-#define CRC_BANK5 0x48E0
+#define CRC_BANK5 0x43B9
 
 #define CRC_FDC 0xD1A9
 
@@ -69,7 +69,7 @@ static const u8 g_elev_chs[4] = {
 static const DiskFileDesc g_file_elev = { 576, 2, g_elev_chs };
 #define CRC_ELEV 0x76D0
 
-#define CRC_FRONT 0x7ED7
+#define CRC_FRONT 0xFD97
 
 static const u8 g_fsplash_chs[20] = {
     0x13,0xC4,0x13,0xC5,0x13,0xC6,0x13,0xC7,0x13,0xC8,0x13,0xC9,

@@ -81,7 +81,6 @@ static u8  s_crate_bg[2][64];
 i8  s_ground_elevator = -1;
 u8  g_face;
 u8  s_anim_idx, s_anim_timer;
-u8  s_knock_timer;
 
 static u8  s_have_drawn[2];
 static i8  s_pending_x, s_pending_y;
@@ -231,9 +230,6 @@ void carry_abort(void) {
 }
 
 static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) {
-    if (s_knock_timer) {
-        return 8; // crouch3: Jake estirat a terra estabornit
-    }
     if (s_dance_timer) {
         return (s_dance_timer & 8) ? 10 : 11; // polir 13/10/26: &4 = 6/s
                                               // massa rapid; &8 = ~3/s
@@ -395,17 +391,9 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                     s_vy = 0;
                 }
                 if (jump && !s_jump_prev && s_on_ground) {
-                    u16 c_mid = (u16)((px + 5) >> 3);
-                    u16 head_tile_row = (u16)((py - 2) >> 4);
-                    if (is_ceiling_solid(c_mid, head_tile_row) || (head_tile_row < LEVEL_MAP_H && tile_type(c_mid, head_tile_row) == 10)) {
-                        s_knock_timer = 36;
-                        s_vy = 0;
-                        if (s_carry_kind == 1 && !s_carry_state) carry_abort();
-                    } else {
-                        s_vy = (s_carry_kind == 1 && !s_carry_state) ? -96 : JUMP_VY;
-                        s_on_ground = 0;
-                        s_ground_elevator = -1;
-                    }
+                    s_vy = (s_carry_kind == 1 && !s_carry_state) ? -96 : JUMP_VY;
+                    s_on_ground = 0;
+                    s_ground_elevator = -1;
                 }
                 if (s_carry_kind == 8 && s_vy > 8) s_vy = 8;
             }
@@ -490,10 +478,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                     py = (i16)((head_row + 1) << 4);
                     s_py8 = (i16)(py * SUB);
                     s_vy = 0;
-                    if (head_row == (u16)((prev_head > 0) ? (prev_head - 1) : 0)) {
-                        s_knock_timer = 36;
-                        if (s_carry_kind == 1 && !s_carry_state) carry_abort();
-                    }
+                    if (s_carry_kind == 1 && !s_carry_state) carry_abort();
                 }
                 s_on_ground = 0;
                 s_ground_elevator = -1;
@@ -673,7 +658,6 @@ void main(void) {
     s_carry_kind = 0; s_grab_prev = 0;
     s_carry_state = 0; s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
     s_anim_idx = 0; s_anim_timer = 0;
-    s_knock_timer = 0;
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
     sprite_balloon_init();
@@ -698,15 +682,6 @@ void main(void) {
             cpct_isKeyPressed(Joy0_Down))  { crouch = 1; }
         if ((cpct_isKeyPressed(Key_CursorUp) || cpct_isKeyPressed(Joy0_Up)) &&
             !grab) { jump = 1; }
-
-        if (s_knock_timer) {
-            s_knock_timer--;
-            move = 0;
-            jump = 0;
-            crouch = 0;
-            grab = 0;
-            s_vx = 0;
-        }
 
         // Acceleració horitzontal
         {

@@ -7,7 +7,7 @@ static const u8 g_bank5_chs[20] = {
     0x04,0xC9,0x05,0xC1,0x05,0xC2,0x05,0xC3,
 };
 static const DiskFileDesc g_file_bank5 = { 4676, 10, g_bank5_chs };
-#define CRC_BANK5 0x6A8E
+#define CRC_BANK5 0xA4DF
 
 #define CRC_FDC 0xD1A9
 
@@ -122,7 +122,7 @@ static const u8 g_enemi_chs[52] = {
     0x1E,0xC7,0x1E,0xC8,0x1E,0xC9,0x1F,0xC1,0x1F,0xC2,0x1F,0xC3,
     0x1F,0xC4,0x1F,0xC5,
 };
-static const DiskFileDesc g_file_enemi = { 12733, 26, g_enemi_chs };
-#define CRC_ENEMI 0xA0EF
+static const DiskFileDesc g_file_enemi = { 13120, 26, g_enemi_chs };
+#define CRC_ENEMI 0x0D4F
 
 #endif

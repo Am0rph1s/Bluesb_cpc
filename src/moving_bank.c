@@ -278,12 +278,14 @@ void moving_bank_update(void) {
         if (jump) {
             u8 arow = (u8)(((tt == 7) ? (py - 2) : (py + 12)) >> 4);
             u8 ok = (b5_tile_type(col, arow) == tt);
-            s_vy = (tt == 7) ? (ok ? -19 : -10) : (ok ? -12 : 0);
+            s_vy = (tt == 7) ? (ok ? -24 : -12) : (ok ? -12 : 0);
             s_on_ground = 0;
         } else if (crouch) {
-            s_vy = (tt == 7) ? 19 : 16;
+            s_vy = (tt == 7) ? 24 : 16;
         } else if (tt == 11 && !s_on_ground) {
             s_vy = 8;
+        } else if (tt == 7) {
+            s_vy = 0;
         }
         s_ground_elevator = -1;
     }

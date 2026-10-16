@@ -22,11 +22,11 @@ OUT_BIN = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 CELLS = [
     (8, 2),               # 0: Peix (dreta; esquerra es flip)
     (15, 3), (15, 4),     # 1, 2: Iaia walk
-    (4, 5), (4, 6),       # 3, 4: Policia walk
+    (4, 5), (4, 7),       # 3, 4: Policia walk (5=neutral, 7=stride)
     (19, 18), (19, 19),   # 5, 6: Ocell fly
-    (18, 27), (18, 28),   # 7, 8: Granger walk
-    (17, 35), (17, 36),   # 9, 10: Cambrera walk
-    (20, 41), (20, 42),   # 11, 12: Rocker walk
+    (18, 25), (18, 27),   # 7, 8: Granger walk (25=neutral, 27=stride)
+    (17, 33), (17, 32),   # 9, 10: Cambrera walk (33=neutral, 32=stride)
+    (20, 41), (20, 43),   # 11, 12: Rocker walk (41=neutral, 43=stride)
 ]
 # Cela 13: composite projectils (Ou r0..12, Bala r13..18, Plat r19..29)
 

@@ -104,9 +104,9 @@ static const Spawn s_spawn[ENEMY_N] = {
 
     // 5 Policies (kind 4):
     { 288, 1104 << 3, 1136,  4, 24,  3 }, //  3: Policia 1 (PB esquerra prop escala)
-    { 752, 1104 << 3, 1136,  4, 24,  3 }, //  4: Policia 2 (PB dreta botigues)
+    { 824,  768 << 3,  800,  4, 24,  3 }, //  4: Policia 2 (replà racó 1r ascensor)
     { 280,  976 << 3, 1008,  4, 24,  3 }, //  5: Policia 3 (1r pis sota escala)
-    { 776,  512 << 3,  544,  4, 24,  3 }, //  6: Policia 4 (2n pis replà entre ascensors)
+    { 776,  512 << 3,  544,  4,  0,  3 }, //  6: Policia 4 (2n pis replà ascensors: ESTÀTIC)
     { 696,  336 << 3,  368,  4, 24,  3 }, //  7: Policia 5 (3r pis replà superior ascensors)
 
     // 2 Peixos (kind 8):
@@ -191,7 +191,18 @@ void en2_update(void) {
         if (e->dir < 0) dx = (i16)-dx;
         nx = (i16)(e->x + dx);
 
-        if (sp->kind == 8 || sp->kind == 19) {
+        if (sp->vx == 0) {
+            // Estàtic (ex: policia replà ascensors): gira encarant Jake o periòdicament
+            i16 dy = jake_y - y;
+            if (dy >= -24 && dy <= 32) {
+                i16 dx_jake = jake_x - e->x;
+                if (dx_jake > -120 && dx_jake < 120) {
+                    e->dir = (dx_jake >= 0) ? 1 : -1;
+                }
+            } else if ((e->tick & 63) == 0) {
+                e->dir = (i8)-e->dir;
+            }
+        } else if (sp->kind == 8 || sp->kind == 19) {
             i16 min_x, max_x;
             if (sp->kind == 8) {
                 min_x = (sp->x < 500) ? 388 : 564;
@@ -394,7 +405,7 @@ void en2_draw(void) {
 
         // Selecció de cela i flip dinàmic amb cache de cela:
         {
-            u8 step = (sp->kind == 8) ? 0 : (u8)((e->tick >> 3) & 1);
+            u8 step = (sp->kind == 8 || sp->vx == 0) ? 0 : (u8)((e->tick >> 2) & 1);
             u8 cell = (u8)(sp->base_cell + step);
             const u8* src = ENEMY_FRAMES_BASE + ((u16)cell << 9);
             if (e->dir < 0) {
@@ -436,7 +447,16 @@ void en2_draw(void) {
             u8 row_count = (u8)(clip_y1 - clip_y0);
             if (byte_count && row_count) {
                 // Cela 13: base + offset files projectil + 4 (centrat horitzontal 8 px Mode 0)
-                const u8* frame = ENEMY_FRAMES_BASE + (13 << 9) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
+                const u8* frame;
+                if (s_proj.vx < 0) {
+                    if (s_flipped_cell != 13) {
+                        en2_flip_cell(ENEMY_FRAMES_BASE + (13 << 9), s_flip_buffer);
+                        s_flipped_cell = 13;
+                    }
+                    frame = s_flip_buffer + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
+                } else {
+                    frame = ENEMY_FRAMES_BASE + (13 << 9) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
+                }
 
                 g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
                 s_proj.drawn_dst[page] = g_moving_dst;

@@ -237,7 +237,7 @@ static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) 
     if (climbing == 1) {
         if (jump || crouch || move != 0) {
             s_anim_timer++;
-            if (s_anim_timer >= 6) {
+            if (s_anim_timer >= 4) {
                 s_anim_timer = 0;
                 s_anim_idx ^= 1;
             }

@@ -81,6 +81,7 @@ static u8  s_crate_bg[2][64];
 i8  s_ground_elevator = -1;
 u8  g_face;
 u8  s_anim_idx, s_anim_timer;
+u8  s_dazed_timer;
 
 static u8  s_have_drawn[2];
 static i8  s_pending_x, s_pending_y;
@@ -230,6 +231,11 @@ void carry_abort(void) {
 }
 
 static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) {
+    if (s_dazed_timer) {
+        // Frames 26, 27, 28 (dazed1, dazed2, dazed3): estrelletes autèntiques DOS girant sobre el cap!
+        u8 f = (u8)((s_dazed_timer >> 2) % 3);
+        return (u8)(26 + f);
+    }
     if (s_dance_timer) {
         return (s_dance_timer & 8) ? 10 : 11; // polir 13/10/26: &4 = 6/s
                                               // massa rapid; &8 = ~3/s
@@ -391,9 +397,20 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                     s_vy = 0;
                 }
                 if (jump && !s_jump_prev && s_on_ground) {
-                    s_vy = (s_carry_kind == 1 && !s_carry_state) ? -96 : JUMP_VY;
-                    s_on_ground = 0;
-                    s_ground_elevator = -1;
+                    u16 c_mid = (u16)((px + 5) >> 3);
+                    u16 feet_row = (u16)((py + 29) >> 4);
+                    u8 di = (feet_row >= 2) ? tile_type(c_mid, (u16)(feet_row - 2)) : 0;
+                    u8 si = tile_type(c_mid, feet_row);
+                    if (di == 10 && (si == 0 || si == 1)) {
+                        s_dazed_timer = 24;
+                        s_vy = 0;
+                        s_vx = 0;
+                        if (s_carry_kind == 1 && !s_carry_state) carry_abort();
+                    } else {
+                        s_vy = (s_carry_kind == 1 && !s_carry_state) ? -96 : JUMP_VY;
+                        s_on_ground = 0;
+                        s_ground_elevator = -1;
+                    }
                 }
                 if (s_carry_kind == 8 && s_vy > 8) s_vy = 8;
             }
@@ -658,6 +675,7 @@ void main(void) {
     s_carry_kind = 0; s_grab_prev = 0;
     s_carry_state = 0; s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
     s_anim_idx = 0; s_anim_timer = 0;
+    s_dazed_timer = 0;
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
     sprite_balloon_init();
@@ -682,6 +700,15 @@ void main(void) {
             cpct_isKeyPressed(Joy0_Down))  { crouch = 1; }
         if ((cpct_isKeyPressed(Key_CursorUp) || cpct_isKeyPressed(Joy0_Up)) &&
             !grab) { jump = 1; }
+
+        if (s_dazed_timer) {
+            s_dazed_timer--;
+            move = 0;
+            jump = 0;
+            crouch = 0;
+            grab = 0;
+            s_vx = 0;
+        }
 
         // Acceleració horitzontal
         {

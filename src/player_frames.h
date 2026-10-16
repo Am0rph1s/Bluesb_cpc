@@ -7,7 +7,7 @@
 #define PLAYER_FRAMES_BANK 0xC7
 #define PLAYER_FRAMES_BASE 0x4000
 #define PLAYER_FRAME_SIZE 480
-#define PLAYER_FRAMES_COUNT 26
+#define PLAYER_FRAMES_COUNT 29
 //  0 (    0): idle
 //  1 (  480): walk1
 //  2 (  960): walk2
@@ -34,5 +34,8 @@
 // 23 (11040): swim_stroke2
 // 24 (11520): swim_vert
 // 25 (12000): swim_floor
+// 26 (12480): dazed1
+// 27 (12960): dazed2
+// 28 (13440): dazed3
 
 #endif

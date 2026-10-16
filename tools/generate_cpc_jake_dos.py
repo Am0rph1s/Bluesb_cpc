@@ -147,6 +147,10 @@ GAME_FRAMES = [
     ('swim_stroke2', 47), # braçada 2 (DOS 47 / animframe_016d)
     ('swim_vert',    49), # nedar vertical amunt/avall (DOS 49 / animframe_0182)
     ('swim_floor',   45), # fons de la peixera (DOS 45 / animframe_0180)
+    # 26..28: Estabornit amb estrelletes girant sobre el cap (DOS 27, 28, 29 / animframe_0115)
+    ('dazed1',       27),
+    ('dazed2',       28),
+    ('dazed3',       29),
 ]
 
 out_bin = r'assets/bbdata/PFRAMES.BIN'

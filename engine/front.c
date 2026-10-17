@@ -1,5 +1,6 @@
 #include "fdc.h"
 #include "front.h"
+#include "front_tables.h"
 
 // ============================================================
 // front.c - FRONT banked (C4:0x4000, overlay d'arrencada).
@@ -385,9 +386,8 @@ static void f_fpal(const u8* palhw) {
 // OJO: MAI a 0x8000 (hi viu el motor FDC banked: suicidi, vist 12/10/26).
 static void f_load(const DiskFileDesc* f, u8 bank, const void* dst) {
     u8 ok = 0, t;
-    u8 home = g_front_args.home;
     for (t = 0; t < 3 && !ok; t++) {
-        if (!fdc_load_file(home, f, bank, (void*)dst)) continue;
+        if (!fdc_load_file(0xC4, f, bank, (void*)dst)) continue;
         ok = 1;
     }
     if (!ok) {
@@ -401,118 +401,86 @@ static void f_load(const DiskFileDesc* f, u8 bank, const void* dst) {
         while (1) { }
     }
 }
+
 void front_run(void) {
-    const u8* palhw = g_front_args.palhw;
-    u8 screen = g_front_args.screen;
-    // MUSICA + PANTALLES (nomes splash): MUSBANK (player+intro) a C1:0x4000
-    // via stub CENTRAL (trampoli segur) + les 3 pantalles a RAM. Tot
-    // silencios (g_mus_ready=0: la ISR encara no sona). Home propi (C4).
-    if (g_front_args.load_mus) {
-        f_load(g_front_args.musbank, 0xC1, (void*)0x4000);
-        f_load(g_front_args.splash, 0xC0, (void*)fsplash_zx);
-        f_load(g_front_args.sel, 0xC4, (void*)fsel_zx);
-        f_load(g_front_args.map, 0xC0, (void*)fmap_zx);
-        // mus_init() DESPRES (a baix): la intro arrenca neta, sense glitch
-        // de lectura pel mig.
-    }
-    // Depack des de RAM (splash ara carregat; select/mapa del splash).
-    if (screen == 0) {
-        zx0_decompress((const void*)fsplash_zx, (void*)0xC000);
-    } else if (screen == 1) {
-        zx0_decompress((const void*)fsel_zx, (void*)0xC000);
-    } else {
-        zx0_decompress((const void*)fmap_zx, (void*)0xC000);
-    }
-    f_fpal(palhw);
-    // So (nomes splash): la intro arrenca aqui i ja no para fins als loads
-    // del nivell. Select/mapa: ni stop/HOLD ni init (la ISR sona durant el
-    // depack CPU sense interferencia: el mute era pel FDC en HW real).
-    if (screen == 0) {
-        g_mus_hold = 0;
-        mus_init();
-    }
-    // Espera TECLA/BOTO (INFINITA: res de timeouts auto-pass). Primer espera
-    // que no hi hagi res premut (si l'usuari venia prement de la pantalla
-    // anterior, no saltem en cadena) i despres espera la premuda (SPACE o
-    // foc joystick). La musica la porta la ISR (50 Hz) i aqui corre lliure
-    // (la lectura ja es muda: stop+HOLD abans, init despres).
-    // SELECT (flag EXPLICIT del caller: els statics banked neixen amb
-    // BROSSA - vist 14/10/26: un comptador intern enganxava l'splash).
-    // Escriu g_player_choice directe via EQU (el caller no hi toca res).
-    if (screen == 1) {
-        // SELECT Jake/Elwood: els DOS ballen (seqüències 0135/01d5/00dd/022d
-        // tal qual, blitter rapid estil joc) + focus groc/blau + terra per
-        // tinta + L/R (joy + fletxes) + FIRE/SPACE confirma. Vora negra
-        // standard (sense diag). Default Jake (com DOS).
-        u8 d;
-        f_choice = 0;
-        f_focus();
-        f_sid = 0; f_fi = f_jd[0]; f_blit();
-        f_sid = 1; f_fi = f_ea[0]; f_blit();
-        f_jt = 0;
-        f_et = 0;
-        f_lj = f_jd[0];
-        f_le = f_ea[0];
-        f_step = g_ticks;
-        while (f_fkey_pressed() || f_dir_mask()) { }
-        for (;;) {
-            if ((u8)(g_ticks - f_step) >= 24) {
-                f_step = g_ticks;
-                if (f_choice) {
-                    if (++f_jt >= 50) f_jt = 3; // idle: wrap DOS a entrada 4
-                    if (++f_et >= 52) f_et = 0;
-                    // Nomes si el frame canvia (taules amb holds x2/x4):
-                    // redibuixar igual parpelleja (tear) sense motiu.
-                    if (f_ji[f_jt] != f_lj) {
-                        f_lj = f_ji[f_jt];
-                        f_sid = 0; f_fi = f_lj; f_unblit(); f_blit();
-                    }
-                    if (f_eb[f_et] != f_le) {
-                        f_le = f_eb[f_et];
-                        f_sid = 1; f_fi = f_le; f_unblit(); f_blit();
-                    }
-                } else {
-                    if (++f_jt >= 52) f_jt = 0;
-                    if (++f_et >= 50) f_et = 0;
-                    if (f_jd[f_jt] != f_lj) {
-                        f_lj = f_jd[f_jt];
-                        f_sid = 0; f_fi = f_lj; f_unblit(); f_blit();
-                    }
-                    if (f_ea[f_et] != f_le) {
-                        f_le = f_ea[f_et];
-                        f_sid = 1; f_fi = f_le; f_unblit(); f_blit();
-                    }
+    u8 d, j, lvl;
+
+    // 1. SPLASH: carrega MUSBANK + les 3 pantalles a RAM
+    f_load(&g_file_musbank, 0xC1, (void*)0x4000);
+    f_load(&g_file_fsplash, 0xC0, (void*)fsplash_zx);
+    f_load(&g_file_fselect, 0xC4, (void*)fsel_zx);
+    f_load(&g_file_fmap, 0xC0, (void*)fmap_zx);
+
+    zx0_decompress((const void*)fsplash_zx, (void*)0xC000);
+    f_fpal(g_pal_fsplash);
+    g_mus_hold = 0;
+    mus_init();
+
+    while (f_fkey_pressed()) { }
+    while (!f_fkey_pressed()) { }
+
+    // 2. SELECT Jake/Elwood
+    zx0_decompress((const void*)fsel_zx, (void*)0xC000);
+    f_fpal(g_pal_fselect);
+
+    f_choice = 0;
+    f_focus();
+    f_sid = 0; f_fi = f_jd[0]; f_blit();
+    f_sid = 1; f_fi = f_ea[0]; f_blit();
+    f_jt = 0;
+    f_et = 0;
+    f_lj = f_jd[0];
+    f_le = f_ea[0];
+    f_step = g_ticks;
+    while (f_fkey_pressed() || f_dir_mask()) { }
+    for (;;) {
+        if ((u8)(g_ticks - f_step) >= 24) {
+            f_step = g_ticks;
+            if (f_choice) {
+                if (++f_jt >= 50) f_jt = 3;
+                if (++f_et >= 52) f_et = 0;
+                if (f_ji[f_jt] != f_lj) {
+                    f_lj = f_ji[f_jt];
+                    f_sid = 0; f_fi = f_lj; f_unblit(); f_blit();
+                }
+                if (f_eb[f_et] != f_le) {
+                    f_le = f_eb[f_et];
+                    f_sid = 1; f_fi = f_le; f_unblit(); f_blit();
+                }
+            } else {
+                if (++f_jt >= 52) f_jt = 0;
+                if (++f_et >= 50) f_et = 0;
+                if (f_jd[f_jt] != f_lj) {
+                    f_lj = f_jd[f_jt];
+                    f_sid = 0; f_fi = f_lj; f_unblit(); f_blit();
+                }
+                if (f_ea[f_et] != f_le) {
+                    f_le = f_ea[f_et];
+                    f_sid = 1; f_fi = f_le; f_unblit(); f_blit();
                 }
             }
-            d = f_dir_mask();
-            // Canvi de taules (dansa<->idle): els rangs son disjunts
-            // (JD 0-5, JI 6-8, EA 9-13, EB 14-19) i el primer frame
-            // sempre difereix de f_lj/f_le: redibuix garantit sense reset.
-            if (d & 1) {
-                if (f_choice) { f_choice = 0; f_focus(); f_jt = 0; f_et = 0; }
-                while (f_dir_mask() & 1) { }
-            }
-            if (d & 2) {
-                if (!f_choice) { f_choice = 1; f_focus(); f_jt = 0; f_et = 0; }
-                while (f_dir_mask() & 2) { }
-            }
-            if (f_fkey_pressed()) break;
         }
-        g_player_choice = f_choice;
-    } else if (screen == 2) {
-        // MAPA F2: fons + ruta statica DOS (creus dels nivells superats)
-        // + sticker nota al nivell actual (do_inter_screen, sense animacio
-        // ni SOUND_2: no hi ha infra SFX). Nivell 1: nomes la nota al mall.
-        u8 j;
-        u8 lvl = g_map_level;
-        if (lvl > 5) lvl = 5;
-        for (j = 0; j < lvl; j++) f_map_leg(j);
-        if (lvl == 5) f_map_leg(5);
-        else f_map_sticker(lvl);
-        while (f_fkey_pressed()) { }
-        while (!f_fkey_pressed()) { }
-    } else {
-        while (f_fkey_pressed()) { }
-        while (!f_fkey_pressed()) { }
+        d = f_dir_mask();
+        if (d & 1) {
+            if (f_choice) { f_choice = 0; f_focus(); f_jt = 0; f_et = 0; }
+            while (f_dir_mask() & 1) { }
+        }
+        if (d & 2) {
+            if (!f_choice) { f_choice = 1; f_focus(); f_jt = 0; f_et = 0; }
+            while (f_dir_mask() & 2) { }
+        }
+        if (f_fkey_pressed()) break;
     }
+    g_player_choice = f_choice;
+
+    // 3. MAP
+    zx0_decompress((const void*)fmap_zx, (void*)0xC000);
+    f_fpal(g_pal_fmap);
+    lvl = g_map_level;
+    if (lvl > 5) lvl = 5;
+    for (j = 0; j < lvl; j++) f_map_leg(j);
+    if (lvl == 5) f_map_leg(5);
+    else f_map_sticker(lvl);
+    while (f_fkey_pressed()) { }
+    while (!f_fkey_pressed()) { }
 }

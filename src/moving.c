@@ -186,8 +186,9 @@ u16 fdc_crc16(const u8* p, u16 len) {
     return crc;
 }
 u8 fdc_load_file(u8 home_bank, const DiskFileDesc* d, u8 bk, void* ad) {
+    volatile const DiskFileDesc* file_d = d;
     // home es passa tal qual al shim (el caller sap on corre: 0xC0 GAME;
-// C4 FRONT futur). L'stub no l'interpreta; el seu restore usa bank_get().
+    // C4 FRONT futur). L'stub no l'interpreta; el seu restore usa bank_get().
     if (!s_fdc_ready) {
         // Copia C6:0x7000 -> scratch linkat + VERIFICA (blanc si corrupte:
         // sense aixo un scratch dolent fa deriva salvatge al motor).
@@ -208,10 +209,11 @@ u8 fdc_load_file(u8 home_bank, const DiskFileDesc* d, u8 bk, void* ad) {
         if (!ok) { cpct_setBorder(0x4B); while (1) { } }
         s_fdc_ready = 1;
     }
+    if (!file_d) return 1;
     // Blink FDC silencios (NAU_FDC_BLINK bit 7): a mig joc no es toca la
     // paleta; a l'arrencada ja informen els colors de vora.
     *(volatile u8*)0xBA0A |= 0x80;
     // Home 0xC0: el GAME corre en central (mai paginat); el motor hi torna.
     // (FRONT futur banked passara el seu banc aqui.)
-    return FDC_BANK_ENTRY(home_bank, d, bk, ad);
+    return FDC_BANK_ENTRY(home_bank, (const DiskFileDesc*)file_d, bk, ad);
 }

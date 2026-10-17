@@ -123,39 +123,24 @@ void render_tile_world(u8 tile_index, u16 col, u16 row,
                        u16 cam_x4, u16 cam_row) {
     u16 cx = (u16)(col << 1);
     u16 cy = (u16)(row << 1);
-    u16 ma;
-    i16 sx, sy;
-    u8 prev_b;
+    i16 sx = (i16)cx - (i16)cam_x4;
+    i16 sy = (i16)cy - (i16)cam_row;
+    u8 prev_b, sub;
 
     prev_b = bank_set(0xC4);
-
-    sy = (i16)cy - (i16)cam_row;
-    sx = (i16)cx - (i16)cam_x4;
-
-    // Subrow 0 (meitat superior del tile)
-    if (sy >= 0 && sy < PLAY_ROWS) {
-        ma = (u16)(((cy * 40) + cx) & 0x03FF);
-        if (sx >= 0 && sx < PLAY_CHARS) {
-            draw_char(tile_index, ma, 0, 0);
+    for (sub = 0; sub < 2; sub++) {
+        if (sy >= 0 && sy < PLAY_ROWS) {
+            u16 ma = (u16)(((cy * 40) + cx) & 0x03FF);
+            if (sx >= 0 && sx < PLAY_CHARS) {
+                draw_char(tile_index, ma, sub, 0);
+            }
+            if ((sx + 1) >= 0 && (sx + 1) < PLAY_CHARS) {
+                draw_char(tile_index, (u16)((ma + 1) & 0x03FF), sub, 1);
+            }
         }
-        if ((sx + 1) >= 0 && (sx + 1) < PLAY_CHARS) {
-            draw_char(tile_index, (u16)((ma + 1) & 0x03FF), 0, 1);
-        }
+        sy++;
+        cy++;
     }
-
-    // Subrow 1 (meitat inferior del tile)
-    sy++;
-    cy++;
-    if (sy >= 0 && sy < PLAY_ROWS) {
-        ma = (u16)(((cy * 40) + cx) & 0x03FF);
-        if (sx >= 0 && sx < PLAY_CHARS) {
-            draw_char(tile_index, ma, 1, 0);
-        }
-        if ((sx + 1) >= 0 && (sx + 1) < PLAY_CHARS) {
-            draw_char(tile_index, (u16)((ma + 1) & 0x03FF), 1, 1);
-        }
-    }
-
     bank_restore(prev_b);
 }
 
@@ -167,4 +152,20 @@ void render_all(u16 cam_x4, u16 cam_row) {
         render_column(cam_x4, cam_row, sx);
     }
 }
+
+void render_room(u8 room_idx) {
+    u8 r, c;
+    u16 base_col = (u16)(room_idx * 20);
+    u16 cam_x4 = (u16)(room_idx * 40);
+    for (r = 0; r < 10; r++) {
+        u16 r_off = (u16)r * 100 + base_col;
+        for (c = 0; c < 20; c++) {
+            u8 prev_b = bank_set(0xC1);
+            u8 t = ((const u8*)0x6400)[r_off + c];
+            bank_restore(prev_b);
+            render_tile_world(t, (u16)(base_col + c), (u16)(74 + r), cam_x4, 148);
+        }
+    }
+}
+
 

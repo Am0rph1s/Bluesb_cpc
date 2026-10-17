@@ -91,8 +91,8 @@ hold_skip$:
         ;; Fixar mapa RAM/ROM per defecte (upper ROM off, lower ROM off).
         ;; CRÍTIC: sense això, la upper ROM (AMSDOS) pot estar paginada
         ;; i interferir amb l'accés als ports FDC.
-        ld a, #0xC0
-        ld (GBANK_ADDR), a       ;; _g_bank = C0 PRIMER (mateix invariant)
+        ld a, (_g_fdc_home_bank)
+        ld (GBANK_ADDR), a       ;; _g_bank = home PRIMER (mateix invariant)
         ld bc, #0x7F00
         out (c), a
 

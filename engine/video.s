@@ -13,6 +13,8 @@
 
     .globl _video_init
     .globl _crtc_set_display_start
+    .globl _palette_black
+    .globl _palette_restore
 
     .area _CODE
 
@@ -46,6 +48,37 @@ _video_init::
     cp      #0x0E               ;; 14 registres (R0..R13)
     jr      nz, 1$
 
+    jp      _palette_restore
+
+;; ============================================================
+;; void palette_black(void)
+;; Posa tots els 16 colors i el border a negre (0x54)
+;; ============================================================
+_palette_black::
+    ld      bc, #0x7F00
+    ld      a, #0x10            ;; PENR border
+    out     (c), a
+    ld      a, #0x54            ;; INKR negre
+    out     (c), a
+    xor     a
+pb_loop$:
+    ld      b, #0x7F
+    out     (c), a              ;; PENR pen A
+    ld      b, #0x7F
+    ld      e, a
+    ld      a, #0x54
+    out     (c), a              ;; INKR negre
+    ld      a, e
+    inc     a
+    cp      #16
+    jr      nz, pb_loop$
+    ret
+
+;; ============================================================
+;; void palette_restore(void)
+;; Restaura els colors Mode 0 originals del joc i border negre
+;; ============================================================
+_palette_restore::
     ;; Border (ink 16). Valor INKR cru de la GA (0x54 = negre)
     ld      bc, #0x7F00
     ld      a, #0x10            ;; 0x10 = PENR border
@@ -56,7 +89,7 @@ _video_init::
     ;; Paleta 16 colors. INKR = codi de color cru de la GA (0x40-base bit)
     ld      hl, #palette_table
     ld      c, #0x00            ;; pen
-2$:
+pr_loop$:
     ld      b, #0x7F
     ld      a, c
     out     (c), a              ;; PENR: seleccionar pen
@@ -66,7 +99,7 @@ _video_init::
     inc     c
     ld      a, c
     cp      #0x10
-    jr      nz, 2$
+    jr      nz, pr_loop$
 
     ret
 

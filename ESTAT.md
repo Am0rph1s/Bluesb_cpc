@@ -877,3 +877,33 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
   - `docs/DOS_CPC_COORDINATES.md`: especificació tècnica completa.
   - `AGENTS.md`: afegida la regla 4 que prohibeix explícitament ajustar posicions a ull.
 
+
+## Sessio 2026-10-17 (21): Sistema de Portes i Habitacions 1:1 (Nivell 1 i Estudi Resta de Nivells)
+- **Estudi exhaustiu 1:1 dels 6 nivells de DOS (`level_door`, `pos[] = { 74, 74, 77, 66, 102 }`)**:
+  - Nivell 0 (PB Store / Magasin): 23 portes, 5 habitacions (Rooms 0..4) de 20 columnes d'ample cadascuna a la fila 74..83 (20x10 = 200 rajoles per habitació, 1000 rajoles en total).
+  - Nivell 1: 0 portes (sense habitacions).
+  - Nivell 2: 24 portes (habitacions a fila 77).
+  - Nivell 3: 20 portes (habitacions a fila 66 + passatges secrets).
+  - Nivell 4: 2 portes (1 parell anada i tornada).
+  - Nivell 5: 6 portes (teleports directes al mateix mapa exterior).
+- **Arquitectura de Memòria i Bancs per a Portes i Sales (Opció A)**:
+  - `ROOMS0.BIN` (1000 B) empaquetat a `MUSMAIN.BIN` a l'offset 0x1400 (`0xC1:0x6400`).
+  - Taula de 23 portes (92 B) empaquetada a `MUSMAIN.BIN` a l'offset 0x1800 (`0xC1:0x6800`).
+  - Lectura transparent a cost 0 de RAM estàtica de Bloc 0.
+- **Transició de pantalla i renderitzat**:
+  - `palette_black()` i `palette_restore()` a `engine/video.s` per a fos a negre net.
+  - `render_room(room_idx)` a `src/render.c` que dibuixa els 20x10 tiles de la sala amb rajoles bancades de 0xC1.
+  - Bloqueig horitzontal de càmera (`s_scrolling_locked = 1`, `g_cam_x4 = room_idx * 40`, `g_cam_row = 148`).
+- **Detecció i col·lisió 1:1**:
+  - Activador `SPACE + UP` coincident amb DOS (`level.c:1210`).
+  - Coordenades de rajola de peus: `(py + 29) >> 4` (70 exterior, 82 interior), coincidents amb `ypos16 = 70` de DOS.
+  - Destinació de peus ajustada a `(dst_row + 1) * 16 - 30` (terra a fila 71 exterior, 83 interior).
+  - Centrat horitzontal amb `(dst_col << 6) - 32` per col·locar Jake centrat sobre la rajola de la porta.
+  - Col·lisió vertical a `src/main.c` adaptada amb `max_r = s_in_room ? 84 : LEVEL_MAP_H` per permetre aterratge sòlid sobre el terra de l'habitació a la fila 83.
+- **Optimitzacions SDCC i correcció FDC**:
+  - Desacoblament de pantalles inicials a `engine/front_tables.h` i execució única via `FRONT_RUN` a `engine/front.c`.
+  - Correcció a `engine/assets_fdc.s` (canviat `0xC0` hardcoded per `_g_fdc_home_bank`), mantenint mapejat el banc 4 durant les lectures de disc del FRONT.
+  - Protecció de registre `d` a `src/moving.c` contra clobbering per LDIR de còpia FDC scratch.
+  - Marge de memòria del Bloc 0 optimitzat: `_CODE` acaba a `0x3661` amb un marge positiu de **+287 BYTES** abans de `_DATA` (`0x3780`).
+- **Verificació en emulador ZEsarUX**:
+  - Script `tools/verify_door_live.py`: cicle complet validat amb captures (`verify_door_outside_before.png`, `verify_door_room_inside.png`, `verify_door_room_walking.png`, `verify_door_room_at_exit.png`, `verify_door_outside_after.png`).

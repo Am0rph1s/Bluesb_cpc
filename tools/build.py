@@ -109,7 +109,7 @@ FRONT_BASE = 0x4000
 FRONT_DATA = 0x4900
 FRONT_MAXLEN = 0x1000
 FRONT_C_SOURCE = "engine/front.c"
-FRONT_C_HEADERS = ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h"]
+FRONT_C_HEADERS = ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h", "engine/front_tables.h"]
 
 # MUSICA (banc C1, AT3 AKG): player a MUS_PLAYER_BASE + canco a MUS_SONG_SLOT
 # (les 4 fan 1.6-4.7 KB; player ~3.1 KB). MUSBANK.BIN = player + intro (el
@@ -121,11 +121,8 @@ MUS_PLAYER_SRC = "tools/akg/PlayerAkg.asm"
 MUS_INTRO_SRC = "assets/musica_cpc/The_Blues_Brothers_Intro_CPC.akg"
 MUS_MAIN_SRC = "assets/musica_cpc/The_Blues_Brothers_CPC.akg"
 
-# Taules Bloc 0 justes: el GAME nomes referencia aquests descriptors
-# (FDC/FRONT els usa l'starter via starter_tables.h; MUSBANK el passa el
-# GAME al FRONT i SI cal). Nomes se salten chs+desc (els #define CRC
-# costen 0 B i CRC_FDC el llegeix main.c). Estalvi ~50 B (vist 10/26).
-GAME_TABLE_SKIP = {"FDC", "FRONT"}
+# Taules Bloc 0 justes: el GAME nomes referencia els fitxers del gameplay del nivell
+GAME_TABLE_SKIP = {"FDC", "FRONT", "FSPLASH", "FSELECT", "FMAP", "MUSBANK"}
 
 # Fitxers de dades al DSK (es carregaran per FDC raw). Ordre = ordre al disc.
 # (L'ordre de dades no afecta el boot; el BLUESB va primer via package().)
@@ -694,7 +691,7 @@ def build_front(force):
     # EQU externs centrals des del mapa resident (falla sorollos si falten).
     resident_map = os.path.join(obj, PROGNAME + ".map")
     syms = map_symbols(resident_map)
-    need = {"_fdc_load_file": None, "_g_front_args": None,
+    need = {"_fdc_load_file": None,
             "_mus_play": None, "_mus_init": None, "_mus_stop": None,
             "_g_ticks": None, "_g_mus_hold": None,
             "_g_player_choice": None, "_g_map_level": None}
@@ -896,7 +893,22 @@ def build_music(force):
             hud_raw.extend(nums)
     assert len(hud_raw) == 39 * 24
     pad_main = bytes(0x1000 - len(mdata))
-    open(mainbin, "wb").write(mdata + pad_main + hud_raw)
+    rooms_bin = os.path.join(PROJ, "assets", "bbdata", "ROOMS0.BIN")
+    rooms_data = open(rooms_bin, "rb").read()
+    assert len(rooms_data) == 1000, len(rooms_data)
+    pad_rooms = bytes(0x1400 - (0x1000 + len(hud_raw)))
+    doors_list = [
+        (36, 70, 19, 82), (19, 82, 36, 70), (18, 82, 36, 70),
+        (58, 70, 29, 82), (29, 82, 58, 70), (28, 82, 58, 70), (30, 82, 58, 70),
+        (75, 70, 53, 82), (76, 70, 54, 82), (53, 82, 75, 70), (54, 82, 76, 70),
+        (70, 82, 75, 62), (75, 62, 70, 82), (69, 82, 75, 62), (71, 82, 75, 62),
+        (39, 62, 89, 82), (40, 62, 90, 82), (89, 82, 39, 62), (90, 82, 40, 62),
+        (57, 70, 29, 82), (59, 70, 29, 82), (74, 62, 70, 82), (76, 62, 70, 82)
+    ]
+    doors_data = bytes([b for d in doors_list for b in d])
+    assert len(doors_data) == 92
+    pad_doors = bytes(0x1800 - (0x1400 + len(rooms_data)))
+    open(mainbin, "wb").write(mdata + pad_main + hud_raw + pad_rooms + rooms_data + pad_doors + doors_data)
     # EQU pel GAME (mus.s crida _akg_init/_akg_play en finestra C1).
     ext_s = os.path.join(obj, "mus_ext.s")
     need = {"_akg_init": plabels.get("PLY_AKG_Init"), "_akg_play": plabels.get("PLY_AKG_Play"),
@@ -1317,6 +1329,28 @@ def gen_header(chs_map):
     return "\n".join(lines) + "\n"
 
 
+def gen_front_tables(chs_map):
+    lines = ["#ifndef FRONT_TABLES_H", "#define FRONT_TABLES_H", '#include "fdc.h"', ""]
+    for name in ("MUSBANK", "FSPLASH", "FSELECT", "FMAP"):
+        if name not in chs_map:
+            continue
+        obytes, scount, chs, crc = chs_map[name]
+        var = name.lower()
+        lines.append("static const u8 g_%s_chs[%d] = {" % (var, len(chs)))
+        for i in range(0, len(chs), 12):
+            lines.append("    " + ",".join("0x%02X" % b for b in chs[i:i + 12]) + ",")
+        lines.append("};")
+        lines.append("static const DiskFileDesc g_file_%s = { %d, %d, g_%s_chs };" % (var, obytes, scount, var))
+        lines.append("#define CRC_%s 0x%04X" % (name, crc))
+        if name in FRONT_TAGS:
+            pal = open(os.path.join(PROJ, "assets", "bbdata", FRONT_FILES[name] + ".PALHW"), "rb").read()
+            assert len(pal) == 16, name
+            lines.append("static const u8 g_pal_%s[16] = {%s};" % (var, ",".join("0x%02X" % b for b in pal)))
+        lines.append("")
+    lines.append("#endif")
+    return "\n".join(lines) + "\n"
+
+
 def placeholder_header():
     lines = ["#ifndef DISK_TABLES_H", "#define DISK_TABLES_H", '#include "fdc.h"', ""]
     for name8, ext3, path in DATA_FILES:
@@ -1347,6 +1381,7 @@ def main():
     hdr_path = os.path.join(PROJ, "src", "disk_tables.h")
     crt_path = os.path.join(PROJ, "src", "crt_addrs.h")
     stab_path = os.path.join(PROJ, "src", "starter_tables.h")
+    fhdr_path = os.path.join(PROJ, "engine", "front_tables.h")
     # amb placeholders invalidaria mtime+hash i forzaria recompilar-ho TOT
     # amb SDCC (~15 min) a cada build encara que res hagi canviat.
     try:
@@ -1379,6 +1414,7 @@ def main():
     prev = None
     prev_crt = None
     prev_stab = None
+    prev_fhdr = None
     # 8 iteracions (no 4): la cadena taules->recompila->CRC nou es pot
     # propagar 3-4 cops (vist 12/10/26: ZX0 mes grans + FSELECT/FMAP nous
     # mouen GAME 2 cops; amb 4 l'starter del DSK quedava amb CRC vell =
@@ -1395,6 +1431,7 @@ def main():
         starter_path, starter_start = build_starter(force)
         chs_map, gentry, game_len, game_crc = package(starter_path, starter_start, game_path)
         text = gen_header(chs_map)
+        fhdr_text = gen_front_tables(chs_map)
         crt_text = crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map"))
         stab_text = gen_starter_tables(gentry, game_start, game_len, game_crc, chs_map["FDC"], chs_map["FRONT"], chs_map["MUSBANK"])
         changed = False
@@ -1402,6 +1439,7 @@ def main():
         # invalidaria hash/mtime i recompilaria dependents debades, i
         # amagaria la no-convergencia entre iteracions).
         for cur, old, path, label in ((text, prev, hdr_path, "disk_tables.h"),
+                                      (fhdr_text, prev_fhdr, fhdr_path, "front_tables.h"),
                                       (crt_text, prev_crt, crt_path, "crt_addrs.h"),
                                       (stab_text, prev_stab, stab_path, "starter_tables.h")):
             if cur != old:
@@ -1415,9 +1453,12 @@ def main():
                     changed = True
                 if label == "disk_tables.h":
                     prev = cur
+                elif label == "front_tables.h":
+                    prev_fhdr = cur
                 elif label == "crt_addrs.h":
                     prev_crt = cur
                 else:
+                    prev_stab = cur
                     prev_stab = cur
         if not changed:
             break

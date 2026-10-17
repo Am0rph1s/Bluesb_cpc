@@ -821,3 +821,59 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - **Protocol rapid per continuar**: `snapshot-save/load scratch/snap_*.zsf` = estat instantani (OJO: el snapshot guarda el BINARI vell; despres de rebuild cal boot fresc!). Mirall d'estat (revertit; re-afegir a `en2_update`): 6B/walker a 0x3BC0 (x_lo,hi,y_lo,hi,dir,ground) + `read_mem`. Walkers congelats (bbox) no escriuen el mirall (surten zeros/brossa vella).
 - **Comandos**: `py -3 -u tools/build.py` (~12min, FATAL si Bloc 0/C6 envaeixen); emu: `zesarux --noconfigfile --machine CPC6128 --vo null --ao null --aofile NUL --enable-remoteprotocol bluesb.dsk`; tecles ZRCP: 128 espai, 142 esq, 143 dreta, 145 amunt; `read_mem 0x378C 2` = ticks (Compte: COMPTA ENRERE!), `0x3B19` = cam_x4 (u16le), view_x = cam_x4*4, view_y = cam_row*8.
 - **PENDENT usuari**: validar posicions DOS reals (s26@top144? s27@112 o @528?).
+
+## Sessio 2026-10-16 (15): Taula d'Enemics L1 a 20 slots + 14 celes Mode 0 al Banc C6
+- **Ampliació de la plantilla d'enemics a 20 slots**: 3 iaies (kind 15), 5 policies (kind 4), 2 peixos (kind 8), 3 ocells (kind 19), 2 grangers (kind 18), 1 cambrera (kind 17), 4 rockers (kind 20).
+- **Extracció de celes `tools/gen_enemy_frames.py`**: 14 celes Mode 0 de 16 px × 32 línies (512 B cadascuna, total 7.168 B) generades des d'ENEMI1.SQV de DOS i col·locades al Banc C6 (`0x4000..0x5BFF`). Codi del motor C6 reubicat a `0x5C00..0x7486` (`ENEMYCODE.BIN`, 6.278 B).
+- **Taula de salts fixa d'interfície resident C6**: `en2_init` (0x5C00), `en2_update` (0x5C03), `en2_draw` (0x5C06), `en2_restore` (0x5C09), `en2_check_player_hit` (0x5C0C), `en2_check_crate_hit` (0x5C0F).
+- **Pool de fons reutilitzable**: 6 slots de 256 bytes a Banc C6 `0x7A00..0x7FFF` (`BG_SLOT`). L'enemic només desa fons quan és visible a pantalla, alliberant el slot quan surt de la vista.
+
+## Sessio 2026-10-16 (16): Comportament de tret 1:1 (Policia, Cambrera i Ocell) + Projectils
+- **S'aturen per disparar (1:1 DOS `level.c:op1`)**:
+  - Els enemics armats (policia i cambrera) NO continuen caminant mentre disparen. Quan la distància amb en Jake és inferior al rang (`abs(x - px) < 120`), s'aturen (`vx = 0`), encaren en Jake (`dir = px > x ? 1 : -1`), inicien el temporitzador de tir i reprodueixen el frame d'apuntar.
+- **Projectils (bala, plat, ou)**:
+  - Gestionats a `Projectile s_proj` amb velocitat horitzontal 1:1 (`vx = 64` a DOS = 8 px/frame a CPC).
+  - Alçada i offset per projectil: bala (6 línies), plat (11 línies), ou (13 línies).
+  - Dibuix amb clipping de pantalla complet i buffer de fons dedicat `s_proj_bg[2][64]`.
+  - Impacte letal sobre en Jake amb reducció de cors al HUD (`en2_check_player_hit`).
+
+## Sessio 2026-10-16 (17): Correccions 1:1 mecàniques de salts, sostres i escales
+- **Col·lisió de sostre 1:1 (`player_physics_step`)**:
+  - Abans en Jake queia ajupit a qualsevol cop al sostre. Al DOS (`level.c`), Jake només queda estabornit (amb estrelles) si el sostre és un bloc dur infranquejable i la distància al sostre en saltar és molt curta (passadís estret).
+  - Si l'alçada del sostre és alta, el salt simplement s'atura (`vy = 0`) i cau de peus sense quedar estabornit.
+- **Escala peixera (tram blau vs tram negre)**:
+  - Corregit el desfasament de velocitat a les peixeres: la pujada per escala té la mateixa velocitat constant a tot el tram independentment del color o patró del tile.
+
+## Sessio 2026-10-17 (18): Globus i Paraigües 1:1
+- **Globus (`s_carry_kind == 2`)**:
+  - El globus puja a través de l'aire lliure; no explota amb ombres negres decoratives sinó únicament en col·lidir amb rajoles sòlides de sostre dur (`tp[2] == 20/21/27/28`).
+  - Quan en Jake el deixa anar amb la tecla d'acció, el globus continua ascendint sol cap amunt fins a sortir de la pantalla o explotar contra un sostre.
+- **Paraigües (`s_carry_kind == 8`)**:
+  - Animació de planejar (frame 24) en comptes de caminar mentre es descendeix lentament.
+  - Quan aterra sobre plataformes o núvols, posa immediatament els peus a terra i tanca l'estat de caiguda.
+
+## Sessio 2026-10-17 (19): Portar i llançar caixes 1:1 (Cap, Mans, Trajectòria i Impacte)
+- **Posició de portar caixa (`carry_draw`)**:
+  - 1:1 DOS (`bb/level.c:907`): la caixa es recolza sobre el cap i les mans (`cx = px + 4`, `cy = py - 15`), tant mirant a la dreta com a l'esquerra.
+  - Seqüència de passos de caminar portant caixa actualitzada als 6 frames de DOS `{15, 13, 14, 16, 13, 14}` (`animframe_00cd`).
+  - Idle carry utilitza el frame 14 (`animframe_00c7 = 0x0E`) amb les mans alçades.
+- **Dibuix de la caixa volant (`player_physics_step` i `carry_draw`)**:
+  - Eliminada la comprovació errònia `is_floor_solid(ncol, nrow)` que la destruïa al primer frame sobre la cinta transportadora/sòl.
+  - Al DOS (`level.c:1773, 1811`), la caixa llençada té `if (obj->type != 2)`, ignorant sòls i només xocant contra parets sòlides (`tile_type == 6`), enemics (`enemy_check_crate_hit`) o límits de pantalla.
+  - Retallat dinàmic implementat a `carry_draw` amb càlcul precís de `g_moving_span` i `g_moving_rows`, registrant la mida real dibuixada a `s_carry_drawn_span[page]` per restaurar el fons sense taques.
+  - Verificat amb ZEsarUX en vol complet a través de la pantalla i impacte contra enemics.
+
+## Sessio 2026-10-17 (20): Fórmula Oficial de Conversió de Coordenades DOS <-> CPC
+- **Arrel matemàtica de les discrepàncies trobada a `tools/blues_dos/bb/screen.c:40`**:
+  - A DOS: `(dos_x, dos_y)` és el **centre horitzontal** i la **base dels peus** de l'sprite (`draw_x = dos_x - w/2`, `draw_y = dos_y - h`).
+  - A CPC (Mode 0): `(cpc_x, cpc_y)` és la **vora esquerra** i la **vora superior** (top-left). Resolució horitzontal a la meitat (160 px vs 320 px de DOS).
+  - Fórmula oficial:
+    $$X_{\text{CPC}} = \frac{X_{\text{DOS}}}{2} - \frac{W_{\text{CPC}}}{2} = \frac{X_{\text{DOS}}}{2} - 8$$
+    $$Y_{\text{CPC}} = Y_{\text{DOS}} - H_{\text{DOS}} = Y_{\text{DOS}} - 32$$
+    $$\text{Línia de terra (Floor } Y) = Y_{\text{DOS}}$$
+  - Rajoles: $\text{Col}_{\text{CPC}} = \text{Col}_{\text{DOS}} = X_{\text{DOS}} \gg 4$.
+- **Eines i documentació creades**:
+  - `tools/dos_coord_converter.py`: eina CLI que converteix coordenades interactives i permet bolcar automàticament qualsevol dels 6 nivells des de `staticres.c`.
+  - `docs/DOS_CPC_COORDINATES.md`: especificació tècnica completa.
+  - `AGENTS.md`: afegida la regla 4 que prohibeix explícitament ajustar posicions a ull.
+

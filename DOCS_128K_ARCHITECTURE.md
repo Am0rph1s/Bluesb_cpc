@@ -20,24 +20,21 @@ El joc s'executa en mode bare-metal (sense firmware AMSDOS en temps de joc) apro
 |                              RAM BASE (64 KB)                           |
 +-------------------+-----------------------------------------------------+
 | 0x0000 - 0x00FF   | Vectors del sistema Z80 (ISR IM 1 a 0x0038)        |
-| 0x0100 - 0x3229   | Codi resident (_CODE: motor genèric + ASM, 12.585 B)|
-| 0x322A - 0x369F   | Marge lliure de codi al Bloc 0 (1.143 bytes)        |
-| 0x36A0 - 0x3AC6   | Variables globals i dades estàtiques (_DATA, 1.062B)|
-| 0x3B40 - 0x3B41   | Canari de pila (CANARY_ADDR = 0x3B40, valor 0xA55A) |
-| 0x3B42 - 0x3FFE   | PILA CPU (SP=0x3FFE; 1.336 bytes disponibles)       |
+| 0x0100 - 0x3412   | Codi resident (_CODE: motor genèric + ASM, 13.074 B)|
+| 0x3413 - 0x377F   | Marge lliure de codi al Bloc 0 (878 bytes)          |
+| 0x3780 - 0x3BDF   | Variables globals i dades estàtiques (_DATA, 1.119B)|
+| 0x3BE0 - 0x3FFE   | PILA CPU (SP=0x3FFE; 1.055 bytes disponibles)       |
 +-------------------+-----------------------------------------------------+
 | 0x4000 - 0x7FFF   | Finestra de Bank Switching (Bancs 4..7 de 16 KB)   |
 |                   | - En descans (0xC0): RAM Base Bloc 1               |
 |                   | - Si es commuta 0xC4: Banc 4 visible (TILESET0.BIN) |
 |                   | - Si es commuta 0xC5: Banc 5 visible (MAP+TRIG+B5)  |
+|                   | - Si es commuta 0xC6: Banc 6 visible (ENEMI+CODI C6)|
 |                   | - Si es commuta 0xC7: Banc 7 visible (Sprites/LUT)  |
 +-------------------+-----------------------------------------------------+
 | 0x8000 - 0xBFFF   | PÀGINA DE VRAM 'B' (anell circular de 16 KB)        |
 |                   | Base CRTC MA = 0x2000 + offset de càmera            |
 |                   | Scratch FDC superposat; es reutilitza després càrrega|
-| 0xB800 - 0xB9FF   | Buffer FDC RAW temporal durant la càrrega           |
-| 0xBA00 - 0xBA0F   | Àrea FDC temporal; alliberada abans del joc          |
-| 0xBA10 - 0xBFFF   | VRAM B; memòria de vídeo durant el joc              |
 +-------------------+-----------------------------------------------------+
 | 0xC000 - 0xFFFF   | PÀGINA DE VRAM 'A' (anell circular de 16 KB)        |
 |                   | Base CRTC MA = 0x3000 + offset de càmera            |
@@ -50,10 +47,13 @@ El joc s'executa en mode bare-metal (sense firmware AMSDOS en temps de joc) apro
 +-------------------+-----------------------------------------------------+
 | Banc 5 (0xC5)     | 0x4000..0x63FF: MAP0.BIN (9.216 B = 128x72 índexs)  |
 |                   | 0x6400..0x6DFF: TRIG0.BIN (2.560 B = 256×10)        |
-|                   | 0x6E00..0x7DFF: BANK5.BIN (Paquet de nivell + codi  |
-|                   |                 d'entitats/spans/efectes, 4.096 B)  |
+|                   | 0x6E00..0x7FC4: BANK5.BIN (Paquet de nivell + codi  |
+|                   |                 d'entitats/spans/efectes, 4.548 B)  |
 +-------------------+-----------------------------------------------------+
-| Banc 6 (0xC6)     | Reservat (futur: cançons AKG / dades dels enemics)   |
+| Banc 6 (0xC6)     | 0x4000..0x5BFF: ENEMI1.BIN (7.168 B = 14 celes)    |
+|                   | 0x5C00..0x7486: ENEMYCODE.BIN (6.278 B = motor C6)  |
+|                   | 0x74A0..0x79FF: Taula de salts i dades estàtiques    |
+|                   | 0x7A00..0x7FFF: Pool fons enemics (6 slots de 256 B)|
 +-------------------+-----------------------------------------------------+
 | Banc 7 (0xC7)     | 0x4000..0x70BF: PFRAMES.BIN (12.480 B; 26 frames de |
 |                   |                 Jake 16x30 px Mode 0 = 480 B/frame) |

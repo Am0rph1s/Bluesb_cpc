@@ -61,22 +61,26 @@ L'Amstrad CPC 6128 disposa de 128 KB de RAM estructurats en 8 bancs de 16 KB cad
 
 | Espai d'Adreces | Bloc Físic | Contingut / Funció | Mida |
 | :--- | :--- | :--- | :--- |
-| **`0x0100 .. 0x368D`** | Banc 0 | **`_CODE`**: Codi executable SDCC compilat del joc | ~13,7 KB |
-| **`0x36A0 .. 0x37A5`** | Banc 0 | **`_DATA`**: Variables globals i buffers de treball | 261 bytes |
-| **`0x37E0 .. 0x37EF`** | Banc 0 | **Canari de pila resident** (prevé col·lisions d'SP cap a `_DATA`) | 16 bytes |
-| **`0x3800 .. 0x3FFE`** | Banc 0 | **Pila del sistema Z80 (SP)** (espai lliure > 2.100 bytes) | > 2 KB |
+| **`0x0100 .. 0x3412`** | Banc 0 | **`_CODE`**: Codi executable resident (SDCC + ASM natiu) | ~13,0 KB |
+| **`0x3413 .. 0x377F`** | Banc 0 | **Marge lliure de codi** al Bloc 0 | ~878 bytes |
+| **`0x3780 .. 0x3BDF`** | Banc 0 | **`_DATA`**: Variables globals, HUD, comptadors i buffers | 1.119 bytes |
+| **`0x3BE0 .. 0x3FFE`** | Banc 0 | **Pila del sistema Z80 (SP)** (espai lliure segur) | > 1.050 bytes |
 | **`0x4000 .. 0x7FFF`** | Banc 4 (`0xC4`) | **`TILESET0.BIN`**: Rajoles del nivell en Mode 0 (256 tiles × 64 B) | 16.384 bytes |
-| **`0x4000 .. 0x63FF`** | Banc 5 (`0xC5`) | **`MAP0.BIN`**: Matriu del mapa del nivell (128 × 72) | 9.216 bytes |
-| **`0x6400 .. 0x6DFF`** | Banc 5 (`0xC5`) | **`TRIG0.BIN`**: Dades de col·lisió i física de tiles | 2.560 bytes |
+| **`0x4000 .. 0x63FF`** | Banc 5 (`0xC5`) | **`MAP0.BIN`**: Matriu del mapa del nivell (128 × 72 rajoles) | 9.216 bytes |
+| **`0x6400 .. 0x6DFF`** | Banc 5 (`0xC5`) | **`TRIG0.BIN`**: Dades de col·lisió i física de tiles (256 × 10 B) | 2.560 bytes |
+| **`0x6E00 .. 0x7FC4`** | Banc 5 (`0xC5`) | **`BANK5.BIN`**: Codi de nivell resident, gestor de triggers i ascensors | 4.548 bytes |
+| **`0x4000 .. 0x5BFF`** | Banc 6 (`0xC6`) | **`ENEMI1.BIN`**: 14 celes d'enemics en Mode 0 (14 × 512 B) | 7.168 bytes |
+| **`0x5C00 .. 0x7486`** | Banc 6 (`0xC6`) | **`ENEMYCODE.BIN`**: Motor d'IA d'enemics, projectils i taula de salts | 6.278 bytes |
+| **`0x7A00 .. 0x7FFF`** | Banc 6 (`0xC6`) | **Pool de fons d'enemics** (6 slots dinàmics de 256 B) | 1.536 bytes |
 | **`0x4000 .. 0x70BF`** | Banc 7 (`0xC7`) | **`PFRAMES.BIN`**: 26 frames d'en Jake (16 px Mode 0 × 30 línies) | 12.480 bytes |
 | **`0x70C0 .. 0x751F`** | Banc 7 (`0xC7`) | Buffers de fons dels 5 ascensors magnètics (pàgines A i B) | 1.120 bytes |
-| **`0x7520 .. 0x760F`** | Banc 7 (`0xC7`) | Buffer de restauració de fons d'en Jake (pàgina VRAM C0) | 240 bytes |
-| **`0x7610 .. 0x76FF`** | Banc 7 (`0xC7`) | Buffer de restauració de fons d'en Jake (pàgina VRAM 80) | 240 bytes |
-| **`0x7700 .. 0x78DF`** | Banc 7 (`0xC7`) | Buffer d'efecte espill horitzontal (Jake H-FLIP, 16 B/l × 30 l) | 480 bytes |
-| **`0x78E0 .. 0x7EFF`** | Banc 7 (`0xC7`) | Marge de seguretat lliure al Banc 7 | 1.568 bytes |
+| **`0x7520 .. 0x76FF`** | Banc 7 (`0xC7`) | Buffers de fons d'en Jake per a VRAM A i B (2 × 240 B) | 480 bytes |
+| **`0x7700 .. 0x78DF`** | Banc 7 (`0xC7`) | Buffer de flip horitzontal dinàmic (H-FLIP, 16 B/l × 30 l) | 480 bytes |
+| **`0x78E0 .. 0x7A9F`** | Banc 7 (`0xC7`) | **`ELEV.BIN`**: Frames d'ascensors | 448 bytes |
+| **`0x7AA0 .. 0x7E7F`** | Banc 7 (`0xC7`) | **`EXTRA.BIN`**: Caixa (128 B), globus (224 B), paraigües (640 B) | 992 bytes |
 | **`0x7F00 .. 0x7FFF`** | Banc 7 (`0xC7`) | Taula LUT de swap de píxels Mode 0 (`sprite_hflip_init_lut`) | 256 bytes |
-| **`0x8000 .. 0xBFFF`** | Banc 1 / 3 | **Pàgina VRAM B** (Doble buffer alternatiu) | 16.384 bytes |
-| **`0xC000 .. 0xFFFF`** | Banc 1 / 3 | **Pàgina VRAM A** (Pàgina principal de pantalla) | 16.384 bytes |
+| **`0x8000 .. 0xBFFF`** | Banc 1 / 3 | **Pàgina VRAM B** (Doble buffer CRTC MA `0x2000`) | 16.384 bytes |
+| **`0xC000 .. 0xFFFF`** | Banc 1 / 3 | **Pàgina VRAM A** (Pàgina principal CRTC MA `0x3000`) | 16.384 bytes |
 
 ---
 
@@ -126,22 +130,32 @@ bluesb_cpc/
 │   ├── sprite_hflip.s       # Rutina ASM de gir horitzontal 1:1 via taula LUT
 │   ├── tile_blit.s          # Renderitzat ràpid de rajoles i columnes al ring buffer
 │   ├── moving_blit.s        # Dibuix d'ascensors i elements mòbils
+│   ├── enemy_table.s        # Taula de salts i rutines ASM del motor d'enemics al Banc 6
+│   ├── starter.c            # Carregador primari amb FDC directe
 │   ├── fdc.c / fdc.s        # Carregador de disc per sectors directes (FDC raw)
-│   ├── isr.s                # Rutina d'interrupció del sistema (comptador 300 Hz)
+│   ├── isr.s                # Rutina d'interrupció del sistema (comptador 300 Hz i música)
 │   └── stack_canary.h       # Verificador de seguretat de la pila Z80
 ├── src/                     # Lògica d'alt nivell del joc
 │   ├── main.c               # Bucle principal a 25 Hz, física subpíxel i seguiment
+│   ├── enemy.c              # Motor d'enemics resident al Banc 6 (20 slots, IA, trets)
+│   ├── moving_bank.c        # Lògica de nivell resident al Banc 5 (triggers, ascensors)
 │   ├── moving.c             # Gestor d'ascensors magnètics i cintes transportadores
 │   ├── render.c             # Gestió de la càmera i sincronització de vores
 │   ├── player_frames.h      # Taula d'offsets i mides dels 26 frames d'en Jake
 │   └── moving.h             # Definicions d'estructures d'ascensors i buffers
+├── docs/                    # Documentació tècnica i referències
+│   ├── DOS_CPC_COORDINATES.md # Especificació matemàtica oficial 1:1 de coordenades
+│   └── zrcp-control.md      # Manual de control remot via protocol ZEsarUX
 ├── tools/                   # Eines Python de construcció i generació
 │   ├── build.py             # Script principal de compilació, enllaç i creació de DSK
+│   ├── dos_coord_converter.py # Convertidor matemàtic de coordenades DOS <-> CPC
+│   ├── gen_enemy_frames.py  # Generador de celes d'enemics Mode 0 per al Banc 6
 │   ├── generate_cpc_jake_dos.py # Convertidor d'sprites DOS SQV -> Mode 0 CPC
 │   ├── export_dos_vga_sheet.py  # Exportador del full de referència dels 50 frames
 │   ├── verify_all_actions.py    # Suite de test automàtic amb l'emulador ZEsarUX
 │   └── bbdata/              # Llibreries d'enginyeria inversa (unsqz, sprites)
-├── ESTAT.md                 # Diari de progrés i decisions tècniques
+├── AGENTS.md                # Regles d'or del projecte (fidelitat 1:1 obligatòria)
+├── ESTAT.md                 # Diari detallat de progrés i sessions tècniques
 └── README.md                # Aquesta documentació
 ```
 

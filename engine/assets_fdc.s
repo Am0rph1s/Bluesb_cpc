@@ -9,6 +9,7 @@
         .globl _g_fdc_dest_bank
         .globl _g_fdc_dest_addr
         .globl _g_fdc_home_bank
+        .globl _fdc_motor_off
         .globl MUS_HOLD          ;; _g_mus_hold del GAME (obj/fdc_hold.s,
                                  ;; generat del mapa: patro front_ext)
         .globl GBANK_ADDR        ;; _g_bank del GAME (mateix EQU)
@@ -104,11 +105,16 @@ hold_skip$:
         xor a
         ld (NAU_FDC_DRIVE), a
 
-        ;; Motor ON + delay (nomes si el motor estava apagat)
+        ;; Motor ON físic SEMPRE per maquinari
+        ld bc, #FDC_MOTOR_PORT
+        ld a, #1
+        out (c), a
+
+        ;; Delay de 1.6s NOMÉS si el motor no estava ja en marxa
         ld a, (NAU_FDC_MOTOR_RUNNING)
         or a
         jr nz, motor_already_on$
-        call nau_fdc_motor_on_delay
+        call nau_fdc_motor_delay_only
         ld a, #1
         ld (NAU_FDC_MOTOR_RUNNING), a
 motor_already_on$:
@@ -188,10 +194,7 @@ assets_load_done:
         ld a, (NAU_FDC_STAY_ON)
         or a
         jr nz, keep_motor$
-        xor a
-        ld (NAU_FDC_MOTOR_RUNNING), a
-        ld bc, #FDC_MOTOR_PORT
-        out (c), a
+        call _fdc_motor_off
 keep_motor$:
         ei
         ld a, (_g_fdc_dest_bank)
@@ -376,10 +379,19 @@ assets_fdc_flush_loop:
         djnz assets_fdc_flush_loop
         ret
 
-nau_fdc_motor_on_delay:
+_fdc_motor_off::
+        xor a
+        ld (NAU_FDC_STAY_ON), a
+        ld (NAU_FDC_MOTOR_RUNNING), a
+        ld (NAU_FDC_RECAL_DONE), a
+        ld a, #0xFF
+        ld (NAU_FDC_HEAD_TRACK), a
+        xor a
         ld bc, #FDC_MOTOR_PORT
-        ld a, #1
         out (c), a
+        ret
+
+nau_fdc_motor_delay_only:
         ld b, #0x04
 nau_fdc_mdelay_o:
         ld de, #0x0000

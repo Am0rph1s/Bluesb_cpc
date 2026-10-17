@@ -44,6 +44,14 @@ def convert_ihx(ihx_path, bin_path, start_addr=None, max_length=None, pad_byte=0
         if base <= a < limit:
             buf[a - base] = b
 
+    if os.path.exists(bin_path):
+        try:
+            if open(bin_path, "rb").read() == bytes(buf):
+                print(f"Convertit {ihx_path} -> {bin_path} ({len(buf)} bytes, base=0x{base:04X}, limit=0x{limit:04X}) [sense canvis]")
+                return True
+        except OSError:
+            pass
+
     with open(bin_path, "wb") as f:
         f.write(buf)
 

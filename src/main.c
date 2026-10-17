@@ -688,6 +688,7 @@ void main(void) {
     stack_canary_init();
     cpc_install_isr();
 
+    fdc_motor_off();
     fdc_load_file(0xC0, 0, 0, 0);
 
     g_map_level = 0;

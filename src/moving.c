@@ -195,6 +195,8 @@ void fdc_motor_off(void) {
         out     (c), a
     __endasm;
     *(volatile u8*)0xBE0B = 0;
+    *(volatile u8*)0xBE0C = 0;
+    *(volatile u8*)0xBE0D = 0xFF;
     *(volatile u8*)0xBE0E = 0;
 }
 

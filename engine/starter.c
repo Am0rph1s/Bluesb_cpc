@@ -108,6 +108,7 @@ static u8 s_load_one(const DiskFileDesc* f, u8 bank, void* addr, u16 len, u16 cr
 
 void s_main(void) {
     s_border_blue(); // s_main ha arrencat
+    fdc_set_stay_on(1); // Mantenir motor en marxa durant les 3 càrregues de boot
     // 1. GAME resident (mateixos colors d'abans).
     if (!s_load_one(&g_file_game, 0xC0, (void*)0x0100, GAME_LEN, GAME_CRC)) {
         s_border_fail(); // vermell: GAME no carregat/corrupte, no saltar
@@ -126,10 +127,7 @@ void s_main(void) {
         s_border_fail(); // vermell: FRONT no carregat/corrupte, no saltar
         while (1) { }
     }
-    // 4. MUSBANK: NO es carrega aqui. C1 mapeja slot3->banc7 (config 1 del
-    // 6128) i l'starter (slot 3: 0xC000) desapareix en paginar = reboot.
-    // El GAME (slot 0, segur en totes les configs) el carrega pre-FRONT.
-    // (El fitxer MUSBANK continua al DSK; el GAME el llegeix amb el stub.)
+    fdc_motor_off(); // Aturar motor abans de saltar al GAME
     s_border_ok(); // verd: tot a RAM (pausa visible ~0.3 s)
     __asm
         ld      bc, #60000
@@ -164,12 +162,16 @@ void s_start(void) {
         ld      (MUS_HOLD_ADDR), a ; HOLD musica ISR = 0 (lliure). La RAM pot
                                 ; portar brossa de reboot calent: sense aixo
                                 ; la ISR saltaria la musica per sempre.
+        ;; Netejar area de treball FDC (0xBE00..0xBE0F) que AMSDOS deixa bruta
+        ld      hl, #0xBE00
+        ld      de, #0xBE01
+        ld      bc, #15
+        ld      (hl), #0
+        ldir
         ld      a, #0x80
-        ld      (0xBE0A), a     ; LED-ink SILENCIOS (NAU_FDC_BLINK bit 7). Si no,
-                                ; el motor parpelleja la ink 2 (groc/negre) per
-                                ; sector i la brossa de pantalla te pixels en
-                                ; tinta 2 = punts grocs parpellejants. El LED
-                                ; fisic de la disquetera no en depen.
+        ld      (0xBE0A), a     ; LED-ink SILENCIOS (NAU_FDC_BLINK bit 7).
+        ld      a, #0xFF
+        ld      (0xBE0D), a     ; NAU_FDC_HEAD_TRACK = 0xFF (cap pista coneguda)
         ld      bc, #0x7F8C
         out     (c), c          ; RMR: Mode 0 + ROMs OFF (RAM a tot arreu).
                                 ; Sense aixo, 0xC000 es llegeix de la ROM alta

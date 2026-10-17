@@ -16,6 +16,8 @@
     .globl _en2_restore
     .globl _en2_draw
     .globl _en2_init
+    .globl _en2_check_player_hit
+    .globl _en2_check_crate_hit
     .globl _en2_init_lut
     .globl _en2_flip_cell
 
@@ -29,6 +31,10 @@ _en_draw::
     jp      _en2_draw               ;; slot 2 -> 0x5C06
 _en_init::
     jp      _en2_init               ;; slot 3 -> 0x5C09
+_en_check_player_hit::
+    jp      _en2_check_player_hit   ;; slot 4 -> 0x5C0C
+_en_check_crate_hit::
+    jp      _en2_check_crate_hit    ;; slot 5 -> 0x5C0F
 
 ;; ============================================================
 ;; void en2_init_lut(void)

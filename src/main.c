@@ -82,6 +82,7 @@ i8  s_ground_elevator = -1;
 u8  g_face;
 u8  s_anim_idx, s_anim_timer;
 u8  s_dazed_timer;
+u8  s_invuln_timer;
 
 static u8  s_have_drawn[2];
 static i8  s_pending_x, s_pending_y;
@@ -206,11 +207,24 @@ static void carry_restore(u8 page) {
     s_carry_drawn[page] = 0;
 }
 
-static void carry_fly_draw(u8 page) {
+static void carry_draw(u8 page) {
     u8 prev;
-    if (s_carry_kind != 1 || !s_carry_state) return;
+    i16 cx, cy;
+    if (s_carry_kind != 1) return;
+    if (s_carry_state == 0) {
+        if (s_invuln_timer & 2) return; // Parpelleig amb en Jake
+        cx = (i16)(s_px8 >> 3);
+        if (g_face == 0) cx += 4;
+        else cx -= 4;
+        if (cx < 0) cx = 0;
+        if (cx > (i16)(LEVEL_W_PX - 8)) cx = (i16)(LEVEL_W_PX - 8);
+        cy = (i16)((s_py8 >> 3) + 4);
+    } else {
+        cx = (i16)(s_carry_x >> 3);
+        cy = (i16)(s_carry_y >> 3);
+    }
     prev = bank_set(0xC7);
-    g_moving_dst = (u16)ring_address(page, (i16)(s_carry_x >> 3), (i16)(s_carry_y >> 3));
+    g_moving_dst = (u16)ring_address(page, cx, cy);
     s_carry_dst[page] = g_moving_dst;
     g_moving_background = (u16)s_crate_bg[page];
     g_moving_sprite = (u16)CRATE_FLY_FRAME;
@@ -347,7 +361,8 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
         sy = (i16)(cy - (i16)(g_cam_row * 8));
         ncol = (u16)(((s_carry_vx > 0) ? (cx + 8) : (cx - 1)) >> 3);
         nrow = (u16)((cy + 8) >> 4);
-        if (sx < 0 || sx > 72 || sy < 0 || sy > 144 || is_floor_solid(ncol, nrow, 0, 0)) {
+        if (sx < 0 || sx > 72 || sy < 0 || sy > 144 || is_floor_solid(ncol, nrow, 0, 0) ||
+            enemy_check_crate_hit(cx, cy, s_carry_vx)) {
             carry_abort();
         }
     }
@@ -676,6 +691,7 @@ void main(void) {
     s_carry_state = 0; s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
     s_anim_idx = 0; s_anim_timer = 0;
     s_dazed_timer = 0;
+    s_invuln_timer = 0;
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
     sprite_balloon_init();
@@ -727,6 +743,40 @@ void main(void) {
         bc_d = grab;
         moving_update();
         enemy_update();
+
+        // 1:1 DOS Col·lisió Jake <-> Enemics / Projectils (level.c:1583-1658)
+        if (s_invuln_timer) {
+            s_invuln_timer--;
+        } else {
+            i16 px = (i16)(s_px8 >> 3);
+            i16 py = (i16)(s_py8 >> 3);
+            if (enemy_check_player_hit(px, py)) {
+                if (g_hearts_count > 0) g_hearts_count--;
+                s_invuln_timer = 75; // 1:1 DOS blinking_counter = 75
+                s_dazed_timer = 20;  // 1:1 DOS special_anim = 18 (estrelletes al cap)
+                if (s_carry_kind) carry_abort();
+                if (g_hearts_count == 0) {
+                    if (g_lives_count > 0) g_lives_count--;
+                    if (g_lives_count > 0) {
+                        g_hearts_count = 3;
+                        s_px8 = (i16)(LEVEL_START_PX * SUB);
+                        s_py8 = (i16)(LEVEL_START_PY * SUB);
+                        s_vx = 0; s_vy = 0;
+                        g_cam_x4 = LEVEL_CAM0_X4;
+                        g_cam_row = LEVEL_CAM0_ROW;
+                        s_invuln_timer = 75;
+                        s_dazed_timer = 0;
+                        render_all(g_cam_x4, g_cam_row);
+                    } else {
+                        // Game Over / Restart
+                        moving_init();
+                        enemy_init();
+                        hud_init();
+                        render_all(g_cam_x4, g_cam_row);
+                    }
+                }
+            }
+        }
 
         if (s_on_ground && s_ground_elevator >= 0) {
             MovingElevator* e = &g_mag_elevators[(u8)s_ground_elevator];
@@ -781,6 +831,7 @@ void main(void) {
                                  (u16)(g_cam_row - page_dy));
 
         // --- Restaurar el fons al BACKBUFFER (LIFO) ---
+        carry_restore(s_back_page);
         sprite_restore_umbrella();
         sprite_restore_balloon();
         if (s_have_drawn[s_back_page]) {
@@ -791,7 +842,6 @@ void main(void) {
         // l'enemic abans que els ascensors (els dibuixa a sobre).
         enemy_restore(s_back_page);
         moving_restore(s_back_page, (move_x != 0 || move_y != 0));
-        carry_restore(s_back_page);
         moving_popup_restore(s_back_page);
         world_flush_repaints();
 
@@ -806,12 +856,11 @@ void main(void) {
         // Dibuixar objectes mòbils i sprites sobre el fons actualitzat
         moving_draw(s_back_page, g_cam_x4, g_cam_row);
         enemy_draw(s_back_page);
-        carry_fly_draw(s_back_page);
 
         g_spr_y = (u8)dsy;
         g_spr_x = (u8)dsx;
 
-        {
+        if (!(s_invuln_timer & 2)) {
             u16 spr_addr = (u16)(PLAYER_FRAMES_BASE + ((u16)cur << 9) - ((u16)cur << 5));
             const u8* fr_addr = (const u8*)spr_addr;
             u8 prev_b = bank_set(PLAYER_FRAMES_BANK);
@@ -826,8 +875,12 @@ void main(void) {
                 sprite_blit_player((const u8*)0x7700);
             }
             bank_restore(prev_b);
+            s_have_drawn[s_back_page] = 1;
+        } else {
+            s_have_drawn[s_back_page] = 0;
         }
-        s_have_drawn[s_back_page] = 1;
+
+        carry_draw(s_back_page);
         if (s_carry_kind == 2) {
             if (!s_carry_state) {
                 sprite_blit_balloon();

@@ -303,10 +303,9 @@ void moving_bank_update(void) {
     }
     if (grab && !s_grab_prev && !climbing) {
         if (s_carry_kind == 1 && !s_carry_state) {
-            s_carry_x = s_px8;
-            s_carry_y = (i16)(s_py8 - 20 * SUB);
-            s_carry_vx = (g_face == 0) ? 154 : -154;
-            s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
+            s_carry_x = (g_face == 0) ? (i16)(s_px8 + 4 * SUB) : (i16)(s_px8 - 4 * SUB);
+            s_carry_y = (i16)(s_py8 + 4 * SUB);
+            s_carry_vx = (g_face == 0) ? 96 : -96;
             s_carry_state = 1;
         } else if (s_carry_kind == 2) {
             if (!s_carry_state) {
@@ -318,10 +317,16 @@ void moving_bank_update(void) {
         } else if (s_carry_kind == 8) {
             sprite_abort_balloon();
             s_carry_kind = 0;
-        } else if (!s_carry_kind && s_on_ground && tt == 5) {
-            b5_world_reset_tile(col, row);
-            s_carry_kind = 1; s_carry_state = 0;
-            s_anim_idx = 0; s_anim_timer = 0;
+        } else if (!s_carry_kind && s_on_ground) {
+            u8 crate_row = row;
+            if (b5_tile_type(col, crate_row) != 5 && row > 0 && b5_tile_type(col, (u8)(row - 1)) == 5) {
+                crate_row = (u8)(row - 1);
+            }
+            if (b5_tile_type(col, crate_row) == 5) {
+                b5_world_reset_tile(col, crate_row);
+                s_carry_kind = 1; s_carry_state = 0;
+                s_anim_idx = 0; s_anim_timer = 0;
+            }
         }
     }
     s_grab_prev = grab;

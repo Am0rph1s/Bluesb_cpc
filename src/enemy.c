@@ -42,6 +42,7 @@ typedef struct {
     u8 on_ground;
     u8 tick;
     u8 shoot_timer; // aturat per disparar (1:1 DOS)
+    u8 dead;        // 0=viu, 1=tocat per caixa (cau lliure), 2=fora de pantalla
     i8 slot[2];     // slot de fons per pagina (-1 = no dibuixat)
     u8 drawn_byte_count[2];
     u8 drawn_row_count[2];
@@ -158,6 +159,7 @@ void en2_init(void) {
         e->on_ground = (sp->kind == 8 || sp->kind == 19 || sp->kind == 17 || sp->vx == 0) ? 1 : 0;
         e->tick = 0;
         e->shoot_timer = 0;
+        e->dead = 0;
         e->slot[0] = -1;
         e->slot[1] = -1;
         e->drawn_row_count[0] = 0;
@@ -186,6 +188,18 @@ void en2_update(void) {
         if (sp->x < (i16)(view_x - 70) || sp->x > (i16)(view_x + 230) ||
             sp->sy < (i16)(view_y - 100) || sp->sy > (i16)(view_y + 350))
             continue;
+
+        if (e->dead) {
+            if (e->dead == 1) {
+                e->x = (i16)(e->x + (e->dir > 0 ? 3 : -3));
+                e->vy = (i16)(e->vy + ENEMY_GRAV);
+                e->y8 = (i16)(e->y8 + e->vy);
+                if ((i16)(e->y8 >> 3) > (view_y + 180)) {
+                    e->dead = 2;
+                }
+            }
+            continue;
+        }
 
         y = (i16)(e->y8 >> 3);
 
@@ -397,7 +411,7 @@ void en2_draw(void) {
         u8 start_byte, byte_count, start_row, row_count;
         const u8* frame;
         i8 s;
-        if (e->slot[page] >= 0) continue; // ja dibuixat
+        if (e->dead == 2 || e->slot[page] >= 0) continue; // eliminat o ja dibuixat
         world_x = e->x;
         world_y = (i16)(e->y8 >> 3);
         clip_x0 = world_x > view_x ? world_x : view_x;
@@ -417,7 +431,7 @@ void en2_draw(void) {
 
         // Selecció de cela i flip dinàmic amb cache de cela:
         {
-            u8 step = (sp->kind == 8 || sp->vx == 0 || e->shoot_timer) ? 0 : (u8)((e->tick >> 2) & 1);
+            u8 step = (e->dead || sp->kind == 8 || sp->vx == 0 || e->shoot_timer) ? 0 : (u8)((e->tick >> 2) & 1);
             u8 cell = (u8)(sp->base_cell + step);
             const u8* src = ENEMY_FRAMES_BASE + ((u16)cell << 9);
             if (e->dir < 0) {
@@ -485,3 +499,56 @@ void en2_draw(void) {
         }
     }
 }
+
+void en2_check_player_hit(void) {
+    i16 px = (i16)bc_a;
+    i16 py = (i16)bc_b;
+    u8 i;
+    Enemy* e;
+
+    bc_r = 0;
+
+    // 1. Projectil (bala, plat, ou):
+    if (s_proj.kind) {
+        if ((u16)(s_proj.x - px + 6) < 14 &&
+            (u16)((s_proj.y8 >> 3) - py + 10) < 38) {
+            s_proj.kind = 0;
+            bc_r = 1;
+            return;
+        }
+    }
+
+    // 2. Walkers / Enemics:
+    e = s_enemies;
+    for (i = 0; i < ENEMY_N; i++, e++) {
+        if (e->dead) continue;
+        if ((u16)(e->x - px + 6) < 16 &&
+            (u16)((e->y8 >> 3) - py + 24) < 50) {
+            bc_r = 1;
+            return;
+        }
+    }
+}
+
+void en2_check_crate_hit(void) {
+    i16 cx = (i16)bc_a;
+    i16 cy = (i16)bc_b;
+    i16 cvx = (i16)bc_c;
+    u8 i;
+    Enemy* e = s_enemies;
+
+    bc_r = 0;
+    for (i = 0; i < ENEMY_N; i++, e++) {
+        if (e->dead) continue;
+        if ((u16)(e->x - cx + 6) < 20 &&
+            (u16)((e->y8 >> 3) - cy + 12) < 36) {
+            e->dead = 1;
+            e->dir = (cvx > 0) ? 1 : -1;
+            e->vy = -48; // Impuls vertical amunt 1:1 DOS yfriction=12 (6 px/frame)
+            e->on_ground = 0;
+            bc_r = 1;
+            return;
+        }
+    }
+}
+

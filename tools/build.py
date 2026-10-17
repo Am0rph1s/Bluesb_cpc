@@ -75,7 +75,7 @@ DSKNAME8 = "BLUESB"
 # (engine/enemy_table.s, slots init/update/restore/draw); codi+dades
 # fins 0x8000 (pool de fons inclos). ENEMI.BIN = frames + imatge codi.
 ENEMY_BASE = 0x5C00
-ENEMY_DATA = 0x7300  # codi (0x5C00..~0x72FF) + dades C6 (fins ~0x77BF, marge fins BG_BASE 0x7A00)
+ENEMY_DATA = 0x74A0  # codi (0x5C00..~0x749F) + dades C6 (fins ~0x78E0, marge fins LUT 0x7900 / BG_BASE 0x7A00)
 ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 ENEMY_C_SOURCES = ["src/enemy.c"]
 ENEMY_ASM_SOURCES = ["engine/enemy_table.s"]
@@ -567,7 +567,8 @@ def build_enemybank(force):
               (en_data_s, en_data_s + en_data_l))
         sys.exit(1)
     syms = map_symbols(map_path)
-    slot_names = {"_en_update": 0, "_en_restore": 1, "_en_draw": 2, "_en_init": 3}
+    slot_names = {"_en_update": 0, "_en_restore": 1, "_en_draw": 2, "_en_init": 3,
+                  "_en_check_player_hit": 4, "_en_check_crate_hit": 5}
     for name, slot in slot_names.items():
         want = ENEMY_BASE + slot * 3
         got = syms.get(name, -1)

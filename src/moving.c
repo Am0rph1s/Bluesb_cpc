@@ -143,6 +143,21 @@ void enemy_draw(u8 page) {
     call_banked(0xC6, EN_SLOT(2));
 }
 
+u8 enemy_check_player_hit(i16 px, i16 py) {
+    bc_a = (u16)px;
+    bc_b = (u16)py;
+    call_banked(0xC6, EN_SLOT(4));
+    return (u8)bc_r;
+}
+
+u8 enemy_check_crate_hit(i16 cx, i16 cy, i16 cvx) {
+    bc_a = (u16)cx;
+    bc_b = (u16)cy;
+    bc_c = (u16)cvx;
+    call_banked(0xC6, EN_SLOT(5));
+    return (u8)bc_r;
+}
+
 // --- Carregador FDC banquet (F1) ---
 // El motor FDC (fdc.c + assets_fdc.s, TAL QUAL) viu al banc 0xC6 (FDC.BIN,
 // slot C6:0x7000). Com que el motor commuta la finestra on s'executaria,

@@ -303,8 +303,8 @@ void moving_bank_update(void) {
     }
     if (grab && !s_grab_prev && !climbing) {
         if (s_carry_kind == 1 && !s_carry_state) {
-            s_carry_x = (g_face == 0) ? (i16)(s_px8 + 4 * SUB) : (i16)(s_px8 - 4 * SUB);
-            s_carry_y = (i16)(s_py8 + 4 * SUB);
+            s_carry_x = (g_face == 0) ? (i16)(s_px8 + 8 * SUB) : (i16)s_px8;
+            s_carry_y = (i16)(s_py8 - 6 * SUB);
             s_carry_vx = (g_face == 0) ? 96 : -96;
             s_carry_state = 1;
         } else if (s_carry_kind == 2) {

@@ -57,7 +57,7 @@ extern volatile u8 g_ticks;
 #define DEAD_B      116
 #define CRATE_FLY_FRAME ((const u8*)0x7AA0)
 
-static const u8 s_crate_walk[4] = { 14, 12, 13, 15 };
+static const u8 s_crate_walk[6] = { 15, 13, 14, 16, 13, 14 };
 static const u8 s_walk[6] = { 1, 2, 0, 3, 2, 0 };
 
 // Estat compartit resident (actualitzat des del mòdul de nivell al Banc 5):
@@ -75,6 +75,8 @@ u8  s_carry_state;
 i16 s_carry_x, s_carry_y;
 i16 s_carry_vx;
 u8  s_carry_drawn[2];
+static u8  s_carry_drawn_span[2];
+static u8  s_carry_drawn_rows[2];
 static u16 s_carry_dst[2];
 static u8  s_crate_bg[2][64];
 
@@ -201,8 +203,8 @@ static void carry_restore(u8 page) {
     if (!s_carry_drawn[page]) return;
     g_moving_dst = s_carry_dst[page];
     g_moving_background = (u16)s_crate_bg[page];
-    g_moving_span = 4;
-    g_moving_rows = 16;
+    g_moving_span = s_carry_drawn_span[page];
+    g_moving_rows = s_carry_drawn_rows[page];
     moving_restore_box();
     s_carry_drawn[page] = 0;
 }
@@ -210,38 +212,54 @@ static void carry_restore(u8 page) {
 static void carry_draw(u8 page) {
     u8 prev;
     i16 cx, cy;
+    i16 view_x, view_y, clip_x0, clip_x1, clip_y0, clip_y1;
+    u8 start_byte, byte_count, start_row, row_count;
+
     if (s_carry_kind != 1) return;
     if (s_carry_state == 0) {
         if (s_invuln_timer & 2) return; // Parpelleig amb en Jake
-        cx = (i16)(s_px8 >> 3);
-        if (g_face == 0) cx += 4;
-        else cx -= 4;
-        if (cx < 0) cx = 0;
-        if (cx > (i16)(LEVEL_W_PX - 8)) cx = (i16)(LEVEL_W_PX - 8);
-        cy = (i16)((s_py8 >> 3) + 4);
+        // 1:1 DOS: centrat sobre el cap (px + 4) i recolzat a les mans (py - 15)
+        cx = (i16)((s_px8 >> 3) + 4);
+        cy = (i16)((s_py8 >> 3) - 15);
     } else {
         cx = (i16)(s_carry_x >> 3);
         cy = (i16)(s_carry_y >> 3);
     }
+
+    view_x = (i16)(g_cam_x4 << 2);
+    view_y = (i16)(g_cam_row << 3);
+    clip_x0 = cx > view_x ? cx : view_x;
+    clip_x1 = (i16)(cx + 8) < (i16)(view_x + 160) ? (i16)(cx + 8) : (i16)(view_x + 160);
+    clip_y0 = cy > view_y ? cy : view_y;
+    clip_y1 = (i16)(cy + 16) < (i16)(view_y + 160) ? (i16)(cy + 16) : (i16)(view_y + 160);
+
+    if (clip_x0 >= clip_x1 || clip_y0 >= clip_y1) return;
+
+    start_byte = (u8)((clip_x0 - cx) >> 1);
+    byte_count = (u8)((clip_x1 - clip_x0) >> 1);
+    start_row = (u8)(clip_y0 - cy);
+    row_count = (u8)(clip_y1 - clip_y0);
+    if (!byte_count || !row_count) return;
+
     prev = bank_set(0xC7);
-    g_moving_dst = (u16)ring_address(page, cx, cy);
+    g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
     s_carry_dst[page] = g_moving_dst;
+    s_carry_drawn_span[page] = byte_count;
+    s_carry_drawn_rows[page] = row_count;
     g_moving_background = (u16)s_crate_bg[page];
-    g_moving_sprite = (u16)CRATE_FLY_FRAME;
-    g_moving_span = 4;
-    g_moving_rows = 16;
-    g_moving_spr_skip = 0;
+    g_moving_sprite = (u16)(CRATE_FLY_FRAME + ((u16)start_row << 3) + (start_byte << 1));
+    g_moving_span = byte_count;
+    g_moving_rows = row_count;
+    g_moving_spr_skip = (u8)(8 - (byte_count << 1));
     moving_blit_box();
     bank_restore(prev);
     s_carry_drawn[page] = 1;
 }
 
 void carry_abort(void) {
-    carry_restore(s_back_page);
-    carry_restore((u8)(s_back_page ^ 1));
-    sprite_abort_balloon();
     s_carry_kind = 0;
     s_carry_state = 0;
+    sprite_abort_balloon();
 }
 
 static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) {
@@ -311,12 +329,13 @@ static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) 
             if (s_anim_timer >= 2) {
                 s_anim_timer = 0;
                 s_anim_idx++;
-                if (s_anim_idx >= 4) s_anim_idx = 0;
+                if (s_anim_idx >= 6) s_anim_idx = 0;
             }
             return s_crate_walk[s_anim_idx];
         }
+        s_anim_idx = 0;
         s_anim_timer = 0;
-        return 13;
+        return 14; // 1:1 DOS animframe_00c7 = 0x0E (14)
     }
     if (!s_on_ground || (u16)(bsy + 30) > 160) {
         return 4;
@@ -355,14 +374,17 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
     if (s_carry_kind == 1 && s_carry_state) {
         i16 cx, cy, sx, sy;
         u16 ncol, nrow;
+        u8 tt;
         s_carry_x = (i16)(s_carry_x + s_carry_vx);
-        cx = (i16)(s_carry_x >> 3); cy = (i16)(s_carry_y >> 3);
+        cx = (i16)(s_carry_x >> 3);
+        cy = (i16)(s_carry_y >> 3);
         sx = (i16)((cx - (i16)(g_cam_x4 * 4)) >> 1);
         sy = (i16)(cy - (i16)(g_cam_row * 8));
-        ncol = (u16)(((s_carry_vx > 0) ? (cx + 8) : (cx - 1)) >> 3);
-        nrow = (u16)((cy + 8) >> 4);
-        if (sx < 0 || sx > 72 || sy < 0 || sy > 144 || is_floor_solid(ncol, nrow, 0, 0) ||
-            enemy_check_crate_hit(cx, cy, s_carry_vx)) {
+        ncol = (u16)(((s_carry_vx > 0) ? (cx + 8) : cx) >> 3);
+        nrow = (u16)((cy + 6) >> 4);
+        tt = tile_type(ncol, nrow);
+        if (sx < -4 || sx > 76 || sy < -16 || sy > 160 || cx < 16 || cx > (i16)(LEVEL_W_PX - 24) ||
+            tt == 6 || enemy_check_crate_hit(cx, cy, s_carry_vx)) {
             carry_abort();
         }
     }

@@ -55,7 +55,7 @@ extern volatile u8 g_ticks;
 #define DEAD_R      88
 #define DEAD_T      32
 #define DEAD_B      116
-#define CRATE_FLY_FRAME ((const u8*)0x7AA0)
+#define CRATE_FLY_FRAME ((const u8*)0x7A20)
 
 static const u8 s_crate_walk[6] = { 15, 13, 14, 16, 13, 14 };
 static const u8 s_walk[6] = { 1, 2, 0, 3, 2, 0 };
@@ -81,7 +81,7 @@ u8  s_carry_drawn[2];
 static u8  s_carry_drawn_span[2];
 static u8  s_carry_drawn_rows[2];
 static u16 s_carry_dst[2];
-static u8  s_crate_bg[2][64];
+#define CRATE_BG_PAGE(p) ((u16)(0x7380 + ((u16)(p) << 6)))
 
 i8  s_ground_elevator = -1;
 u8  g_face;
@@ -93,7 +93,7 @@ static u8  s_have_drawn[2];
 static i8  s_pending_x, s_pending_y;
 
 u8  s_rep_n;
-u8  s_rep_col[3], s_rep_row[3], s_rep_tile[3], s_rep_pages[3];
+u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
 
 static u8 s_back_page = 1;
 
@@ -209,7 +209,7 @@ static void repaint_both_buffers(void) {
     s_pending_y = 0;
     for (p = 0; p < 2; p++) {
         g_vram_base_hi = p ? 0x80 : 0xC0;
-        if (s_in_room) render_room((u8)(g_cam_x4 >= 160 ? 4 : (g_cam_x4 >= 120 ? 3 : (g_cam_x4 >= 80 ? 2 : (g_cam_x4 >= 40 ? 1 : 0)))));
+        if (s_in_room) render_room((u8)(g_cam_x4 / 40));
         else render_all(g_cam_x4, g_cam_row);
         hud_render(p, 1);
     }
@@ -231,11 +231,12 @@ static void enter_door(u8 dst_col, u8 dst_row) {
 
     if (dst_row >= 72) {
         // Entering Room
-        u8 room_idx = (dst_col >= 80 ? 4 : (dst_col >= 60 ? 3 : (dst_col >= 40 ? 2 : (dst_col >= 20 ? 1 : 0))));
+        u8 room_idx = (u8)(dst_col / 20);
         s_in_room = 1;
         s_scrolling_locked = 1;
         g_cam_x4 = (u16)(room_idx * 40);
         g_cam_row = 148;
+        enemy_room_exit(0, 0);
     } else {
         // Exiting Room to main level
         i16 cam_col = (i16)dst_col - 10;
@@ -250,16 +251,8 @@ static void enter_door(u8 dst_col, u8 dst_row) {
         if (cam_r < 0) cam_r = 0;
         if (cam_r > (LEVEL_MAX_CAM_ROW >> 1)) cam_r = (LEVEL_MAX_CAM_ROW >> 1);
         g_cam_row = (u16)(cam_r << 1);
+        enemy_room_exit((i16)(s_px8 >> 3), (i16)(s_py8 >> 3));
     }
-
-    {
-        u8 i;
-        for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
-            g_mag_elevators[i].drawn[0] = 0;
-            g_mag_elevators[i].drawn[1] = 0;
-        }
-    }
-    enemy_init();
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
     s_carry_drawn[0] = 0;
@@ -278,13 +271,14 @@ static void enter_door(u8 dst_col, u8 dst_row) {
 static void check_doors(void) {
     u8 j_col = (u8)(((s_px8 >> 3) + 8) >> 3);
     u8 j_row = (u8)(((s_py8 >> 3) + 29) >> 4);
-    u8 i;
-    u8 prev = bank_set(0xC1);
-    const LevelDoor* doors = (const LevelDoor*)0x6800;
-    for (i = 0; i < 23; i++) {
-        if (doors[i].src_col == j_col && doors[i].src_row == j_row) {
-            u8 dc = doors[i].dst_col;
-            u8 dr = doors[i].dst_row;
+    u8 i, prev;
+    const LevelDoor* d;
+    prev = bank_set(0xC1);
+    d = (const LevelDoor*)0x6800;
+    for (i = 0; i < 23; i++, d++) {
+        if (d->src_col == j_col && d->src_row == j_row) {
+            u8 dc = d->dst_col;
+            u8 dr = d->dst_row;
             bank_restore(prev);
             enter_door(dc, dr);
             return;
@@ -293,28 +287,33 @@ static void check_doors(void) {
     bank_restore(prev);
 }
 
-static void check_room_bonus(u8 col, u8 row) {
-    u8 prev, t, b6;
-    u16 off;
-    if (row < 74 || row >= 84 || col >= 100) return;
-    off = s_row100[row - 74] + col;
-    prev = bank_set(0xC1);
-    t = ((const u8*)0x6400)[off];
-    bank_set(0xC5);
-    b6 = TRIG_PTR[((u16)t) * 10 + 6];
-    bank_restore(prev);
-
-    if (b6 == 21) {
-        g_has_instrument = LEVEL_ID + 1;
-    } else if (b6 == 1) {
-        if (g_vinyls_count < 99) g_vinyls_count++;
-    } else {
-        return;
+static void check_room_bonus(u8 col, u8 feet_row) {
+    u8 r, prev, t;
+    if (col >= 100) return;
+    for (r = feet_row; r >= (feet_row - 2) && r >= 74; r--) {
+        if (r >= 84) continue;
+        u16 off = s_row100[r - 74] + col;
+        prev = bank_set(0xC1);
+        t = ((const u8*)0x6400)[off];
+        if (t == 208) {
+            if (g_vinyls_count < 99) g_vinyls_count++;
+        } else if (t == 159) {
+            g_has_instrument = LEVEL_ID + 1;
+        } else {
+            bank_restore(prev);
+            continue;
+        }
+        ((u8*)0x6400)[off] = 96;
+        bank_restore(prev);
+        if (s_rep_n < 4) {
+            s_rep_col[s_rep_n] = col;
+            s_rep_row[s_rep_n] = r;
+            s_rep_tile[s_rep_n] = 96;
+            s_rep_pages[s_rep_n] = 3;
+            s_rep_n++;
+        }
+        break;
     }
-    prev = bank_set(0xC1);
-    ((u8*)0x6400)[off] = 96;
-    bank_restore(prev);
-    render_tile_world(96, col, row, g_cam_x4, g_cam_row);
 }
 
 static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
@@ -336,12 +335,15 @@ static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
 }
 
 static void carry_restore(u8 page) {
+    u8 prev;
     if (!s_carry_drawn[page]) return;
+    prev = bank_set(0xC7);
     g_moving_dst = s_carry_dst[page];
-    g_moving_background = (u16)s_crate_bg[page];
+    g_moving_background = CRATE_BG_PAGE(page);
     g_moving_span = s_carry_drawn_span[page];
     g_moving_rows = s_carry_drawn_rows[page];
     moving_restore_box();
+    bank_restore(prev);
     s_carry_drawn[page] = 0;
 }
 
@@ -355,10 +357,11 @@ static void carry_draw(u8 page) {
     if (s_carry_state == 0) {
         if (s_invuln_timer & 2) return; // Parpelleig amb en Jake
         // 1:1 DOS: centrat sobre el cap (px + 4) i recolzat a les mans (py - 15)
-        cx = (i16)((s_px8 >> 3) + 4);
+        // Snapping horitzontal parell (& ~1) per alinear amb el byte de Mode 0 (2 px/byte)
+        cx = (i16)(((s_px8 >> 3) + 4) & ~1);
         cy = (i16)((s_py8 >> 3) - 15);
     } else {
-        cx = (i16)(s_carry_x >> 3);
+        cx = (i16)((s_carry_x >> 3) & ~1);
         cy = (i16)(s_carry_y >> 3);
     }
 
@@ -382,7 +385,7 @@ static void carry_draw(u8 page) {
     s_carry_dst[page] = g_moving_dst;
     s_carry_drawn_span[page] = byte_count;
     s_carry_drawn_rows[page] = row_count;
-    g_moving_background = (u16)s_crate_bg[page];
+    g_moving_background = CRATE_BG_PAGE(page);
     g_moving_sprite = (u16)(CRATE_FLY_FRAME + ((u16)start_row << 3) + (start_byte << 1));
     g_moving_span = byte_count;
     g_moving_rows = row_count;
@@ -659,7 +662,6 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                     py = (i16)((head_row + 1) << 4);
                     s_py8 = (i16)(py * SUB);
                     s_vy = 0;
-                    if (s_carry_kind == 1 && !s_carry_state) carry_abort();
                 }
                 s_on_ground = 0;
                 s_ground_elevator = -1;
@@ -692,8 +694,8 @@ static const LevelAsset s_assets[9] = {
     { 0xC5, 0x4000, CRC_MAP, &g_file_map },
     { 0xC5, 0x6400, CRC_TRIG, &g_file_trig },
     { 0xC7, 0x4000, CRC_PFRAMES, &g_file_pframes },
-    { 0xC7, 0x7AA0, CRC_EXTRA, &g_file_extra },
-    { 0xC7, 0x78E0, CRC_ELEV, &g_file_elev },
+    { 0xC7, 0x7A20, CRC_EXTRA, &g_file_extra },
+    { 0xC0, 0x7000, CRC_ELEV, &g_file_elev },
     { 0xC5, 0x6E00, CRC_BANK5, &g_file_bank5 },
     { 0xC1, 0x5000, CRC_MUSMAIN, &g_file_musmain },
     { 0xC0, 0x8320, CRC_ENEMI, &g_file_enemi },
@@ -742,19 +744,17 @@ void main(void) {
     // mort post-boot (l'stub corre de scratch 0x8000 amb s_fdc_ready=1 i
     // no recopia mai): la imatge (0x4000-0x7408) el reaprofta sencer.
     // a scratch central 0x8320 (lliure: motor a 0x8000-0x8311, buffers a
-    // 0xB800+; 0x8320+13320 = 0xB728 < 0xB800) i es copia a C6:0x4000 amb
+    // 0xBC00+; 0x8320+13609 = 0xB849 < 0xBC00) i es copia a C6:0x4000 amb
     // memcpy paginat (mateix patro que hud_render: bank_set + feina +
     // restore; la ISR hi niua consistent via _g_bank). OJO: l'scratch HA
-    // d'acabar abans de 0xB800: el motor llegeix 1 sector de farciment de
-    // mes (28 en comptes de 27) al buffer 0xB800, que trepitjaria la cua
+    // d'acabar abans de 0xBC00: el motor llegeix 1 sector de farciment de
+    // mes (28 en comptes de 27) al buffer 0xBC00, que trepitjaria la cua
     // del fitxer (vist 10/26: 8 bytes E5 al final = CRC fail). El prime hi
     // escriu a sobre despres. El CRC es sobre la copia (el que corre).
     {
         u8 prevx = bank_set(0xC6);
         cpct_memcpy((void*)0x4000, (const void*)0x8320,
                     (u16)(g_file_enemi.ondisk_bytes - 128));
-        bank_restore(prevx);
-        prevx = bank_set(0xC6);
         if (fdc_crc16((const u8*)0x4000,
                       (u16)(g_file_enemi.ondisk_bytes - 128)) != CRC_ENEMI) {
             cpct_setBorder(0x48);
@@ -825,12 +825,11 @@ void main(void) {
             u8 up_key = (cpct_isKeyPressed(Key_CursorUp) || cpct_isKeyPressed(Joy0_Up));
             if (up_key && !grab) { jump = 1; }
 
-            // 1:1 DOS Door Trigger: SPACE + UP
-            if (grab && up_key && (!s_up_prev || !s_grab_prev) && !s_climb_prev) {
+            // 1:1 DOS Door Trigger: SPACE + UP (level.c:1210)
+            if (grab && up_key && !s_up_prev && !s_climb_prev) {
                 check_doors();
             }
             s_up_prev = up_key;
-            s_grab_prev = grab;
         }
 
         if (s_dazed_timer) {
@@ -858,15 +857,17 @@ void main(void) {
         bc_c = crouch;
         bc_d = grab;
         moving_update();
-        enemy_update();
+        if (!s_in_room) {
+            enemy_update();
+        }
 
         // 1:1 DOS Col·lisió Jake <-> Enemics / Projectils (level.c:1583-1658)
         if (s_invuln_timer) {
             s_invuln_timer--;
-        } else {
+        } else if (!s_in_room) {
             i16 px = (i16)(s_px8 >> 3);
             i16 py = (i16)(s_py8 >> 3);
-            if (enemy_check_player_hit(px, py)) {
+            if (enemy_check_player_hit(px, py, crouch)) {
                 if (g_hearts_count > 0) g_hearts_count--;
                 s_invuln_timer = 75; // 1:1 DOS blinking_counter = 75
                 s_dazed_timer = 20;  // 1:1 DOS special_anim = 18 (estrelletes al cap)
@@ -881,13 +882,27 @@ void main(void) {
                     s_px8 = (i16)(LEVEL_START_PX * SUB);
                     s_py8 = (i16)(LEVEL_START_PY * SUB);
                     s_vx = 0; s_vy = 0;
+                    s_on_ground = 1;
+                    s_ground_elevator = -1;
                     g_cam_x4 = LEVEL_CAM0_X4;
                     g_cam_row = LEVEL_CAM0_ROW;
                     s_invuln_timer = 75;
                     s_dazed_timer = 0;
                     s_in_room = 0;
                     s_scrolling_locked = 0;
+                    s_carry_kind = 0;
+                    s_carry_state = 0;
+                    s_carry_drawn[0] = 0;
+                    s_carry_drawn[1] = 0;
+                    s_have_drawn[0] = 0;
+                    s_have_drawn[1] = 0;
+                    s_rep_n = 0;
+                    enemy_room_exit(0, 0);
+                    palette_black();
                     repaint_both_buffers();
+                    moving_draw(0, g_cam_x4, g_cam_row);
+                    moving_draw(1, g_cam_x4, g_cam_row);
+                    palette_restore();
                 }
             }
         }
@@ -956,22 +971,24 @@ void main(void) {
         }
         // Restore LIFO (invers al draw world->enemic->jugador):
         // l'enemic abans que els ascensors (els dibuixa a sobre).
-        enemy_restore(s_back_page);
-        moving_restore(s_back_page, (move_x != 0 || move_y != 0));
-        moving_popup_restore(s_back_page);
+        if (!s_in_room) {
+            enemy_restore(s_back_page);
+            moving_restore(s_back_page, (move_x != 0 || move_y != 0));
+            moving_popup_restore(s_back_page);
+            sync_backbuffer(page_dx, page_dy, g_cam_x4, g_cam_row);
+            bc_a = s_back_page;
+            moving_draw_conveyor_tiles();
+        }
         world_flush_repaints();
-
-        // Actualitzar tires d'scroll i spans animats del nivell + reixes de primer pla al Banc 5
-        sync_backbuffer(page_dx, page_dy, g_cam_x4, g_cam_row);
         g_vram_start = camera_ma(g_cam_x4, g_cam_row);
         hud_render(s_back_page, (page_dx != 0 || page_dy != 0));
-        bc_a = s_back_page;
-        moving_draw_conveyor_tiles();
         cur = select_player_anim(s_climb_prev, move, jump, crouch, (i16)dsy);
 
         // Dibuixar objectes mòbils i sprites sobre el fons actualitzat
-        moving_draw(s_back_page, g_cam_x4, g_cam_row);
-        enemy_draw(s_back_page);
+        if (!s_in_room) {
+            moving_draw(s_back_page, g_cam_x4, g_cam_row);
+            enemy_draw(s_back_page);
+        }
 
         g_spr_y = (u8)dsy;
         g_spr_x = (u8)dsx;
@@ -981,14 +998,13 @@ void main(void) {
             const u8* fr_addr = (const u8*)spr_addr;
             u8 prev_b = bank_set(PLAYER_FRAMES_BANK);
             // Contracte hflip (verificat en viu): C7 paginat als dos costats.
-            // flip escriu i blit llegeix C7:0x7700 (gap lliure 0x7120-0x78E0,
-            // 480 B justos fins ELEV); la LUT es llegeix de C7:0x7F00 (B=0x7F).
-            // NO cridar amb un altre banc paginat (llegiria LUT/dest brossa).
+            // flip escriu i blit llegeix C7:0x7840 (gap lliure fins EXTRA 0x7A20);
+            // la LUT es llegeix de C7:0x7F00 (B=0x7F).
             if (g_face == 0) {
                 sprite_blit_player(fr_addr);
             } else {
-                sprite_hflip(fr_addr, (u8*)0x7700);
-                sprite_blit_player((const u8*)0x7700);
+                sprite_hflip(fr_addr, (u8*)0x7840);
+                sprite_blit_player((const u8*)0x7840);
             }
             bank_restore(prev_b);
             s_have_drawn[s_back_page] = 1;

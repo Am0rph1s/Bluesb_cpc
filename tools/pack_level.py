@@ -137,9 +137,9 @@ def build_level_pkg(level_idx=0):
         else:
             trig_entries.append((p[1], p[2], p[3], p[4], p[5], 0, 0, 0, 0, 0, b6))
 
-    # Posició de la guitarra/instrument col·leccionable al mapa (si es troba en una sala secreta >fila 71,
-    # es col·loca automàticament a la sala del nivell corresponent, col=42, row=61 a Magasin)
-    inst_col, inst_row, inst_tile = (42, 61, 159) if level_idx == 0 else (0, 0, 0)
+    # L'instrument col·leccionable obligatori viu exclusivament a la sala secreta (ROOMS0.BIN).
+    # Al mapa principal no hi ha d'aparèixer duplicat.
+    inst_col, inst_row, inst_tile = (0, 0, 0)
 
     lines = [
         "#ifndef LEVEL_PKG_H",

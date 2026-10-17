@@ -165,7 +165,7 @@ void s_start(void) {
                                 ; portar brossa de reboot calent: sense aixo
                                 ; la ISR saltaria la musica per sempre.
         ld      a, #0x80
-        ld      (0xBA0A), a     ; LED-ink SILENCIOS (NAU_FDC_BLINK bit 7). Si no,
+        ld      (0xBE0A), a     ; LED-ink SILENCIOS (NAU_FDC_BLINK bit 7). Si no,
                                 ; el motor parpelleja la ink 2 (groc/negre) per
                                 ; sector i la brossa de pantalla te pixels en
                                 ; tinta 2 = punts grocs parpellejants. El LED

@@ -44,15 +44,11 @@ typedef struct {
     u8 shoot_timer; // aturat per disparar (1:1 DOS)
     u8 dead;        // 0=viu, 1=tocat per caixa (cau lliure), 2=fora de pantalla
     i8 slot[2];     // slot de fons per pagina (-1 = no dibuixat)
-    u8 drawn_byte_count[2];
-    u8 drawn_row_count[2];
-    u16 drawn_dst[2];
 } Enemy;
 
 typedef struct {
     i16 x;
     i16 y8;
-    i16 sy;
     u8 kind;
     u8 vx;
     u8 base_cell;
@@ -83,6 +79,9 @@ static u8 s_proj_bg[2][64];
 #define BG_BASE ((u16)0x7A00)
 #define BG_SLOT(s) (BG_BASE + (((u16)((u8)(s))) << 8))
 static i8 s_bg_owner[BG_SLOTS];
+static u16 s_slot_dst[BG_SLOTS];
+static u8 s_slot_span[BG_SLOTS];
+static u8 s_slot_rows[BG_SLOTS];
 
 // Buffer dinàmic de flip sota demanda per a enemics encarats a l'esquerra:
 static u8 s_flip_buffer[ENEMY_FRAME_SIZE];
@@ -100,38 +99,38 @@ extern void en2_flip_cell(const u8* src, u8* dst);
 // 3 iaies, 5 policies, 2 peixos, 3 ocells, 2 grangers, 1 cambrera, 4 rockers.
 static const Spawn s_spawn[ENEMY_N] = {
     // 3 Iaies (kind 15):
-    { 464, 1104 << 3, 1136, 15, 36,  1 }, //  0: Iaia 1 (PB Store)
-    { 632, 1104 << 3, 1136, 15, 36,  1 }, //  1: Iaia 2 (PB Bar)
-    { 600,  976 << 3, 1008, 15, 36,  1 }, //  2: Iaia 3 (1r pis botiga)
+    { 464, 1104 << 3, 15, 36,  1 }, //  0: Iaia 1 (PB Store)
+    { 632, 1104 << 3, 15, 36,  1 }, //  1: Iaia 2 (PB Bar)
+    { 600,  976 << 3, 15, 36,  1 }, //  2: Iaia 3 (1r pis botiga)
 
     // 5 Policies (kind 4):
-    { 752, 1104 << 3, 1136,  4, 24,  3 }, //  3: Policia 1 (PB dreta botigues)
-    { 816,  784 << 3,  816,  4,  0,  3 }, //  4: Policia 2 (replà racó 1r ascensor: ESTÀTIC 1:1 DOS)
-    { 280,  976 << 3, 1008,  4, 24,  3 }, //  5: Policia 3 (1r pis sota escala)
-    { 776,  512 << 3,  544,  4,  0,  3 }, //  6: Policia 4 (2n pis replà ascensors: ESTÀTIC)
-    { 696,  336 << 3,  368,  4, 24,  3 }, //  7: Policia 5 (3r pis replà superior ascensors)
+    { 752, 1104 << 3,  4, 24,  3 }, //  3: Policia 1 (PB dreta botigues)
+    { 816,  784 << 3,  4,  0,  3 }, //  4: Policia 2 (replà racó 1r ascensor: ESTÀTIC 1:1 DOS)
+    { 280,  976 << 3,  4, 24,  3 }, //  5: Policia 3 (1r pis sota escala)
+    { 776,  512 << 3,  4,  0,  3 }, //  6: Policia 4 (2n pis replà ascensors: ESTÀTIC)
+    { 696,  336 << 3,  4, 24,  3 }, //  7: Policia 5 (3r pis replà superior ascensors)
 
     // 2 Peixos (kind 8):
-    { 416,  512 << 3,  544,  8, 16,  0 }, //  8: Peix 1 (Peixera 1)
-    { 584,  512 << 3,  544,  8, 16,  0 }, //  9: Peix 2 (Peixera 2)
+    { 416,  512 << 3,  8, 16,  0 }, //  8: Peix 1 (Peixera 1)
+    { 584,  512 << 3,  8, 16,  0 }, //  9: Peix 2 (Peixera 2)
 
     // 3 Ocells (kind 19):
-    { 240,   48 << 3,   80, 19, 32,  5 }, // 10: Ocell 1 (Núvols esquerra)
-    { 520,   48 << 3,   80, 19, 32,  5 }, // 11: Ocell 2 (Núvols centre)
-    { 816,   48 << 3,   80, 19, 32,  5 }, // 12: Ocell 3 (Núvols dreta)
+    { 240,   48 << 3, 19, 32,  5 }, // 10: Ocell 1 (Núvols esquerra)
+    { 520,   48 << 3, 19, 32,  5 }, // 11: Ocell 2 (Núvols centre)
+    { 816,   48 << 3, 19, 32,  5 }, // 12: Ocell 3 (Núvols dreta)
 
     // 2 Grangers (kind 18):
-    { 360,  336 << 3,  368, 18, 24,  7 }, // 13: Granger 1 (escala vinils esq)
-    { 504,  336 << 3,  368, 18, 24,  7 }, // 14: Granger 2 (escala vinils dreta)
+    { 360,  336 << 3, 18, 24,  7 }, // 13: Granger 1 (escala vinils esq)
+    { 504,  336 << 3, 18, 24,  7 }, // 14: Granger 2 (escala vinils dreta)
 
     // 1 Cambrera (kind 17):
-    {  72,  624 << 3,  656, 17, 20,  9 }, // 15: Cambrera (Bar/Restaurant 1r pis)
+    {  72,  624 << 3, 17, 20,  9 }, // 15: Cambrera (Bar/Restaurant 1r pis)
 
     // 4 Rockers (kind 20):
-    { 440,  976 << 3, 1008, 20, 24, 11 }, // 16: Rocker 1 (1r pis davant botiga)
-    { 632,  784 << 3,  816, 20, 24, 11 }, // 17: Rocker 2 (2n pis dreta)
-    {  80,  480 << 3,  512, 20, 24, 11 }, // 18: Rocker 3 (prop Bar/Restaurant)
-    { 592,  736 << 3,  768, 20, 24, 11 }, // 19: Rocker 4 (2n pis)
+    { 440,  976 << 3, 20, 24, 11 }, // 16: Rocker 1 (1r pis davant botiga)
+    { 632,  784 << 3, 20, 24, 11 }, // 17: Rocker 2 (2n pis dreta)
+    {  80,  480 << 3, 20, 24, 11 }, // 18: Rocker 3 (prop Bar/Restaurant)
+    { 592,  736 << 3, 20, 24, 11 }, // 19: Rocker 4 (2n pis)
 };
 
 static void en2_spawn_proj(u8 kind, u8 ht, u8 row_off, i16 x, i16 y, i16 vx, i16 vy, u8 cd) {
@@ -162,8 +161,6 @@ void en2_init(void) {
         e->dead = 0;
         e->slot[0] = -1;
         e->slot[1] = -1;
-        e->drawn_row_count[0] = 0;
-        e->drawn_row_count[1] = 0;
     }
     for (i = 0; i < BG_SLOTS; i++) s_bg_owner[i] = -1;
     s_proj.kind = 0;
@@ -186,7 +183,7 @@ void en2_update(void) {
         i16 nx, dx;
 
         if (sp->x < (i16)(view_x - 70) || sp->x > (i16)(view_x + 230) ||
-            sp->sy < (i16)(view_y - 100) || sp->sy > (i16)(view_y + 350))
+            sp->y8 < (i16)((view_y - 132) << 3) || sp->y8 > (i16)((view_y + 318) << 3))
             continue;
 
         if (e->dead) {
@@ -202,6 +199,27 @@ void en2_update(void) {
         }
 
         y = (i16)(e->y8 >> 3);
+
+        if (sp->kind == 4 || sp->kind == 17) {
+            i16 dy = jake_y - y;
+            if (dy >= -16 && dy <= 24) {
+                i16 dx_jake = jake_x - e->x;
+                i16 abs_dx = (dx_jake >= 0) ? dx_jake : -dx_jake;
+                u8 is_cop = (sp->kind == 4);
+                if (abs_dx > 8 && abs_dx < (is_cop ? 75 : 85)) {
+                    e->dir = (dx_jake >= 0) ? 1 : -1;
+                    e->shoot_timer = 2; // Manté aturat mentre Jake estigui a distància de tir
+                    if (!s_proj.kind && !s_proj.cooldown) {
+                        i16 sx = (e->dir > 0) ? (i16)(e->x + 14) : (i16)(e->x - 6);
+                        if (is_cop) {
+                            en2_spawn_proj(4, 6, 13, sx, (i16)(y + 8), (e->dir > 0) ? 64 : -64, 0, 50);
+                        } else {
+                            en2_spawn_proj(9, 11, 19, sx, (i16)(y + 3), (e->dir > 0) ? 40 : -40, 0, 50);
+                        }
+                    }
+                }
+            }
+        }
 
         if (e->shoot_timer) {
             e->shoot_timer--;
@@ -242,15 +260,14 @@ void en2_update(void) {
             if (nx < 0) { nx = 0; e->dir = 1; }
             if (nx > (i16)(LEVEL_W_PX - ENEMY_W)) { nx = (i16)(LEVEL_W_PX - ENEMY_W); e->dir = -1; }
             {
-                u16 frow = (u16)(((i16)(y + ENEMY_HT)) >> 4);
-                u16 brow = (u16)(((i16)(y + ENEMY_HT - 1)) >> 4);
-                u16 pcol = (u16)(((e->x >> 3) + (e->dir > 0 ? 2 : -2)));
-                u16 acol = (u16)(((nx + (e->dir > 0 ? 12 : 2)) >> 3));
+                u8 frow = (u8)((y + ENEMY_HT) >> 4);
+                u8 brow = (u8)((y + ENEMY_HT - 1) >> 4);
+                u16 pcol = (u16)((e->x >> 3) + (e->dir > 0 ? 2 : -2));
+                u16 acol = (u16)((nx + (e->dir > 0 ? 12 : 2)) >> 3);
                 u8 bit = (u8)(e->dir > 0 ? 1 : 2);
-                if (tile_type(pcol, brow) == 1 || tile_type(pcol, frow) == 1) {
+                if (tile_type(pcol, brow) == 1 || tile_type(pcol, frow) == 1 ||
+                    (tile_flags(acol, brow) & bit) || (brow > 0 && (tile_flags(acol, (u8)(brow - 1)) & bit))) {
                     e->dir = (i8)-e->dir;   // trigger Titus DOS o fi de terra
-                } else if ((tile_flags(acol, brow) & bit) || (brow > 0 && (tile_flags(acol, (u16)(brow - 1)) & bit))) {
-                    e->dir = (i8)-e->dir;   // paret davant
                 } else {
                     e->x = nx;
                 }
@@ -259,16 +276,16 @@ void en2_update(void) {
             if (!e->on_ground) {
                 i16 prev_feet = (i16)(y + ENEMY_HT);
                 i16 feet;
-                u16 c1, c2, trow;
+                u8 trow;
                 e->vy = (i16)(e->vy + ENEMY_GRAV);
                 if (e->vy > ENEMY_VYMAX) e->vy = ENEMY_VYMAX;
                 e->y8 = (i16)(e->y8 + e->vy);
                 y = (i16)(e->y8 >> 3);
                 feet = (i16)(y + ENEMY_HT);
-                c1 = (u16)((e->x + 3) >> 3);
-                c2 = (u16)((e->x + 12) >> 3);
-                trow = (u16)(feet >> 4);
+                trow = (u8)(feet >> 4);
                 if (trow < LEVEL_MAP_H) {
+                    u16 c1 = (u16)((e->x + 3) >> 3);
+                    u16 c2 = (u16)((e->x + 12) >> 3);
                     i16 surf = (i16)(trow << 4);
                     if ((is_floor_solid(c1, trow, 0, 0) || is_floor_solid(c2, trow, 0, 0)) &&
                         prev_feet <= (surf + 8) && feet >= surf) {
@@ -278,11 +295,13 @@ void en2_update(void) {
                     }
                 }
             } else if ((e->tick & 3) == 0) {
-                u16 c1 = (u16)((e->x + 3) >> 3);
-                u16 c2 = (u16)((e->x + 12) >> 3);
-                u16 trow = (u16)((y + ENEMY_HT) >> 4);
-                if (trow < LEVEL_MAP_H && !is_floor_solid(c1, trow, 0, 0) && !is_floor_solid(c2, trow, 0, 0)) {
-                    e->on_ground = 0;
+                u8 trow = (u8)((y + ENEMY_HT) >> 4);
+                if (trow < LEVEL_MAP_H) {
+                    u16 c1 = (u16)((e->x + 3) >> 3);
+                    u16 c2 = (u16)((e->x + 12) >> 3);
+                    if (!is_floor_solid(c1, trow, 0, 0) && !is_floor_solid(c2, trow, 0, 0)) {
+                        e->on_ground = 0;
+                    }
                 }
             }
         }
@@ -295,26 +314,6 @@ void en2_update(void) {
                     i16 diff = jake_x - e->x;
                     if (diff > -16 && diff < 16) {
                         en2_spawn_proj(10, 13, 0, (i16)(e->x + 4), (i16)(y + 16), 0, 16, 40);
-                    }
-                }
-            } else if (sp->kind == 4 || sp->kind == 17) {
-                // Policia / Cambrera: s'atura a una certa distància per disparar (1:1 DOS)
-                i16 dy = jake_y - y;
-                if (dy >= -16 && dy <= 24) {
-                    i16 dx_jake = jake_x - e->x;
-                    i16 abs_dx = (dx_jake >= 0) ? dx_jake : -dx_jake;
-                    u8 max_dist = (sp->kind == 4) ? 75 : 85;
-                    if (abs_dx > 8 && abs_dx < max_dist) {
-                        e->dir = (dx_jake >= 0) ? 1 : -1;
-                        e->shoot_timer = 24; // S'atura completament per disparar
-                        {
-                            i16 sx = (e->dir > 0) ? (i16)(e->x + 14) : (i16)(e->x - 6);
-                            if (sp->kind == 4) {
-                                en2_spawn_proj(4, 6, 13, sx, (i16)(y + 14), (e->dir > 0) ? 64 : -64, 0, 50);
-                            } else {
-                                en2_spawn_proj(9, 11, 19, sx, (i16)(y + 12), (e->dir > 0) ? 40 : -40, 0, 50);
-                            }
-                        }
                     }
                 }
             }
@@ -383,15 +382,13 @@ void en2_restore(void) {
     for (k = BG_PAGESLOTS; k > 0; k--) {
         i8 s = (i8)((page ? 3 : 0) + (k - 1));
         i8 idx = s_bg_owner[(u8)s];
-        Enemy* e;
         if (idx < 0) continue;
-        e = &s_enemies[(u8)idx];
-        g_moving_dst = e->drawn_dst[page];
+        g_moving_dst = s_slot_dst[(u8)s];
         g_moving_background = BG_SLOT(s);
-        g_moving_span = e->drawn_byte_count[page];
-        g_moving_rows = e->drawn_row_count[page];
+        g_moving_span = s_slot_span[(u8)s];
+        g_moving_rows = s_slot_rows[(u8)s];
         moving_restore_box();
-        e->slot[page] = -1;
+        s_enemies[(u8)idx].slot[page] = -1;
         s_bg_owner[(u8)s] = -1;
     }
 }
@@ -446,7 +443,7 @@ void en2_draw(void) {
         }
 
         g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
-        e->drawn_dst[page] = g_moving_dst;
+        s_slot_dst[(u8)s] = g_moving_dst;
         g_moving_background = BG_SLOT(s);
         g_moving_sprite = (u16)(frame + ((u16)start_row << 4) + (start_byte << 1));
         g_moving_span = byte_count;
@@ -454,8 +451,8 @@ void en2_draw(void) {
         g_moving_spr_skip = (u8)(16 - (byte_count << 1));
         moving_blit_box();
 
-        e->drawn_byte_count[page] = byte_count;
-        e->drawn_row_count[page] = row_count;
+        s_slot_span[(u8)s] = byte_count;
+        s_slot_rows[(u8)s] = row_count;
     }
 
     // 2. Dibuixa projectil si està actiu:
@@ -503,6 +500,7 @@ void en2_draw(void) {
 void en2_check_player_hit(void) {
     i16 px = (i16)bc_a;
     i16 py = (i16)bc_b;
+    u8 crouch = (u8)bc_c;
     u8 i;
     Enemy* e;
 
@@ -510,11 +508,16 @@ void en2_check_player_hit(void) {
 
     // 1. Projectil (bala, plat, ou):
     if (s_proj.kind) {
-        if ((u16)(s_proj.x - px + 6) < 14 &&
-            (u16)((s_proj.y8 >> 3) - py + 10) < 38) {
-            s_proj.kind = 0;
-            bc_r = 1;
-            return;
+        if ((u16)(s_proj.x - px + 6) < 14) {
+            i16 proj_y = (i16)(s_proj.y8 >> 3);
+            i16 jake_top = crouch ? (i16)(py + 18) : (i16)(py + 4);
+            i16 jake_bottom = (i16)(py + 32);
+            i16 proj_bottom = (i16)(proj_y + s_proj.ht);
+            if (proj_bottom > jake_top && proj_y < jake_bottom) {
+                s_proj.kind = 0;
+                bc_r = 1;
+                return;
+            }
         }
     }
 
@@ -551,4 +554,29 @@ void en2_check_crate_hit(void) {
         }
     }
 }
+
+void en2_room_exit(void) {
+    i16 px = (i16)bc_a;
+    i16 py = (i16)bc_b;
+    u8 i;
+    Enemy* e = s_enemies;
+
+    for (i = 0; i < BG_SLOTS; i++) s_bg_owner[i] = -1;
+    for (i = 0; i < ENEMY_N; i++, e++) {
+        e->slot[0] = -1;
+        e->slot[1] = -1;
+
+        if (!e->dead && (px || py)) {
+            i16 dx = (i16)(e->x - px);
+            if ((u16)(dx + 72) < 144 && (u16)((e->y8 >> 3) - py + 24) < 48) {
+                e->dir = (dx >= 0) ? 1 : -1;
+                e->x = (i16)(px + ((dx >= 0) ? 80 : -80));
+            }
+        }
+    }
+    s_proj.drawn_row_count[0] = 0;
+    s_proj.drawn_row_count[1] = 0;
+    s_proj.kind = 0;
+}
+
 

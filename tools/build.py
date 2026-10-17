@@ -25,7 +25,7 @@ SDASZ80 = r"C:\Program Files\SDCC\bin\sdasz80.exe"
 CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "15000",
              "--disable-warning", "110"]
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0x3780", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0x3880", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 
@@ -75,7 +75,7 @@ DSKNAME8 = "BLUESB"
 # (engine/enemy_table.s, slots init/update/restore/draw); codi+dades
 # fins 0x8000 (pool de fons inclos). ENEMI.BIN = frames + imatge codi.
 ENEMY_BASE = 0x5C00
-ENEMY_DATA = 0x74A0  # codi (0x5C00..~0x749F) + dades C6 (fins ~0x78E0, marge fins LUT 0x7900 / BG_BASE 0x7A00)
+ENEMY_DATA = 0x7530  # codi (0x5C00..~0x7529) + dades C6 (fins ~0x78E8, marge fins LUT 0x7900 / BG_BASE 0x7A00)
 ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 ENEMY_C_SOURCES = ["src/enemy.c"]
 ENEMY_ASM_SOURCES = ["engine/enemy_table.s"]
@@ -413,8 +413,8 @@ def report_and_assert_memory_budget(map_path):
         print("\n[FATAL] _CODE ha envait _DATA per %d bytes! (code_end=0x%04X > data_start=0x%04X)" %
               (-code_margin, code_end, s_data))
         sys.exit(1)
-    if data_end > 0x3C00:
-        print("\n[FATAL] _DATA ha trepitjat el canari de pila (data_end=0x%04X > 0x3C00)! Mou CANARY_ADDR." %
+    if data_end > 0x3D00:
+        print("\n[FATAL] _DATA ha trepitjat el canari de pila (data_end=0x%04X > 0x3D00)! Mou CANARY_ADDR." %
               data_end)
         sys.exit(1)
     if stack_margin < 256:

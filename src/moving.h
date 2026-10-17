@@ -27,7 +27,7 @@ typedef struct {
     u8 drawn_row_count[2];
 } MovingElevator;
 
-#define ELEVATOR_BG_BASE 0x70C0
+#define ELEVATOR_BG_BASE 0x7200
 #define elevator_bg_ptr(idx, page) ((u8*)(ELEVATOR_BG_BASE + (((u16)(idx) << 1) + (page)) * ELEVATOR_BG_SIZE))
 
 extern MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
@@ -55,7 +55,7 @@ extern i8  s_ground_elevator;
 extern u8  g_face;
 extern u8  s_anim_idx, s_anim_timer;
 extern u8  s_rep_n;
-extern u8  s_rep_col[3], s_rep_row[3], s_rep_tile[3], s_rep_pages[3];
+extern u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
 
 // Estat d'ítems, bonus i malus (actualitzat al Banc 5):
 extern u8  g_vinyls_count;

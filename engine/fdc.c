@@ -6,8 +6,8 @@
 
 // Buffers de treball del controlador NEC765 en RAM base (no bancable).
 // Adreces fixes referenciades per assets_fdc.s (ASSETS_FDC_BUF/WORK).
-u8 __at(0xB800) g_fdc_buf[512];
-u8 __at(0xBA00) g_fdc_work[16];
+u8 __at(0xBC00) g_fdc_buf[512];
+u8 __at(0xBE00) g_fdc_work[16];
 
 // Paràmetres compartits amb el mòdul ASM assets_fdc.s
 u16 g_fdc_ondisk_bytes;

@@ -64,14 +64,14 @@ _s_bloon_old_y_80:  .db 0
 _s_bloon_old_x_80:  .db 0
 s_bloon_cur_x:      .db 0
 
-;; Buffers de restauració de fons d'en Jake reubicats al Banc 7 (0x7520..0x76FF)
-_s_player_bg_c0 = 0x7520
-_s_player_bg_80 = 0x7610
+;; Buffers de restauració de fons d'en Jake reubicats al Banc 7 (0x7660..0x783F)
+_s_player_bg_c0 = 0x7660
+_s_player_bg_80 = 0x7750
 
-;; Buffers de restauració de fons per a objectes portats (globus i paraigües)
-;; 10 bytes x 32 linies = 320 bytes per pagina a _DATA resident
-_s_carry_bg_c0:     .ds 320
-_s_carry_bg_80:     .ds 320
+;; Buffers de restauració de fons per a objectes portats (globus i paraigües) al Banc 7
+;; 10 bytes x 32 linies = 320 bytes per pagina (allibera 640 B de _DATA resident)
+_s_carry_bg_c0 = 0x7100
+_s_carry_bg_80 = 0x7240
 
 
 
@@ -553,6 +553,11 @@ _sprite_restore_carry::
 2$:
     ld      (s_bg_read_ptr), hl
 
+    ld      a, (_g_bank)
+    push    af
+    ld      a, #0xC7
+    call    _bank_set
+
     dec     c
     jr      nz, umbr_rst_start
 
@@ -571,6 +576,8 @@ bloon_rst_line_loop:
     call    sprite_step_de
     pop     bc
     djnz    bloon_rst_line_loop
+    pop     af
+    call    _bank_restore
     ret
 
 umbr_rst_start:
@@ -587,6 +594,8 @@ umbr_rst_line_loop:
     call    sprite_step_de
     pop     bc
     djnz    umbr_rst_line_loop
+    pop     af
+    call    _bank_restore
     ret
 
 
@@ -651,7 +660,7 @@ _sprite_blit_balloon::
     ld      bc, #_s_carry_bg_80
 3$:
 
-    ld      hl, #0x7B20         ;; BALLOON_SPRITE_FRAME al Banc 7 (0x7AA0+128)
+    ld      hl, #0x7AA0         ;; BALLOON_SPRITE_FRAME al Banc 7 (0x7A20+128)
     ld      a, #28              ;; 28 linies
     ld      (s_line_cnt), a
 
@@ -736,7 +745,7 @@ _sprite_blit_umbrella::
     ld      bc, #_s_carry_bg_80
 6$:
 
-    ld      hl, #0x7C00         ;; UMBRELLA_FRAME al Banc 7 (0x7AA0+128+224)
+    ld      hl, #0x7B80         ;; UMBRELLA_FRAME al Banc 7 (0x7A20+128+224)
     ld      a, #32              ;; 32 linies
     ld      (s_line_cnt), a
 

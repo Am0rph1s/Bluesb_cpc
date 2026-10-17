@@ -168,11 +168,26 @@ _b5_world_reset_tile::
     ld      l, a
     set     6, h                ;; HL = 0x4000 + (row << 7) + col
     ld      a, (hl)             ;; A = n = *mp
+    push    hl
+    ld      d, #8
 1$:
-    dec     hl
+    inc     hl                  ;; 1:1 DOS (level.c:832): cerca fons cap a la DRETA primer
     cp      (hl)
-    jr      z, 1$
-    ld      c, (hl)             ;; C = m != n
+    jr      nz, 3$
+    dec     d
+    jr      nz, 1$
+    pop     hl
+    push    hl
+    ld      d, #8
+2$:
+    dec     hl                  ;; Fallback cap a l'esquerra si a la dreta no hi ha fons
+    cp      (hl)
+    jr      nz, 3$
+    dec     d
+    jr      nz, 2$
+3$:
+    ld      c, (hl)             ;; C = m != n (fons trobat netament)
+    pop     hl                  ;; equilibra pila
     jr      b5_set_tile_ebc$
 
 ;; ============================================================

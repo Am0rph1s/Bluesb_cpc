@@ -43,12 +43,12 @@ void moving_update(void) { call_banked(0xC5, BC_UPDATE); }
 
 void moving_popup_restore(u8 page) { bc_a = page; call_banked(0xC5, BC_RESTORE); }
 
-// Frames d'ascensor al Banc 7 (ELEV.BIN a 0x78E0, 2x224 B).
-#define ELEVATOR_FRAMES_BASE ((const u8*)0x78E0)
+// Frames d'ascensor al Banc C1 (ELEV.BIN a 0x7000, 2x224 B).
+#define ELEVATOR_FRAMES_BASE ((const u8*)0x7000)
 #define ELEVATOR_FRAME_SIZE  224
 
 // CP-2.2b: restore/draw SÓN residents (el codi bancat no pot niuar de banc:
-// en commutar, el propi codi a 0x4000-0x7FFF desapareix). Els bank_set(C7)
+// en commutar, el propi codi a 0x4000-0x7FFF desapareix). Els bank_set(C1)
 // aquí són segurs (codi central, sempre mapejat).
 void moving_restore(u8 page, u8 force) {
     u8 prev_bank;
@@ -56,7 +56,7 @@ void moving_restore(u8 page, u8 force) {
     if (page > 1) return;
     (void)force;
 
-    prev_bank = bank_set(0xC7);
+    prev_bank = bank_set(0xC0);
     // LIFO com els enemics: ordre invers al draw (solapaments nets).
     for (i = MAG_ELEVATOR_COUNT; i > 0; i--) {
         u8 idx = (u8)(i - 1);
@@ -80,7 +80,7 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
     i16 view_y = (i16)(cam_row << 3);
     if (page > 1) return;
 
-    prev_bank = bank_set(0xC7);
+    prev_bank = bank_set(0xC0);
     for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
         MovingElevator* e = &g_mag_elevators[i];
         i16 world_x;
@@ -143,9 +143,10 @@ void enemy_draw(u8 page) {
     call_banked(0xC6, EN_SLOT(2));
 }
 
-u8 enemy_check_player_hit(i16 px, i16 py) {
+u8 enemy_check_player_hit(i16 px, i16 py, u8 crouch) {
     bc_a = (u16)px;
     bc_b = (u16)py;
+    bc_c = (u16)crouch;
     call_banked(0xC6, EN_SLOT(4));
     return (u8)bc_r;
 }
@@ -157,6 +158,18 @@ u8 enemy_check_crate_hit(i16 cx, i16 cy, i16 cvx) {
     call_banked(0xC6, EN_SLOT(5));
     return (u8)bc_r;
 }
+
+void enemy_room_exit(i16 px, i16 py) {
+    u8 i;
+    for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
+        g_mag_elevators[i].drawn[0] = 0;
+        g_mag_elevators[i].drawn[1] = 0;
+    }
+    bc_a = (u16)px;
+    bc_b = (u16)py;
+    call_banked(0xC6, EN_SLOT(6));
+}
+
 
 // --- Carregador FDC banquet (F1) ---
 // El motor FDC (fdc.c + assets_fdc.s, TAL QUAL) viu al banc 0xC6 (FDC.BIN,
@@ -199,9 +212,9 @@ u8 fdc_load_file(u8 home_bank, const DiskFileDesc* d, u8 bk, void* ad) {
             for (i = 0; i < 2; i++) {
                 u16 off = (u16)(i << 9);
                 bank_set(0xC6);
-                cpct_memcpy((void*)0xB800, (const void*)(0x7000 + off), 512);
+                cpct_memcpy((void*)0xBC00, (const void*)(0x7000 + off), 512);
                 bank_set(0xC0);
-                cpct_memcpy((void*)(FDC_BANK_BASE + off), (const void*)0xB800, 512);
+                cpct_memcpy((void*)(FDC_BANK_BASE + off), (const void*)0xBC00, 512);
             }
             bank_restore(prev);
             if (fdc_crc16((const u8*)FDC_BANK_BASE, g_len_fdc) == g_crc_fdc) ok = 1;
@@ -212,7 +225,7 @@ u8 fdc_load_file(u8 home_bank, const DiskFileDesc* d, u8 bk, void* ad) {
     if (!file_d) return 1;
     // Blink FDC silencios (NAU_FDC_BLINK bit 7): a mig joc no es toca la
     // paleta; a l'arrencada ja informen els colors de vora.
-    *(volatile u8*)0xBA0A |= 0x80;
+    *(volatile u8*)0xBE0A |= 0x80;
     // Home 0xC0: el GAME corre en central (mai paginat); el motor hi torna.
     // (FRONT futur banked passara el seu banc aqui.)
     return FDC_BANK_ENTRY(home_bank, (const DiskFileDesc*)file_d, bk, ad);

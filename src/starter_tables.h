@@ -3,18 +3,18 @@
 #include "fdc.h"
 
 // Generat per tools/build.py. NO EDITAR.
-#define GAME_START 0x1866
-#define GAME_LEN 15069
-#define GAME_CRC 0x5E15
+#define GAME_START 0x18CF
+#define GAME_LEN 14561
+#define GAME_CRC 0x8192
 #define FDC_LEN 913
-#define CRC_FDC 0x537A
+#define CRC_FDC 0x045E
 #define FRONT_LEN 2448
-#define CRC_FRONT 0x4D70
+#define CRC_FRONT 0x10E7
 #define MUS_LEN 7315
 #define CRC_MUS 0xE76E
 // HOLD musica ISR (_g_mus_hold del GAME): el starter el neteja a
 // s_start (reboot calent podria dur brossa = ISR muda per sempre).
-#define MUS_HOLD_ADDR 0x378E
+#define MUS_HOLD_ADDR 0x388E
 
 static const u8 g_game_chs[60] = {
     0x00,0xC9,0x01,0xC1,0x01,0xC2,0x01,0xC3,0x01,0xC4,0x01,0xC5,
@@ -23,7 +23,7 @@ static const u8 g_game_chs[60] = {
     0x02,0xC9,0x03,0xC1,0x03,0xC2,0x03,0xC3,0x03,0xC4,0x03,0xC5,
     0x03,0xC6,0x03,0xC7,0x03,0xC8,0x03,0xC9,0x04,0xC1,0x04,0xC2,
 };
-static const DiskFileDesc g_file_game = { 15197, 30, g_game_chs };
+static const DiskFileDesc g_file_game = { 14689, 30, g_game_chs };
 static const u8 g_fdc_chs[4] = {
     0x05,0xC4,0x05,0xC5,
 };

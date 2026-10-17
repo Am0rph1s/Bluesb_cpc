@@ -18,9 +18,9 @@
 #define LEVEL_CAM0_ROW      124
 
 #define LEVEL_ELEVATOR_COUNT 5
-#define LEVEL_INST_COL      42
-#define LEVEL_INST_ROW      61
-#define LEVEL_INST_TILE     159
+#define LEVEL_INST_COL      0
+#define LEVEL_INST_ROW      0
+#define LEVEL_INST_TILE     0
 
 #ifndef LEVEL_PKG_DEFS_ONLY
 static const i16 s_bank_start_x[LEVEL_ELEVATOR_COUNT] = { 760, 808, 760, 808, 304 };

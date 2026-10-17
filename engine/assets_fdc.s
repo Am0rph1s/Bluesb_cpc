@@ -20,8 +20,8 @@
 ;;
 ASSETS_BANK_CFG_DEFAULT = 0xC0
 
-ASSETS_FDC_BUF          = 0xB800   ;; 512 bytes: buffer sector en RAM base
-ASSETS_FDC_WORK         = 0xBA00   ;; 16 bytes: area treball en RAM base
+ASSETS_FDC_BUF          = 0xBC00   ;; 512 bytes: buffer sector en RAM base
+ASSETS_FDC_WORK         = 0xBE00   ;; 16 bytes: area treball en RAM base
 NAU_FDC_RESULT          = ASSETS_FDC_WORK
 NAU_FDC_DRIVE           = ASSETS_FDC_WORK + 8
 NAU_FDC_CURTRACK        = ASSETS_FDC_WORK + 9

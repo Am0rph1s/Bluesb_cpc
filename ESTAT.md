@@ -1,9 +1,49 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-11 — Arquitectura de Paquet de Nivell al Banc 5 (`tools/pack_level.py` → `src/level_pkg.h` + `src/moving_bank.c`), Peixeres amb natació i superfície d'aigua animada 100% basades en `TRIG0.BIN` i `SPRITE.SQV`, reixes de primer pla data-driven i correcció definitiva del border vermell (`CANARY_ADDR = 0x3B40`). **1.143 B lliures** al Bloc 0 i **512 B de marge** al Banc 5.
+Última actualització: 2026-10-17 — Desaparició neta de discos a les habitacions (restauració de fons negre a world_flush_repaints), optimització de memòria radical (+768 B alliberats de _DATA al Banc 7; Pila lliure: 1.573 B; Marge _CODE: +205 B), correcció 1:1 DOS del salt amb caixa contra el sostre (no s'avorta la càrrega) i alineació de bytes en caixes.
 Idioma de treball amb l'usuari: **català**.
 
-## Estat vigent — Paquet de Nivell Data-Driven al Banc 5, Peixeres (Natació + Aigua Animada) i Fix del Border Vermell
+## Estat vigent — Paritat 1:1 DOS (Discos d'Habitacions, Salt amb Caixa, Memòria Neta)
+
+- **1) Recollida i Desaparició Neta de Discos a les Habitacions (Room 2 / 3a Habitació)**:
+  - **Causa**: S'havia introduït temporalment un bloqueig `if (s_in_room) { s_rep_n = 0; return; }` a `world_flush_repaints()`. Quan en Jake recollia un vinil o ítem a una sala interior (`check_room_bonus`), es posava la rajola de fons 96 a la cua de repintat (`s_rep_`), però la rutina descartava la cua immediatament sense pintar-la al doble buffer de pantalla. Els discos continuaven visibles a la pantalla tot i haver incrementat el comptador del HUD.
+  - **Solució**: Suprimit el bloqueig a `world_flush_repaints()`. Les cues entre carrer i habitacions ja queden 100% buidades a `enter_door()` (`s_rep_n = 0`), de manera que els repintats generats dins l'habitació es processen netament als dos buffers VRAM (`render_tile_world` amb tile 96).
+  - **Verificació**: Amb `tools/test_room_vinyls.py`, en Jake camina per la sala de música recollint 8 vinils. Els discos recollits desapareixen instantàniament deixant el fons negre sòlid, el comptador puja a 08 i no hi ha cap parpelleig (`verify_room2_discs_collected_A.png` i `verify_room2_discs_collected_B.png`).
+
+- **2) Salt amb Caixa contra el Sostre 1:1 DOS (La caixa es manté al cap)**:
+  - **Causa**: A `src/main.c` (línia 661), en col·lidir verticalment amunt contra un sostre sòlid (`is_ceiling_solid`), hi havia un `if (s_carry_kind == 1 && !s_carry_state) carry_abort();` erroni que destruïa la caixa i la feia desaparèixer.
+  - **Solució**: Eliminat l'avortament. Igual que a la versió original de DOS, en topar contra el sostre la velocitat vertical s'atura a zero (`s_vy = 0`), però en Jake manté la caixa agafada sobre el seu cap intacta durant el xoc i fins a tocar a terra. Verificat amb captura ZEsarUX (`verify_crate_bumped_ceiling_held.png`, `verify_crate_landed_held.png`).
+
+- **3) Optimització Radical de Memòria i Expansió de Pila i Codi**:
+  - **Causa**: Els buffers de restauració de fons d'objectes portats (`_s_carry_bg_c0` i `_s_carry_bg_80`, 640 B) i de caixes (`s_crate_bg[2][64]`, 128 B) residien a `_DATA` a la Base RAM 0, deixant la pila perillosament reduïda i el marge de `_CODE` molt ajustat.
+  - **Solució**:
+    - Reubicats els buffers de globus/paraigües al Banc 7 d'expansió (`0x7100` i `0x7240`) a `engine/sprite.s`, protegits per `bank_set(0xC7)`.
+    - Reubicats els buffers de fons de caixes al Banc 7 (`0x7380` i `0x73C0`) via macro `CRATE_BG_PAGE(p)` a `src/main.c`.
+    - **Alliberats 768 bytes nets** de la memòria resident `_DATA`!
+    - L'àrea `_DATA` s'ha reduït d'1.113 B a **només 345 B** (`0x3880..0x39D9`).
+    - L'espai lliure de pila fins a `SP = 0x3FFE` ha crescut de 933 B a **1.573 bytes lliures** (>1,5 KB!).
+    - Marge de seguretat de `_CODE` ampliat a **+205 bytes lliures** (amb `--data-loc 0x3880`).
+    - Eliminades commutacions redundants de banc al bucle d'enemics.
+
+- **4) Eliminació de Glitches Gràfics Aleatoris i Alineació de Caixes**:
+  - `carry_draw()` força sempre alineació de byte parell (`& ~1`) a `cx`, evitant accessos de 5 bytes que desbordaven el buffer de 64 bytes de la caixa.
+  - `enemy_room_exit()` neteja `g_mag_elevators[i].drawn[0..1] = 0` per garantir que cap ascensor restauri fons stale.
+  - `enter_door()` neteja a zero tots els flags de dibuix i repintat (`s_rep_n = 0`, `s_have_drawn[0..1] = 0`, `s_carry_drawn[0..1] = 0`).
+
+- **5) Animació d'Estrelles de Noqueig d'en Jake 1:1 DOS**:
+  - Quan en Jake rep un cop (`s_dazed_timer`), s'activen seqüencialment els frames 26, 27 i 28 de DOS (posició ajupida amb estrelles blanques i roses girant en cercle tridimensional al voltant de la gorra), tal com verificat a `verify_dazed_stars_0.png` i `verify_dazed_stars_1.png`.
+
+- **6) Pressupost de Memòria i Marges Actuals**:
+  - **Bloc 0 (`_CODE`)**: `0x0100..0x37B3` (14.003 B) | **+205 B** de marge net abans de `_DATA` (`0x3880`).
+  - **Bloc 0 (`_DATA`)**: `0x3880..0x39D9` (345 B) | **1.573 B lliures** de pila fins a `SP = 0x3FFE`.
+  - **Banc 5 (`BANK5.BIN`)**: `0x6E00..0x7FC4` (4.112 B de codi, **368 B lliures**).
+  - **Banc 6 (`ENEMYCODE.BIN`)**: 6.219 B | marge positiu (+1.816 B lliures a `0x78E8..0x7FFF`).
+  - **Banc 7 (`0xC7`)**: `0x7100..0x73FF` buffers d'objectes/caixes, `0x7660..0x783F` buffers Jake, `0x7840..0x7A1F` H-flip, `0x7A20..0x7DFF` EXTRA.BIN. Marge sobrant ample (>1 KB).
+  - **Banc 5 (`BANK5.BIN`)**: `0x6E00..0x7FC4` (4.112 B de codi, **368 B lliures**).
+  - **Banc 6 (`ENEMYCODE.BIN`)**: 6.219 B | marge positiu (+1.816 B lliures a `0x78E8..0x7FFF`).
+  - **Banc 7 (`0xC7`)**: `0x7100..0x73FF` buffers d'objectes/caixes, `0x7660..0x783F` buffers Jake, `0x7840..0x7A1F` H-flip, `0x7A20..0x7DFF` EXTRA.BIN. Marge sobrant ample (>1 KB).
+
+## Històric anterior — Paquet de Nivell Data-Driven al Banc 5, Peixeres (Natació + Aigua Animada) i Fix del Border Vermell
 
 - **Arquitectura desacoblada Motor Resident (Bloc 0) vs. Paquet de Nivell (Banc 5)**:
   - **Empaquetador automàtic (`tools/pack_level.py` → `src/level_pkg.h`)**: Extreu de les dades originals de DOS (`tools/blues_dos/bb/staticres.c`, `MAP0.BIN`, `TRIG0.BIN`) les dimensions del nivell, coordenades d'inici i càmera, posicions dels ascensors i els **18 trams de tiles animats (`s_level_anim_spans`)** amb les seves **7 seqüències de 6 fases (`s_level_anim_seqs`, MCM de 2 i 3)**.

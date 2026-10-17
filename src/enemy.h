@@ -19,7 +19,8 @@ void enemy_init(void);
 void enemy_update(void);
 void enemy_restore(u8 page);
 void enemy_draw(u8 page);
-u8   enemy_check_player_hit(i16 px, i16 py);
+u8   enemy_check_player_hit(i16 px, i16 py, u8 crouch);
 u8   enemy_check_crate_hit(i16 cx, i16 cy, i16 cvx);
+void enemy_room_exit(i16 px, i16 py);
 
 #endif

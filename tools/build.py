@@ -11,6 +11,7 @@ import re
 import json
 import hashlib
 import subprocess
+import struct
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJ = os.path.dirname(HERE)
@@ -56,7 +57,7 @@ C_SOURCES = [
 # Es continuen compilant (l'starter enllaca obj/fdc.rel + obj/assets_fdc.rel).
 # F1-MUSICA: el GAME tampoc enllaca el decoder ZX0 (viu al FRONT.BIN C4;
 # nomes el FRONT el crida). Guany ~94 B de Bloc 0 (overflow 53 B, 12/10/26).
-GAME_LINK_SKIP = {"engine/fdc.c", "engine/assets_fdc.s", "engine/zx0_decompress.s"}
+GAME_LINK_SKIP = {"engine/fdc.c", "engine/assets_fdc.s"}
 C_HEADERS = {
     "engine/fdc.c": ["engine/fdc.h", "engine/cpctelera.h"],
     "src/render.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h", "src/hud_pkg.h"],
@@ -127,51 +128,20 @@ GAME_TABLE_SKIP = {"FDC", "FRONT", "FSPLASH", "FSELECT", "FMAP", "MUSBANK"}
 # Fitxers de dades al DSK (es carregaran per FDC raw). Ordre = ordre al disc.
 # (L'ordre de dades no afecta el boot; el BLUESB va primer via package().)
 DATA_FILES = [
-    # BANK5: codi moving.* generat per build (obj/) -> Banc 5 a 0x6E00.
-    ("BANK5", "BIN", os.path.join(PROJ, "obj", "BANK5.BIN")),
-    # FDC: motor FDC (fdc.c + assets_fdc.s) enllacat a 0x8000 (imatge) -> Banc 6
-    # (dest C6:0x7000, dins la finestra bancable: alla hi es correcte).
-    # El resident el copia a scratch central 0x8000 (VRAM pag.2, FORA de la
-    # finestra 0x4000-0x7FFF: el motor pagina bancs i s'esborraria ell mateix
-    # a 0x7000!) i l'executa alla (F1).
-    ("FDC", "BIN", os.path.join(PROJ, "obj", "FDC.BIN")),
-    # TITLE.BIN (Mode 1, 16 KB) NO va al DSK: cap codi el carrega (el FRONT
-    # mostra SPLASH/SELECT/MAP). Quan fem el titol Mode 0 el re-afegirem
-    # (junt amb g_file_title). Treure'l estalvia 107 B de taules al Bloc 0.
-    # Mode 0: tileset 8x16 (64 B/tile, 256 tiles = 16 KB), mapa 128x72.
-    ("TILES", "BIN", os.path.join(PROJ, "assets", "bbdata", "TILESET0.BIN")),
-    ("MAP",   "BIN", os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN")),
-    ("TRIG",  "BIN", os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN")),
-    ("PFRAMES", "BIN", os.path.join(PROJ, "assets", "bbdata", "PFRAMES.BIN")),
-    # ELWOOD: frames d'Elwood mateix format (26x480 B) -> C7:0x4000 EN COMPTES
-    # de PFRAMES si g_player_choice==1 (mateixos indexos: motor intacte).
-    ("ELWOOD", "BIN", os.path.join(PROJ, "assets", "bbdata", "ELWOOD.BIN")),
-    # EXTRA: DOS 39 (480 B) + BOX (128 B) + BALLOON (224 B) -> Banc 7 lliure 0x7AA0.
-    ("EXTRA", "BIN", os.path.join(PROJ, "assets", "bbdata", "EXTRA.BIN")),
-    # ELEV: 2 frames d'ascensor Mode 0 (2x224 B) -> Banc 7 lliure 0x78E0.
-    ("ELEV", "BIN", os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")),
-    # FRONT.BIN: overlay d'arrencada (front.c banked C4:0x4000) -> C4 (el
-    # TILESET el sobreescriu quan acaba el FRONT). L'starter el carrega.
-    ("FRONT", "BIN", os.path.join(PROJ, "obj", "FRONT.BIN")),
-    # Prejoc: les 3 pantalles es carreguen TOTES al splash (silenci,
-    # pre-musica) a RAM: splash+mapa a fixa 0x8400+, select al banc C4
-    # (EQU front_ext); el depack es des de RAM = select/mapa sense FDC =
-    # la musica no s'atura mai (14/10/26).
+    # 1. Boot / Starter
+    ("FDC",     "BIN", os.path.join(PROJ, "obj", "FDC.BIN")),
+    ("FRONT",   "BIN", os.path.join(PROJ, "obj", "FRONT.BIN")),
+    # 2. Menú / Prejoc
     ("FSPLASH", "ZX0", os.path.join(PROJ, "obj", "FSPLASH.ZX0")),
-    ("FSELECT", "ZX0", os.path.join(PROJ, "obj", "FSELECT.ZX0")),
-    ("FMAP", "ZX0", os.path.join(PROJ, "obj", "FMAP.ZX0")),
-    # MUSICA: MUSBANK (player+intro, el FRONT el carrega a C1) + MUSMAIN
-    # (el GAME el carrega a l'slot C1:0x5000). Mai des de l'starter (C1 mata
-    # l'slot 3).
     ("MUSBANK", "BIN", os.path.join(PROJ, "obj", "MUSBANK.BIN")),
-    ("MUSMAIN", "BIN", os.path.join(PROJ, "obj", "MUSMAIN.BIN")),
-    # ENEMI: imatge C2 (frames 0x4000 + codi 0x5200 + dades, generada per
-    # build_enemybank) -> C2:0x4000 en UNA carrega. Al final: no mou el
-    # CHS de cap altre fitxer.
-    ("ENEMI", "BIN", os.path.join(PROJ, "obj", "ENEMI.BIN")),
-    # DANCE: NO es fitxer DSK (taules Bloc0 justes!): build_dance() l'AFEGEIX
-    # a la cua de obj/FSELECT.ZX0 (el depack l'ignora: te fi explicita) i el
-    # FRONT el llegeix de scratch+off (EQU front_ext, sense FDC ni mute).
+    ("FSELECT", "ZX0", os.path.join(PROJ, "obj", "FSELECT.ZX0")),
+    ("FMAP",    "ZX0", os.path.join(PROJ, "obj", "FMAP.ZX0")),
+    # 3. Personatges (permanents al Banc C7)
+    ("JAKE",    "ZX0", os.path.join(PROJ, "obj", "JAKE.ZX0")),
+    ("ELWOOD",  "ZX0", os.path.join(PROJ, "obj", "ELWOOD.ZX0")),
+    # 4. Paquets Nivell 1
+    ("L1WORLD", "PAK", os.path.join(PROJ, "obj", "L1WORLD.PAK")),
+    ("L1ENEMI", "ZX0", os.path.join(PROJ, "obj", "L1ENEMI.ZX0")),
 ]
 
 
@@ -691,7 +661,7 @@ def build_front(force):
     # EQU externs centrals des del mapa resident (falla sorollos si falten).
     resident_map = os.path.join(obj, PROGNAME + ".map")
     syms = map_symbols(resident_map)
-    need = {"_fdc_load_file": None,
+    need = {"_fdc_load_file": None, "_fdc_motor_off": None,
             "_mus_play": None, "_mus_init": None, "_mus_stop": None,
             "_g_ticks": None, "_g_mus_hold": None,
             "_g_player_choice": None, "_g_map_level": None}
@@ -1265,6 +1235,89 @@ def zx0_pack_all():
                   (tag, len(data), len(out), "quick" if ZX0_QUICK else "optimal"))
 
 
+def build_level_bundles(force=False):
+    """Genera els paquets de dades pel gameplay:
+    - obj/JAKE.ZX0    : PFRAMES.BIN (13920 B) + 960 B zeros + EXTRA.BIN (992 B) -> Banc C7
+    - obj/ELWOOD.ZX0  : ELWOOD.BIN (13920 B) + 960 B zeros + EXTRA.BIN (992 B) -> Banc C7
+    - obj/L1ENEMI.ZX0 : ENEMI.BIN (13387 B) -> Banc C6
+    - obj/L1WORLD.PAK : Header (6 B) + TILES.ZX0 + BANK5_FULL.ZX0 + MUSMAIN.ZX0 + ELEV.ZX0
+    """
+    obj = os.path.join(PROJ, "obj")
+    from zx0pkg.zx0 import zx0_compress
+
+    # 1. JAKE.ZX0
+    jake_dst = os.path.join(obj, "JAKE.ZX0")
+    pf_src = os.path.join(PROJ, "assets", "bbdata", "PFRAMES.BIN")
+    ex_src = os.path.join(PROJ, "assets", "bbdata", "EXTRA.BIN")
+    if force or is_stale(jake_dst, [pf_src, ex_src]):
+        pf_data = open(pf_src, "rb").read()
+        ex_data = open(ex_src, "rb").read()
+        raw = pf_data + bytes(960) + ex_data
+        assert len(raw) == 15872, len(raw)
+        out, _ = zx0_compress(bytes(raw), classic=True, quick=ZX0_QUICK)
+        open(jake_dst, "wb").write(bytes(out))
+        mark_fresh(jake_dst, [pf_src, ex_src])
+        print("ZX0: JAKE %d -> %d B" % (len(raw), len(out)))
+
+    # 2. ELWOOD.ZX0
+    elwood_dst = os.path.join(obj, "ELWOOD.ZX0")
+    el_src = os.path.join(PROJ, "assets", "bbdata", "ELWOOD.BIN")
+    if force or is_stale(elwood_dst, [el_src, ex_src]):
+        el_data = open(el_src, "rb").read()
+        ex_data = open(ex_src, "rb").read()
+        raw = el_data + bytes(960) + ex_data
+        assert len(raw) == 15872, len(raw)
+        out, _ = zx0_compress(bytes(raw), classic=True, quick=ZX0_QUICK)
+        open(elwood_dst, "wb").write(bytes(out))
+        mark_fresh(elwood_dst, [el_src, ex_src])
+        print("ZX0: ELWOOD %d -> %d B" % (len(raw), len(out)))
+
+    # 3. L1ENEMI.ZX0
+    en_dst = os.path.join(obj, "L1ENEMI.ZX0")
+    en_src = os.path.join(obj, "ENEMI.BIN")
+    if force or is_stale(en_dst, [en_src]):
+        en_data = open(en_src, "rb").read()
+        out, _ = zx0_compress(bytes(en_data), classic=True, quick=ZX0_QUICK)
+        open(en_dst, "wb").write(bytes(out))
+        mark_fresh(en_dst, [en_src])
+        print("ZX0: L1ENEMI %d -> %d B" % (len(en_data), len(out)))
+
+    # 4. L1WORLD.PAK
+    l1w_dst = os.path.join(obj, "L1WORLD.PAK")
+    tiles_src = os.path.join(PROJ, "assets", "bbdata", "TILESET0.BIN")
+    map_src = os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN")
+    trig_src = os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN")
+    bank5_src = os.path.join(obj, "BANK5.BIN")
+    mus_src = os.path.join(obj, "MUSMAIN.BIN")
+    elev_src = os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")
+    l1w_sources = [tiles_src, map_src, trig_src, bank5_src, mus_src, elev_src]
+
+    if force or is_stale(l1w_dst, l1w_sources):
+        t_data = open(tiles_src, "rb").read()
+        t_zx, _ = zx0_compress(bytes(t_data), classic=True, quick=ZX0_QUICK)
+
+        b5_raw = open(map_src, "rb").read() + open(trig_src, "rb").read() + open(bank5_src, "rb").read()
+        assert len(b5_raw) == 9216 + 2560 + os.path.getsize(bank5_src)
+        b5_zx, _ = zx0_compress(bytes(b5_raw), classic=True, quick=ZX0_QUICK)
+
+        m_data = open(mus_src, "rb").read()
+        m_zx, _ = zx0_compress(bytes(m_data), classic=True, quick=ZX0_QUICK)
+
+        e_data = open(elev_src, "rb").read()
+        e_zx, _ = zx0_compress(bytes(e_data), classic=True, quick=ZX0_QUICK)
+
+        # Header (6 bytes): off_bank5, off_mus, off_elev
+        off_bank5 = 6 + len(t_zx)
+        off_mus = off_bank5 + len(b5_zx)
+        off_elev = off_mus + len(m_zx)
+        hdr = struct.pack("<HHH", off_bank5, off_mus, off_elev)
+        pak = hdr + bytes(t_zx) + bytes(b5_zx) + bytes(m_zx) + bytes(e_zx)
+        open(l1w_dst, "wb").write(pak)
+        mark_fresh(l1w_dst, l1w_sources)
+        print("PAK: L1WORLD %d B (tiles=%d b5=%d mus=%d elev=%d)" %
+              (len(pak), len(t_zx), len(b5_zx), len(m_zx), len(e_zx)))
+
+
 def package(starter_path, starter_start, game_path):
     dsk_path = os.path.join(PROJ, PROGNAME + ".dsk")
     create_empty_cpc_dsk(dsk_path, 40)
@@ -1426,6 +1479,7 @@ def main():
         game_path, game_start, game_size = compile_and_link(force)
         build_bank(force)  # Banc 5 (necessita el mapa resident per l'equ)
         build_enemybank(force)  # Banc C3 (walkers; reutilitza bank_equ.rel)
+        build_level_bundles(force)  # Paquets de joc (JAKE, ELWOOD, L1WORLD, L1ENEMI)
         build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)
         build_front(force)  # FRONT banked (necessita el mapa resident)
         starter_path, starter_start = build_starter(force)

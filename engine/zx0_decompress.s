@@ -11,24 +11,9 @@
 ;; (HL = src, DE = dst per __sdcccall(1)).
 ;; ============================================================
 
-    .area   _CODE
-
-_zx0_decompress_vram_to_bank7::
-    di
-    ld      bc, #0x7F00
-    ld      a, #0xC3            ;; Bank 3 (VRAM) a 0x4000..0x7FFF, Bank 7 a 0xC000..0xFFFF
-    out     (c), a
-    ld      hl, #0x4000         ;; Font = VRAM (on s'ha carregat el fitxer de disc)
-    ld      de, #0xC000         ;; Destí = Banc 7
-    call    dzx0_standard
-    ld      bc, #0x7F00
-    ld      a, #0xC0            ;; Restaurar configuració estàndard
-    out     (c), a
-    ei
-    ret
-
     .module zx0_decompress
     .optsdcc -mz80 sdcccall(1)
+    .area   _CODE
 
 _zx0_decompress::
     ;; En __sdcccall(1), HL = src, DE = dst directament

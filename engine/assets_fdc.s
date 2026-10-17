@@ -26,6 +26,10 @@ NAU_FDC_RESULT          = ASSETS_FDC_WORK
 NAU_FDC_DRIVE           = ASSETS_FDC_WORK + 8
 NAU_FDC_CURTRACK        = ASSETS_FDC_WORK + 9
 NAU_FDC_BLINK           = ASSETS_FDC_WORK + 10
+NAU_FDC_MOTOR_RUNNING   = ASSETS_FDC_WORK + 11
+NAU_FDC_RECAL_DONE      = ASSETS_FDC_WORK + 12
+NAU_FDC_HEAD_TRACK      = ASSETS_FDC_WORK + 13
+NAU_FDC_STAY_ON         = ASSETS_FDC_WORK + 14
 
 ;; Ports NEC 765 en CPC
 FDC_MOTOR_PORT          = 0xFA7E
@@ -100,16 +104,28 @@ hold_skip$:
         xor a
         ld (NAU_FDC_DRIVE), a
 
-        ;; Motor ON + delay
+        ;; Motor ON + delay (nomes si el motor estava apagat)
+        ld a, (NAU_FDC_MOTOR_RUNNING)
+        or a
+        jr nz, motor_already_on$
         call nau_fdc_motor_on_delay
+        ld a, #1
+        ld (NAU_FDC_MOTOR_RUNNING), a
+motor_already_on$:
 
-        ;; Buidar FDC: drenar bytes pendents + SENSE_INT per netejar
+        ;; Recalibrate (nomes si cal)
+        ld a, (NAU_FDC_RECAL_DONE)
+        or a
+        jr nz, recal_already_done$
         call assets_fdc_drain
         call assets_fdc_flush
-
-        ;; Recalibrate
         call nau_fdc_recalibrate
         jp nz, assets_fail_recal
+        ld a, #1
+        ld (NAU_FDC_RECAL_DONE), a
+        xor a
+        ld (NAU_FDC_HEAD_TRACK), a
+recal_already_done$:
 
         ;; Inicialitzar estat del stream
         ld hl, (_g_fdc_ondisk_bytes)
@@ -169,9 +185,14 @@ assets_sector_loop:
         jr assets_sector_loop
 
 assets_load_done:
+        ld a, (NAU_FDC_STAY_ON)
+        or a
+        jr nz, keep_motor$
         xor a
+        ld (NAU_FDC_MOTOR_RUNNING), a
         ld bc, #FDC_MOTOR_PORT
         out (c), a
+keep_motor$:
         ei
         ld a, (_g_fdc_dest_bank)
         cp #0xC1
@@ -188,6 +209,11 @@ assets_fail_sector:
 assets_fail_recal:
 assets_fail_banked:
 assets_fail:
+        xor a
+        ld (NAU_FDC_MOTOR_RUNNING), a
+        ld (NAU_FDC_RECAL_DONE), a
+        ld a, #0xFF
+        ld (NAU_FDC_HEAD_TRACK), a
         xor a
         ld bc, #FDC_MOTOR_PORT
         out (c), a
@@ -447,6 +473,9 @@ nau_fdc_seek_r:
 
 ;; Entrada: B=track fisic, C=ID sector (0xC1-0xC9), DE=desti (512 bytes)
 nau_fdc_read_phys_sector:
+        ld a, (NAU_FDC_HEAD_TRACK)
+        cp b
+        jr z, skip_seek$
         ld a, b
         ld (NAU_FDC_CURTRACK), a
         push bc
@@ -454,6 +483,9 @@ nau_fdc_read_phys_sector:
         call nau_fdc_seek_track
         pop de
         pop bc
+        ld a, b
+        ld (NAU_FDC_HEAD_TRACK), a
+skip_seek$:
         ld l, c
         ld a, #FDC_CMD_READ_DATA
         call nau_fdc_write_cmd_byte

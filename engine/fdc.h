@@ -24,5 +24,7 @@ typedef struct {
 // g_fdc_home_bank d'entrada (NO AF': EX es SWAP). 0xC0 = GAME/STARTER
 // (central); C4 = FRONT banked.
 u8 fdc_load_file(u8 home_bank, const DiskFileDesc* desc, u8 dest_bank, void* dest_addr);
+void fdc_motor_off(void);
+#define fdc_set_stay_on(v) do { *(volatile u8*)0xBE0E = (v); } while (0)
 
 #endif // FDC_H

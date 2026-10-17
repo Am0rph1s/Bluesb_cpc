@@ -4,8 +4,8 @@
 #define CRT_DATA_START 0x3880
 #define CRT_DATA_LEN 345
 #define CRT_IDATA_DST 0x39D9
-#define CRT_IDATA_SRC 0x39DD
-#define CRT_IDATA_LEN 4
+#define CRT_IDATA_SRC 0x39DE
+#define CRT_IDATA_LEN 5
 // Adreca de _g_mus_hold (HOLD musica ISR): la neteja el GAME
 // post-memset(0x8000) (era VRAM: 0xBA10 = drone, vist 13/10/26).
 #define MUS_HOLD_ADDR 0x388E

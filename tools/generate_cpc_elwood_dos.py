@@ -114,6 +114,10 @@ GAME_FRAMES_ELWOOD = [
     ('swim_stroke2', 97),
     ('swim_vert',    99),
     ('swim_floor',   95),
+    # 26..28: Estabornit amb estrelletes girant sobre el cap (DOS 77, 78, 79 / animframe_0115 + 50)
+    ('dazed1',       77),
+    ('dazed2',       78),
+    ('dazed3',       79),
 ]
 
 # Danses completes del select (Jake A/B + Elwood A/B, llistes DOS autentiques).

@@ -16,6 +16,7 @@ void zx0_decompress(const void* src, void* dst); // enllacat AL FRONT (no EQU)
 void mus_play(void); // EQU central (mus.s: pagina C1, 1 tick, restaura)
 void mus_init(void); // EQU central (mus.s: pagina C1, init intro, restaura)
 void mus_stop(void); // EQU central (mus.s: silencia AY, posicio intacta)
+void fdc_motor_off(void); // EQU central (src/moving.c)
 extern volatile u8 g_ticks; // ISR 300 Hz (central _DATA; llegible banked)
 extern volatile u8 g_mus_hold; // HOLD ISR (central _DATA; EQU front_ext.s:
 // AKG Play reprendria el so al tick seguent del mus_stop: el mute en
@@ -405,11 +406,15 @@ static void f_load(const DiskFileDesc* f, u8 bank, const void* dst) {
 void front_run(void) {
     u8 d, j, lvl;
 
+    fdc_set_stay_on(1);
+
     // 1. SPLASH: carrega MUSBANK + les 3 pantalles a RAM
     f_load(&g_file_musbank, 0xC1, (void*)0x4000);
     f_load(&g_file_fsplash, 0xC0, (void*)fsplash_zx);
     f_load(&g_file_fselect, 0xC4, (void*)fsel_zx);
     f_load(&g_file_fmap, 0xC0, (void*)fmap_zx);
+
+    fdc_motor_off();
 
     zx0_decompress((const void*)fsplash_zx, (void*)0xC000);
     f_fpal(g_pal_fsplash);

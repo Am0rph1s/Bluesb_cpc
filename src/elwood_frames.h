@@ -8,7 +8,7 @@
 #define ELWOOD_FRAMES_BANK 0xC3
 #define ELWOOD_FRAMES_BASE 0x4000
 #define ELWOOD_FRAME_SIZE 480
-#define ELWOOD_FRAMES_COUNT 26
+#define ELWOOD_FRAMES_COUNT 29
 // Dansa select (DANCE.BIN, amb FRONT):
 #define DANCE_FRAMES_COUNT 20
 // 0..5 Jake A (33-38), 6..8 Jake B (21-23),
@@ -39,5 +39,8 @@
 // 23 (11040): swim_stroke2
 // 24 (11520): swim_vert
 // 25 (12000): swim_floor
+// 26 (12480): dazed1
+// 27 (12960): dazed2
+// 28 (13440): dazed3
 
 #endif

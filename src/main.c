@@ -673,7 +673,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
     }
 }
 
-// (zx0_decompress viu al FRONT.BIN banked; el GAME no el toca.)
+extern void zx0_decompress(const void* src, void* dst);
 
 volatile u8 g_player_choice; // 0=Jake, 1=Elwood (l'escriu el FRONT al
                     // select via EQU; el loop la llegeix)
@@ -681,25 +681,6 @@ volatile u8 g_map_level; // 0..5 (el GAME l'escriu abans del mapa; el FRONT
                     // hi pinta sticker nota + ruta statica DOS via EQU)
 u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
                     // primer mus_init: evita Play sobre C1 buit (reboot).
-
-typedef struct {
-    u8 bank;
-    u16 addr;
-    u16 crc;
-    const DiskFileDesc* desc;
-} LevelAsset;
-
-static const LevelAsset s_assets[9] = {
-    { 0xC4, 0x4000, CRC_TILES, &g_file_tiles },
-    { 0xC5, 0x4000, CRC_MAP, &g_file_map },
-    { 0xC5, 0x6400, CRC_TRIG, &g_file_trig },
-    { 0xC7, 0x4000, CRC_PFRAMES, &g_file_pframes },
-    { 0xC7, 0x7A20, CRC_EXTRA, &g_file_extra },
-    { 0xC0, 0x7000, CRC_ELEV, &g_file_elev },
-    { 0xC5, 0x6E00, CRC_BANK5, &g_file_bank5 },
-    { 0xC1, 0x5000, CRC_MUSMAIN, &g_file_musmain },
-    { 0xC0, 0x8320, CRC_ENEMI, &g_file_enemi },
-};
 
 void main(void) {
     cpct_memset((void*)CRT_DATA_START, 0, CRT_DATA_LEN);
@@ -719,49 +700,81 @@ void main(void) {
     mus_stop();
     g_mus_hold = 1;
 
+    // Carrega rapida i seqüencial dels paquets de dades a 0x8320 (2a pagina oculta)
+    // El motor FDC es mante ences durant la sequencia per evitar aturades/engegades.
+    fdc_set_stay_on(1);
+
+    // 1. Personatge: JAKE.ZX0 o ELWOOD.ZX0 segons g_player_choice -> Banc C7 (0x4000)
     {
-        const LevelAsset* a = s_assets;
-        u8 i, t;
-        for (i = 0; i < 9; i++, a++) {
-            const DiskFileDesc* desc = (i == 3 && g_player_choice) ? &g_file_elwood : a->desc;
-            u16 crc = (i == 3 && g_player_choice) ? CRC_ELWOOD : a->crc;
-            u8 ok = 0;
-            for (t = 0; t < 3 && !ok; t++) {
-                u8 prev;
-                if (!fdc_load_file(0xC0, desc, a->bank, (void*)a->addr)) continue;
-                g_mus_hold = 1;
-                prev = bank_set(a->bank);
-                if (fdc_crc16((const u8*)a->addr, (u16)(desc->ondisk_bytes - 128)) == crc) ok = 1;
-                bank_restore(prev);
-            }
-            if (!ok) { cpct_setBorder((u8)(0x40 + i)); while (1) { } }
+        const DiskFileDesc* pdesc = g_player_choice ? &g_file_elwood : &g_file_jake;
+        u16 pcrc = g_player_choice ? CRC_ELWOOD : CRC_JAKE;
+        u8 ok = 0, t;
+        for (t = 0; t < 3 && !ok; t++) {
+            if (!fdc_load_file(0xC0, pdesc, 0xC0, (void*)0x8320)) continue;
+            if (fdc_crc16((const u8*)0x8320, (u16)(pdesc->ondisk_bytes - 128)) == pcrc) ok = 1;
+        }
+        if (!ok) { cpct_setBorder(0x41); while (1) { } }
+        {
+            u8 prev = bank_set(0xC7);
+            zx0_decompress((const void*)0x8320, (void*)0x4000);
+            bank_restore(prev);
         }
     }
 
-    // ENEMI -> C6 per LDIR central (no pel motor): escriure als bancs C2
-    // (motor o bank_set) penja la maquina, i C3 reboota (vist 10/26 en 7
-    // builds); C0/1/4/5/6/7 provats. C6 allotjava FDC.BIN (0x7000-0x7311),
-    // mort post-boot (l'stub corre de scratch 0x8000 amb s_fdc_ready=1 i
-    // no recopia mai): la imatge (0x4000-0x7408) el reaprofta sencer.
-    // a scratch central 0x8320 (lliure: motor a 0x8000-0x8311, buffers a
-    // 0xBC00+; 0x8320+13609 = 0xB849 < 0xBC00) i es copia a C6:0x4000 amb
-    // memcpy paginat (mateix patro que hud_render: bank_set + feina +
-    // restore; la ISR hi niua consistent via _g_bank). OJO: l'scratch HA
-    // d'acabar abans de 0xBC00: el motor llegeix 1 sector de farciment de
-    // mes (28 en comptes de 27) al buffer 0xBC00, que trepitjaria la cua
-    // del fitxer (vist 10/26: 8 bytes E5 al final = CRC fail). El prime hi
-    // escriu a sobre despres. El CRC es sobre la copia (el que corre).
+    // 2. Món Nivell 1: L1WORLD.PAK -> 4 sub-blocs descomprimits als seus respectius bancs
     {
-        u8 prevx = bank_set(0xC6);
-        cpct_memcpy((void*)0x4000, (const void*)0x8320,
-                    (u16)(g_file_enemi.ondisk_bytes - 128));
-        if (fdc_crc16((const u8*)0x4000,
-                      (u16)(g_file_enemi.ondisk_bytes - 128)) != CRC_ENEMI) {
-            cpct_setBorder(0x48);
-            while (1) { }
+        u8 ok = 0, t;
+        for (t = 0; t < 3 && !ok; t++) {
+            if (!fdc_load_file(0xC0, &g_file_l1world, 0xC0, (void*)0x8320)) continue;
+            if (fdc_crc16((const u8*)0x8320, (u16)(g_file_l1world.ondisk_bytes - 128)) == CRC_L1WORLD) ok = 1;
         }
-        bank_restore(prevx);
+        if (!ok) { cpct_setBorder(0x42); while (1) { } }
+        {
+            const u8* pak = (const u8*)0x8320;
+            u16 off_bank5 = (u16)(pak[0] | (pak[1] << 8));
+            u16 off_mus   = (u16)(pak[2] | (pak[3] << 8));
+            u16 off_elev  = (u16)(pak[4] | (pak[5] << 8));
+            u8 prev;
+
+            // Sub-bloc 1: Tileset (Mode 0) -> Banc C4:0x4000
+            prev = bank_set(0xC4);
+            zx0_decompress((const void*)(pak + 6), (void*)0x4000);
+            bank_restore(prev);
+
+            // Sub-bloc 2: Mapa + Triggers + Codi Banc 5 -> Banc C5:0x4000
+            prev = bank_set(0xC5);
+            zx0_decompress((const void*)(pak + off_bank5), (void*)0x4000);
+            bank_restore(prev);
+
+            // Sub-bloc 3: Musica + HUD + Rooms + Doors -> Banc C1:0x5000
+            prev = bank_set(0xC1);
+            zx0_decompress((const void*)(pak + off_mus), (void*)0x5000);
+            bank_restore(prev);
+
+            // Sub-bloc 4: Frames Ascensor -> Banc C0:0x7000
+            prev = bank_set(0xC0);
+            zx0_decompress((const void*)(pak + off_elev), (void*)0x7000);
+            bank_restore(prev);
+        }
     }
+
+    // 3. Enemics Nivell 1: L1ENEMI.ZX0 -> Banc C6:0x4000
+    {
+        u8 ok = 0, t;
+        for (t = 0; t < 3 && !ok; t++) {
+            if (!fdc_load_file(0xC0, &g_file_l1enemi, 0xC0, (void*)0x8320)) continue;
+            if (fdc_crc16((const u8*)0x8320, (u16)(g_file_l1enemi.ondisk_bytes - 128)) == CRC_L1ENEMI) ok = 1;
+        }
+        if (!ok) { cpct_setBorder(0x43); while (1) { } }
+        {
+            u8 prev = bank_set(0xC6);
+            zx0_decompress((const void*)0x8320, (void*)0x4000);
+            bank_restore(prev);
+        }
+    }
+
+    // Aturar motor FDC un cop acabada la càrrega de tots els paquets
+    fdc_motor_off();
 
     // MUSICA nivell 1: MUSMAIN ja es a l'slot C1:0x5000: obrir so i
     // (re)iniciar el tema.

@@ -907,3 +907,28 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
   - Marge de memòria del Bloc 0 optimitzat: `_CODE` acaba a `0x3661` amb un marge positiu de **+287 BYTES** abans de `_DATA` (`0x3780`).
 - **Verificació en emulador ZEsarUX**:
   - Script `tools/verify_door_live.py`: cicle complet validat amb captures (`verify_door_outside_before.png`, `verify_door_room_inside.png`, `verify_door_room_walking.png`, `verify_door_room_at_exit.png`, `verify_door_outside_after.png`).
+
+## Sessio 2026-10-17 (22): Correcció Definitiva de l'Scroll i Franges Verticals en Sortir del Cinema
+- **Diagnòstic de l'avaria**:
+  - Les captures mostraven franges verticals de color blau/gris a la meitat de les columnes en caminar/desplaçar-se després de sortir d'una habitació o cinema.
+  - **Causa arrel 1 (Double Buffer dx == 2)**: Al bucle principal a 25 Hz amb doble buffer, quan en Jake es mou de manera continuada (`move_x != 0`), el desplaçament relatiu acumulat per buffer (`page_dx = s_pending_x + move_x`) és de **2 caràcters CRTC** (4 Mode 0 pixels cada un = 8 bytes per línia). La rutina `sync_backbuffer` anteriorment només pintava la columna d'extrem (`sx = 39` en anar a la dreta o `sx = 0` en anar a l'esquerra), deixant la columna intermèdia (`sx = 38` o `sx = 1`) sense actualitzar. En sortir d'una habitació (on tota la VRAM contenia les rajoles de la sala), aquesta columna intermèdia no pintada mantenia les rajoles antigues de la sala, creant franges verticals alternades.
+  - **Causa arrel 2 (Estat d'entitats pendent)**: En canviar d'habitació o sortir-ne, els flags `drawn[page]` d'ascensors, enemics, caixes i popups conservaven el valor `1` de la posició prèvia. En el primer frame post-transició, `moving_restore()` i `enemy_restore()` restauraven els blocs de fons de la ubicació antiga directament sobre la pantalla acabada de carregar de la nova sala.
+- **Solució implementada**:
+  - **`sync_backbuffer` multicolumna i multifila (`src/main.c`)**:
+    - Si `dx > 0`: si `dx > 1`, dibuixa la columna `sx = 38` i després la columna `sx = 39` a la posició `target_row`.
+    - Si `dx < 0`: dibuixa la columna `sx = 0` i si `dx < -1`, la columna `sx = 1`.
+    - Si `dy > 0`: si `dy > 1`, dibuixa la fila `sy = 18` i després la fila `sy = 19`.
+    - Si `dy < 0`: dibuixa la fila `sy = 0` i si `dy < -1`, la fila `sy = 1`.
+  - **Neteja d'estat d'entitats a `enter_door` (`src/main.c`)**:
+    - Neteja de `g_mag_elevators[i].drawn[0..1] = 0`.
+    - Cridada a `enemy_init()` per reinicialitzar els slots de walkers i projectils.
+    - Neteja de `s_carry_drawn[0..1] = 0`, `s_have_drawn[0..1] = 0`, `s_rep_n = 0`.
+    - Redibuix immediat d'ascensors visibles en cas de retorn al mapa exterior (`moving_draw(0, ...)`, `moving_draw(1, ...)`).
+- **Pressupost de memòria del Bloc 0 (`0x0000..0x3FFF`)**:
+  - `_CODE`: `0x0100..0x3723` (13.859 B).
+  - Marge positiu fins a `_DATA` (`0x3780`): **+93 BYTES**.
+  - Pila lliure (`SP` fins a `0x3FFE`): **1.065 BYTES**.
+- **Validació en viu a ZEsarUX**:
+  - Script automatitzat `tools/test_verify_scroll.py`: cicle complet d'entrada al cinema (`fix_cinema_inside.png`), sortida a l'exterior (`fix_cinema_outside_before_scroll.png`), scroll continu a la dreta (`fix_cinema_outside_after_scroll_right.png`) i scroll continu a l'esquerra (`fix_cinema_outside_after_scroll_left.png`).
+  - Resultat: 0 franges verticals, 0 restes de la sala, transició i desplaçament 100% sòlids i nets.
+

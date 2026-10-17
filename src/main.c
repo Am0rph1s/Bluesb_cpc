@@ -252,10 +252,25 @@ static void enter_door(u8 dst_col, u8 dst_row) {
         g_cam_row = (u16)(cam_r << 1);
     }
 
-    repaint_both_buffers();
-
+    {
+        u8 i;
+        for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
+            g_mag_elevators[i].drawn[0] = 0;
+            g_mag_elevators[i].drawn[1] = 0;
+        }
+    }
+    enemy_init();
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
+    s_carry_drawn[0] = 0;
+    s_carry_drawn[1] = 0;
+    s_rep_n = 0;
+
+    repaint_both_buffers();
+    if (!s_in_room) {
+        moving_draw(0, g_cam_x4, g_cam_row);
+        moving_draw(1, g_cam_x4, g_cam_row);
+    }
 
     palette_restore();
 }
@@ -303,17 +318,20 @@ static void check_room_bonus(u8 col, u8 row) {
 }
 
 static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
-    u16 row_before = (u16)(target_row - dy);
     if (dx > 0) {
-        render_column(target_x4, row_before, 39);
+        if (dx > 1) render_column(target_x4, target_row, 38);
+        render_column(target_x4, target_row, 39);
     } else if (dx < 0) {
-        render_column(target_x4, row_before, 0);
+        render_column(target_x4, target_row, 0);
+        if (dx < -1) render_column(target_x4, target_row, 1);
     }
 
     if (dy > 0) {
+        if (dy > 1) render_row(target_x4, target_row, 18);
         render_row(target_x4, target_row, 19);
     } else if (dy < 0) {
         render_row(target_x4, target_row, 0);
+        if (dy < -1) render_row(target_x4, target_row, 1);
     }
 }
 

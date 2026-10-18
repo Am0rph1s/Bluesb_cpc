@@ -33,6 +33,12 @@
 
 #define BG_SLOTS 6
 #define BG_PAGESLOTS 3
+// Frame d'apuntar/tret de la policia (cela 14 d'ENEMI1.BIN) i durada de
+// la pose: DOS object_func_op2 posa special_anim 2 -> 3 (dues postures)
+// abans de tornar a caminar; aqui una sola cela (banc C6 ple).
+#define POLICE_SHOOT_CELL 13
+#define PROJ_CELL 12
+#define AIM_FRAMES 10
 
 typedef struct {
     i16 x;          // esquerra, px mon Mode 0
@@ -52,6 +58,8 @@ typedef struct {
     u8 kind;
     u8 vx;
     u8 base_cell;
+    u8 dos_slot;
+    u8 alt;         // 1 = el walk alterna base_cell / base_cell+1
 } Spawn;
 
 typedef struct {
@@ -83,17 +91,19 @@ static u16 s_slot_dst[BG_SLOTS];
 static u8 s_slot_span[BG_SLOTS];
 static u8 s_slot_rows[BG_SLOTS];
 
-// Buffer dinàmic de flip sota demanda per a enemics encarats a l'esquerra:
-static u8 s_flip_buffer[ENEMY_FRAME_SIZE];
-static u8 s_flipped_cell;
+// Mirror horitzonal Mode 0 d'un byte (intercanvia les dos plans de 4 bits
+// dins cada pixel). Mateixa formula que l'asm, pero en C i sense LUT:
+// es fa fila a fila amb un buffer de 16 B (abans hi havia una cel·la
+// sencera de 512 B al banc, que ja no hi cab).
+#define M0FLIP(b) (u8)((((u16)(b) & 0xAAu) >> 1) | (((u16)(b) & 0x55u) << 1))
+static u8 s_rowbuf[16];
 
 extern u8 tile_type(u16 col, u16 row);
 extern u8 tile_flags(u16 col, u16 row);
 extern u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
 
-// Rutines ràpides en ASM per flipejar la cela a s_flip_buffer (engine/enemy_table.s):
-extern void en2_init_lut(void);
-extern void en2_flip_cell(const u8* src, u8* dst);
+// Mirror horitzonal: es fa per fila dins s_rowbuf (16 B), invertint l'ordre
+// dels bytes i de cada byte (una cela de 512 B mes gran no cap al banc C6).
 
 // Taula d'spawn (20 slots L1). VALORS = FORMULA OFICIAL
 // (docs/DOS_CPC_COORDINATES.md / AGENTS.md regla 4):
@@ -104,42 +114,41 @@ extern void en2_flip_cell(const u8* src, u8* dst);
 // Aterratge validat amb `py -3 tools/sim_enemies.py` (MAP0/TRIG0 reals).
 // 3 iaies, 5 policies, 2 peixos, 3 ocells, 2 grangers, 1 cambrera, 4 rockers.
 static const Spawn s_spawn[ENEMY_N] = {
+    // x, y8, kind, vx, base_cell, dos_slot, alt
     // 3 Iaies (kind 15, DOS op0): slots 1, 2, 5
-    { 456, 1088 << 3, 15, 36,  1 }, //  0: Iaia 1 (PB Store)
-    { 624, 1088 << 3, 15, 36,  1 }, //  1: Iaia 2 (PB Bar)
-    { 592,  960 << 3, 15, 36,  1 }, //  2: Iaia 3 (1r pis botiga)
+    { 456, 1088 << 3, 15, 36, 1,  1, 1 }, //  0: Iaia 1 (PB Store)
+    { 624, 1088 << 3, 15, 36, 1,  2, 1 }, //  1: Iaia 2 (PB Bar)
+    { 592,  960 << 3, 15, 36, 1,  5, 1 }, //  2: Iaia 3 (1r pis botiga)
 
-    // 5 Policies (kind 4, DOS op2): slots 3, ?, 7, 29, 18
-    { 744, 1088 << 3,  4, 24,  3 }, //  3: Policia 1 (PB dreta botigues) [slot 3]
-    { 816,  784 << 3,  4,  0,  3 }, //  4: Policia 2 (replà racó 1r ascensor, ESTÀTIC)
-                                   //     PENDENT: cap parell DOS exacte (el slot 0
-                                   //     oficial es (280,1088) al carrer)
-    { 272,  960 << 3,  4, 24,  3 }, //  5: Policia 3 (1r pis sota escala) [slot 7]
-    { 768,  496 << 3,  4,  0,  3 }, //  6: Policia 4 (2n pis replà ascensors) [slot 29]
-    { 688,  320 << 3,  4, 24,  3 }, //  7: Policia 5 (3r pis) [slot 18]
+    // 5 Policies (kind 4, DOS op2): slots 3, 0, 7, 29, 18
+    { 744, 1088 << 3,  4, 24, 3,  3, 0 }, //  3: Policia 1 (PB dreta botigues)
+    { 280, 1088 << 3,  4, 24, 3,  0, 0 }, //  4: Policia 2 (carrer, PB Store)
+    { 272,  960 << 3,  4, 24, 3,  7, 0 }, //  5: Policia 3 (1r pis sota escala)
+    { 768,  496 << 3,  4,  0, 3, 29, 0 }, //  6: Policia 4 (2n pis, ESTÀTIC)
+    { 688,  320 << 3,  4, 24, 3, 18, 0 }, //  7: Policia 5 (3r pis)
 
     // 2 Peixos (kind 8, DOS op0): slots 24 i 12 dels 4 oficials (11/12/24/25)
-    { 428,  480 << 3,  8, 16,  0 }, //  8: Peix 1 (Peixera 1) [slot 24]
-    { 548,  496 << 3,  8, 16,  0 }, //  9: Peix 2 (Peixera 2) [slot 12]
+    { 428,  480 << 3,  8, 16, 0, 24, 0 }, //  8: Peix 1 (Peixera 1)
+    { 548,  496 << 3,  8, 16, 0, 12, 0 }, //  9: Peix 2 (Peixera 2)
 
     // 3 Ocells (kind 19, DOS op8): slots 26, 27, 28
-    { 232,   64 << 3, 19, 32,  5 }, // 10: Ocell 1 (Núvols esquerra) [slot 26]
-    { 512,   48 << 3, 19, 32,  5 }, // 11: Ocell 2 (Núvols centre) [slot 27]
-    { 808,   64 << 3, 19, 32,  5 }, // 12: Ocell 3 (Núvols dreta) [slot 28]
+    { 232,   64 << 3, 19, 32, 4, 26, 1 }, // 10: Ocell 1 (Núvols esquerra)
+    { 512,   48 << 3, 19, 32, 4, 27, 1 }, // 11: Ocell 2 (Núvols centre)
+    { 808,   64 << 3, 19, 32, 4, 28, 1 }, // 12: Ocell 3 (Núvols dreta)
 
     // 2 Grangers (kind 18, DOS op1): slots 16, 17
-    { 352,  320 << 3, 18, 24,  7 }, // 13: Granger 1 (escala vinils esq) [slot 16]
-    { 496,  320 << 3, 18, 24,  7 }, // 14: Granger 2 (escala vinils dreta) [slot 17]
+    { 352,  320 << 3, 18, 24, 6, 16, 1 }, // 13: Granger 1 (escala vinils esq)
+    { 496,  320 << 3, 18, 24, 6, 17, 1 }, // 14: Granger 2 (escala vinils dreta)
 
     // 1 Cambrera (kind 17, DOS op10): slot 10
-    {  72,  592 << 3, 17, 20,  9 }, // 15: Cambrera (Bar/Restaurant) [slot 10]
+    {  72,  592 << 3, 17, 20, 8, 10, 1 }, // 15: Cambrera (Bar/Restaurant)
 
     // 4 Rockers (kind 20, DOS op1): slots 6, 15, 9, 13
     // (els slots 4 i 8 son dins d'habitacions, files 80: no a l'exterior)
-    { 432,  960 << 3, 20, 24, 11 }, // 16: Rocker 1 (1r pis davant botiga) [slot 6]
-    { 624,  768 << 3, 20, 24, 11 }, // 17: Rocker 2 (2n pis dreta) [slot 15]
-    {  72,  464 << 3, 20, 24, 11 }, // 18: Rocker 3 (prop Bar/Restaurant) [slot 9]
-    { 584,  720 << 3, 20, 24, 11 }, // 19: Rocker 4 (2n pis) [slot 13]
+    { 432,  960 << 3, 20, 24, 10,  6, 1 }, // 16: Rocker 1 (1r pis botiga)
+    { 624,  768 << 3, 20, 24, 10, 15, 1 }, // 17: Rocker 2 (2n pis dreta)
+    {  72,  464 << 3, 20, 24, 10,  9, 1 }, // 18: Rocker 3 (prop Bar/Rest.)
+    { 584,  720 << 3, 20, 24, 10, 13, 1 }, // 19: Rocker 4 (2n pis)
 };
 
 static void en2_spawn_proj(u8 kind, u8 ht, u8 row_off, i16 x, i16 y, i16 vx, i16 vy, u8 cd) {
@@ -157,8 +166,6 @@ void en2_init(void) {
     u8 i;
     Enemy* e = s_enemies;
     const Spawn* sp = s_spawn;
-    en2_init_lut();
-    s_flipped_cell = 0xFF;
     for (i = 0; i < ENEMY_N; i++, e++, sp++) {
         e->x = sp->x;
         e->y8 = sp->y8;
@@ -217,7 +224,10 @@ void en2_update(void) {
                 u8 is_cop = (sp->kind == 4);
                 if (abs_dx > 8 && abs_dx < (is_cop ? 75 : 85)) {
                     e->dir = (dx_jake >= 0) ? 1 : -1;
-                    e->shoot_timer = 2; // Manté aturat mentre Jake estigui a distància de tir
+                    // 1:1 DOS object_func_op2/op10: enrang de tir la policia
+                    // es para (direction_lr = 0) i fa la pose d'apuntar
+                    // (special_anim 2 -> 3) abans de disparar.
+                    if (!e->shoot_timer) e->shoot_timer = AIM_FRAMES;
                     if (!s_proj.kind && !s_proj.cooldown) {
                         i16 sx = (e->dir > 0) ? (i16)(e->x + 14) : (i16)(e->x - 6);
                         if (is_cop) {
@@ -445,30 +455,55 @@ void en2_draw(void) {
         row_count = (u8)(clip_y1 - clip_y0);
         if (!byte_count || !row_count) continue;
 
-        // Selecció de cela i flip dinàmic amb cache de cela:
+        // Selecció de cel·la:
         {
-            u8 step = (e->dead || sp->kind == 8 || sp->vx == 0 || e->shoot_timer) ? 0 : (u8)((e->tick >> 2) & 1);
-            u8 cell = (u8)(sp->base_cell + step);
-            const u8* src = ENEMY_FRAMES_BASE + ((u16)cell << 9);
-            if (e->dir < 0) {
-                if (s_flipped_cell != cell) {
-                    en2_flip_cell(src, s_flip_buffer);
-                    s_flipped_cell = cell;
-                }
-                frame = s_flip_buffer;
+            u8 cell;
+            if (e->dead || sp->kind == 8 || sp->vx == 0) {
+                cell = (u8)sp->base_cell;                    // peix / estatic
+            } else if (e->shoot_timer && sp->kind == 4) {
+                // Pose de tirc de la policia (banc C6 nomes te lloc per a
+                // una: la de "dispara" del braç estenç).
+                cell = POLICE_SHOOT_CELL;
+            } else if (e->shoot_timer) {
+                cell = (u8)sp->base_cell;                    // cambrera: sense
+            } else if (sp->alt) {                             // cel·la de tir
+                cell = (u8)(sp->base_cell + ((e->tick >> 2) & 1));
             } else {
-                frame = src;
+                cell = (u8)sp->base_cell;                    // una sola pose
             }
+            frame = ENEMY_FRAMES_BASE + ((u16)cell << 9);
         }
 
         g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
         s_slot_dst[(u8)s] = g_moving_dst;
         g_moving_background = BG_SLOT(s);
-        g_moving_sprite = (u16)(frame + ((u16)start_row << 4) + (start_byte << 1));
-        g_moving_span = byte_count;
-        g_moving_rows = row_count;
-        g_moving_spr_skip = (u8)(16 - (byte_count << 1));
-        moving_blit_box();
+        if (e->dir < 0) {
+            // Mirror horitzontal: una crida de blit per fila (el blit avança
+            // 16 B per fila, així que no hi ha un buffer de cella sencera).
+            u8 r;
+            for (r = 0; r < row_count; r++) {
+                u8 p;
+                const u8* f = frame + ((u16)(start_row + r) << 4) + (start_byte << 1);
+                for (p = 0; p < byte_count; p++) {
+                    const u8* q = f + (u8)((byte_count - 1 - p) << 1);
+                    s_rowbuf[(u8)(p << 1)] = M0FLIP(*q);
+                    s_rowbuf[(u8)((p << 1) + 1)] = M0FLIP(*(q + 1));
+                }
+                g_moving_dst = (u16)ring_address(page, clip_x0, (i16)(clip_y0 + r));
+                g_moving_background = (u16)(BG_SLOT(s) + (u16)r * ENEMY_WB);
+                g_moving_sprite = (u16)s_rowbuf;
+                g_moving_span = byte_count;
+                g_moving_rows = 1;
+                g_moving_spr_skip = 0;
+                moving_blit_box();
+            }
+        } else {
+            g_moving_sprite = (u16)(frame + ((u16)start_row << 4) + (start_byte << 1));
+            g_moving_span = byte_count;
+            g_moving_rows = row_count;
+            g_moving_spr_skip = (u8)(16 - (byte_count << 1));
+            moving_blit_box();
+        }
 
         s_slot_span[(u8)s] = byte_count;
         s_slot_rows[(u8)s] = row_count;
@@ -491,13 +526,35 @@ void en2_draw(void) {
                 // Cela 13: base + offset files projectil + 4 (centrat horitzontal 8 px Mode 0)
                 const u8* frame;
                 if (s_proj.vx < 0) {
-                    if (s_flipped_cell != 13) {
-                        en2_flip_cell(ENEMY_FRAMES_BASE + (13 << 9), s_flip_buffer);
-                        s_flipped_cell = 13;
+                    // Mateix mirror per fila que els walkers (el projectil
+                    // son 8 px = 4 bytes, el buffer de 16 B hi arriba).
+                    u8 r;
+                    for (r = 0; r < row_count; r++) {
+                        u8 p;
+                        const u8* f = ENEMY_FRAMES_BASE + (PROJ_CELL << 9) +
+                                      (((u16)s_proj.row_offset + start_row + r) << 4) + 4;
+                        u8 cnt = (u8)(byte_count < 4 ? byte_count : 4);
+                        for (p = 0; p < cnt; p++) {
+                            const u8* q = f + (u8)((4 - 1 - p) << 1);
+                            s_rowbuf[(u8)(p << 1)] = M0FLIP(*q);
+                            s_rowbuf[(u8)((p << 1) + 1)] = M0FLIP(*(q + 1));
+                        }
+                        g_moving_dst = (u16)ring_address(page, clip_x0, (i16)(clip_y0 + r));
+                        g_moving_background = (u16)(&s_proj_bg[page][0] + ((u16)r << 2));
+                        g_moving_sprite = (u16)s_rowbuf;
+                        g_moving_span = cnt;
+                        g_moving_rows = 1;
+                        g_moving_spr_skip = 0;
+                        moving_blit_box();
                     }
-                    frame = s_flip_buffer + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
+                    // Registra l'estat dibuixat per al restore (mateixa
+                    // geometria que la ruta sense mirror).
+                    s_proj.drawn_dst[page] = (u16)ring_address(page, clip_x0, clip_y0);
+                    s_proj.drawn_byte_count[page] = (u8)(byte_count < 4 ? byte_count : 4);
+                    s_proj.drawn_row_count[page] = row_count;
+                    goto proj_drawn;
                 } else {
-                    frame = ENEMY_FRAMES_BASE + (13 << 9) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
+                    frame = ENEMY_FRAMES_BASE + (PROJ_CELL << 9) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
                 }
 
                 g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
@@ -514,6 +571,8 @@ void en2_draw(void) {
             }
         }
     }
+proj_drawn:
+    ;
 }
 
 void en2_check_player_hit(void) {

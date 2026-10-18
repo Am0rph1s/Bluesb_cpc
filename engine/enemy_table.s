@@ -42,10 +42,12 @@ _en_room_exit::
 
 ;; ============================================================
 ;; void en2_init_lut(void)
-;; Inicialitza la LUT de H-Flip de 256 B a C6:0x7900..0x79FF
+;; Inicialitza la LUT de H-Flip de 256 B al SCRATCH CENTRAL 0x8620
+;; (lliure en runtime; a C6 no hi cab perquè les dades ocupen
+;; 0x7820.. i el pool de fons 0x7A00).
 ;; ============================================================
 _en2_init_lut::
-    ld      hl, #0x7900
+    ld      hl, #0x8620
 1$:
     ld      a, l
     and     #0xAA
@@ -64,12 +66,12 @@ _en2_init_lut::
 ;; void en2_flip_cell(const u8* src, u8* dst)
 ;; sdcccall(1): HL = src, DE = dst
 ;; Mirall horitzontal d'una cela 16 px Mode 0 x 32 files (512 B)
-;; usant la LUT a 0x7900 (B = 0x79 constant).
+;; usant la LUT al scratch central 0x8620 (B = 0x86 constant).
 ;; ============================================================
 _en2_flip_cell::
     ld      bc, #14                 ;; offset al parell 7 (últim parell de la fila 0)
     add     hl, bc
-    ld      b, #0x79                ;; B = 0x79 (pàgina LUT a C6:0x7900)
+    ld      b, #0x86                ;; B = 0x86 (pàgina LUT a 0x8620)
     ld      a, #32                  ;; 32 files
 1$:
     push    af                      ;; desa comptador de files (segur amb ISR)

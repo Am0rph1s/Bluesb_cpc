@@ -171,14 +171,15 @@ class Enemy:
 
 
 def parse_spawn_table():
-    """Extreu src/enemy.c s_spawn[20] (x, y8, kind, vx, base_cell)."""
+    """Extreu src/enemy.c s_spawn[20] (x, y8, kind, vx, base_cell, dos_slot, alt)."""
     src = open(os.path.join(PROJ, "src", "enemy.c"), encoding="utf-8", errors="replace").read()
     m = re.search(r"static const Spawn s_spawn\[ENEMY_N\] = \{(.*?)\n\};", src, re.S)
-    rows = re.findall(r"\{\s*(\d+),\s*(\d+)\s*<<\s*3,\s*(\d+),\s*(\d+),\s*(\d+)\s*\},?\s*//\s*(.*)", m.group(1))
+    rows = re.findall(r"\{\s*(\d+),\s*(\d+)\s*<<\s*3,\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\s*\},?\s*//\s*(.*)", m.group(1))
     out = []
     for r in rows:
         out.append({"x": int(r[0]), "y8": int(r[1]) << YSHIFT, "kind": int(r[2]),
-                    "vx": int(r[3]), "cell": int(r[4]), "com": r[5].strip()})
+                    "vx": int(r[3]), "cell": int(r[4]), "slot": int(r[5]),
+                    "alt": int(r[6]), "com": r[7].strip()})
     return out
 
 

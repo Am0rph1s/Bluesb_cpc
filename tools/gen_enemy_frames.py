@@ -22,13 +22,20 @@ OUT_BIN = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 CELLS = [
     (8, 2),               # 0: Peix (dreta; esquerra es flip)
     (15, 3), (15, 4),     # 1, 2: Iaia walk
-    (4, 5), (4, 7),       # 3, 4: Policia walk (5=neutral, 7=stride)
-    (19, 18), (19, 19),   # 5, 6: Ocell fly
-    (18, 25), (18, 27),   # 7, 8: Granger walk (25=neutral, 27=stride)
-    (17, 33), (17, 32),   # 9, 10: Cambrera walk (33=neutral, 32=stride)
-    (20, 41), (20, 43),   # 11, 12: Rocker walk (41=neutral, 43=stride)
+    (4, 5),               # 3: Policia walk (DOS animframe_00af: 5,5,5,5,6,6,6,6 ->
+                         #    una sola pose; la segona cel·la no hi cab al banc C6)
+    (19, 18), (19, 19),   # 4, 5: Ocell fly
+    (18, 25), (18, 27),   # 6, 7: Granger walk
+    (17, 33), (17, 32),   # 8, 9: Cambrera walk
+    (20, 41), (20, 43),   # 10, 11: Rocker walk
 ]
-# Cela 13: composite projectils (Ou r0..12, Bala r13..18, Plat r19..29)
+# Cela 12: composite projectils (Ou r0..12, Bala r13..18, Plat r19..29)
+# Cela 13: POSE DE TIR de la policia (object_func_op2: special_anim 2/3
+# quan l'enemic encara en Jake). Dins ENEMI1.SQV son les uniques postures
+# amb el braç estenç endavant (10 i 11) -> apunta (10) / dispara (11).
+SHOOT_CELLS = [
+    (4, 11),              # 13: Policia dispara (braç estenç)
+]
 
 CELL_W, CELL_H = 16, 32
 
@@ -106,7 +113,11 @@ def main():
         assert w <= 32 and h <= 32, (idx, w, h)
         out += pack_cell(px, w, h)
     out += pack_projectiles_cell(frames)
-    total_cells = len(CELLS) + 1
+    for kind, idx in SHOOT_CELLS:
+        w, h, px = frames[idx]
+        assert w <= 32 and h <= 32, (idx, w, h)
+        out += pack_cell(px, w, h)
+    total_cells = len(CELLS) + 1 + len(SHOOT_CELLS)
     assert len(out) == total_cells * 512, len(out)
     open(OUT_BIN, "wb").write(out)
     print("escrit %s: %d bytes (%d celes 512 B)" % (OUT_BIN, len(out), total_cells))

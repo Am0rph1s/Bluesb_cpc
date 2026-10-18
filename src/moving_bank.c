@@ -315,7 +315,9 @@ void moving_bank_update(void) {
                 s_vy = 0;
             }
         } else if (s_carry_kind == 8) {
-            sprite_abort_balloon();
+            // Deixar anar el paraigües: NO abortem el blit (sprite_abort
+            // nomes neteja els flags i deixaria el sprite a pantalla).
+            // El restore normal del frame seguent torna el fons correcte.
             s_carry_kind = 0;
         } else if (!s_carry_kind && s_on_ground) {
             u8 crate_row = row;

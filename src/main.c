@@ -402,7 +402,9 @@ static void carry_draw(u8 page) {
 void carry_abort(void) {
     s_carry_kind = 0;
     s_carry_state = 0;
-    sprite_abort_balloon();
+    // NO sprite_abort_balloon(): si nomes neteja els flags, el globus/
+    // paraigües queda dibuixat a pantalla (el restore del frame seguent
+    // ja el borra amb el fons correcte).
 }
 
 static u8 anim_step(u8 speed, u8 max_idx) {

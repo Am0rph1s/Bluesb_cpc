@@ -690,6 +690,34 @@ volatile u8 g_map_level; // 0..5 (el GAME l'escriu abans del mapa; el FRONT
 u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
                     // primer mus_init: evita Play sobre C1 buit (reboot).
 
+#define GAMEOVER_PTR ((const u8*)0x6A00)
+
+static void draw_gameover_banner(u8 page) {
+    u16 vram_base = (page == 0) ? 0xC000 : 0x8000;
+    const u8* src = GAMEOVER_PTR;
+    u8 y;
+    u8 prev_b = bank_set(0xC0);
+    for (y = 0; y < 34; y++) {
+        u8 r_char = (u8)(10 + (y >> 3));
+        u16 r_line_hi = (u16)((y & 7) << 11);
+        u16 ma_row = (u16)((g_vram_start + (u16)r_char * 40) & 0x03FF);
+        u16 ma_start = (u16)((ma_row + 10) & 0x03FF);
+        if (ma_start <= 1004) {
+            u8* dst = (u8*)(vram_base | r_line_hi | (ma_start << 1));
+            cpct_memcpy(dst, src, 40);
+        } else {
+            u16 chars1 = 1024 - ma_start;
+            u16 bytes1 = chars1 << 1;
+            u8* dst1 = (u8*)(vram_base | r_line_hi | (ma_start << 1));
+            u8* dst2 = (u8*)(vram_base | r_line_hi);
+            cpct_memcpy(dst1, src, bytes1);
+            cpct_memcpy(dst2, src + bytes1, (u16)(40 - bytes1));
+        }
+        src += 40;
+    }
+    bank_restore(prev_b);
+}
+
 void main(void) {
     cpct_memset((void*)CRT_DATA_START, 0, CRT_DATA_LEN);
     cpct_memcpy((void*)CRT_IDATA_DST, (void*)CRT_IDATA_SRC, CRT_IDATA_LEN);
@@ -699,12 +727,13 @@ void main(void) {
     fdc_motor_off();
     fdc_load_file(0xC0, 0, 0, 0);
 
-    g_map_level = 0;
-    {
-        u8 prev = bank_set(0xC4);
-        ((void(*)(void))FRONT_RUN)();
-        bank_restore(prev);
-    }
+    while (1) {
+        g_map_level = 0;
+        {
+            u8 prev = bank_set(0xC4);
+            ((void(*)(void))FRONT_RUN)();
+            bank_restore(prev);
+        }
 
     mus_stop();
     g_mus_hold = 1;
@@ -760,9 +789,9 @@ void main(void) {
             zx0_decompress((const void*)(pak + off_mus), (void*)0x5000);
             bank_restore(prev);
 
-            // Sub-bloc 4: Frames Ascensor -> Banc C0:0x7000
+            // Sub-bloc 4: GAMEOVER (0x6A00) + Frames Ascensor (0x7000) -> Banc C0
             prev = bank_set(0xC0);
-            zx0_decompress((const void*)(pak + off_elev), (void*)0x7000);
+            zx0_decompress((const void*)(pak + off_elev), (void*)0x6A00);
             bank_restore(prev);
         }
     }
@@ -907,12 +936,23 @@ void main(void) {
         if (s_dying_timer) {
             s_dying_timer--;
             if (s_dying_timer == 0) {
-                if (g_lives_count > 0) g_lives_count--;
-                if (g_lives_count == 0) {
-                    moving_init();
-                    enemy_init();
+                if (g_lives_count <= 1) {
+                    g_lives_count = 0;
                     g_checkpoint = 0;
+                    mus_stop();
+                    g_mus_hold = 1;
+                    palette_black();
+                    crtc_set_display_start(0x3000);
+                    {
+                        u8 ok = 0, t;
+                        for (t = 0; t < 3 && !ok; t++) {
+                            if (!fdc_load_file(0xC0, &g_file_front, 0xC4, (void*)0x4000)) continue;
+                            ok = 1;
+                        }
+                    }
+                    break;
                 }
+                g_lives_count--;
                 g_hearts_count = 3;
                 if (g_checkpoint) {
                     s_px8 = (i16)(LEVEL_CHK_PX * SUB);
@@ -1074,6 +1114,10 @@ void main(void) {
         }
         else if (s_carry_kind == 8) sprite_blit_umbrella();
 
+        if (s_dying_timer && g_lives_count <= 1) {
+            draw_gameover_banner(s_back_page);
+        }
+
                 // Sincronització vertical fluida a 25 Hz (2 VSYNCs = 40 ms)
         cpc_wait_vsync_start();
         if ((u8)(g_ticks - last_ticks) < 10) {
@@ -1086,5 +1130,6 @@ void main(void) {
         g_vram_base_hi = (s_back_page == 1) ? 0x80 : 0xC0;
         s_pending_x = move_x;
         s_pending_y = move_y;
+    }
     }
 }

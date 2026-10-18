@@ -123,7 +123,7 @@ MUS_INTRO_SRC = "assets/musica_cpc/The_Blues_Brothers_Intro_CPC.akg"
 MUS_MAIN_SRC = "assets/musica_cpc/The_Blues_Brothers_CPC.akg"
 
 # Taules Bloc 0 justes: el GAME nomes referencia els fitxers del gameplay del nivell
-GAME_TABLE_SKIP = {"FDC", "FRONT", "FSPLASH", "FSELECT", "FMAP", "MUSBANK"}
+GAME_TABLE_SKIP = {"FDC", "FSPLASH", "FSELECT", "FMAP", "MUSBANK"}
 
 # Fitxers de dades al DSK (es carregaran per FDC raw). Ordre = ordre al disc.
 # (L'ordre de dades no afecta el boot; el BLUESB va primer via package().)
@@ -554,7 +554,9 @@ def build_enemybank(force):
         print("\n[FATAL] Imatge C3: %d bytes > finestra 0x4000!" % total)
         sys.exit(1)
     out_path = os.path.join(obj, "ENEMI.BIN")
-    open(out_path, "wb").write(frames + code)
+    im = frames + code
+    if not os.path.exists(out_path) or open(out_path, "rb").read() != im:
+        open(out_path, "wb").write(im)
     print("ENEMYB: frames %d B + codi %d B = %d B (0x4000..0x%04X)" %
           (len(frames), len(code), total, 0x4000 + total))
     # EQU pel GAME (render.c llegeix s_hud_strips a 0x6000 paginant Banc C1 / C0).
@@ -1290,7 +1292,11 @@ def build_level_bundles(force=False):
     bank5_src = os.path.join(obj, "BANK5.BIN")
     mus_src = os.path.join(obj, "MUSMAIN.BIN")
     elev_src = os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")
-    l1w_sources = [tiles_src, map_src, trig_src, bank5_src, mus_src, elev_src]
+    gameover_src = os.path.join(PROJ, "assets", "bbdata", "GAMEOVER.BIN")
+    if not os.path.exists(gameover_src):
+        import gen_gameover
+        gen_gameover.generate_gameover()
+    l1w_sources = [tiles_src, map_src, trig_src, bank5_src, mus_src, elev_src, gameover_src]
 
     if force or is_stale(l1w_dst, l1w_sources):
         t_data = open(tiles_src, "rb").read()
@@ -1303,7 +1309,10 @@ def build_level_bundles(force=False):
         m_data = open(mus_src, "rb").read()
         m_zx, _ = zx0_compress(bytes(m_data), classic=True, quick=ZX0_QUICK)
 
-        e_data = open(elev_src, "rb").read()
+        go_data = open(gameover_src, "rb").read()
+        assert len(go_data) == 1360
+        elev_raw = open(elev_src, "rb").read()
+        e_data = go_data + bytes(0x600 - len(go_data)) + elev_raw
         e_zx, _ = zx0_compress(bytes(e_data), classic=True, quick=ZX0_QUICK)
 
         # Header (6 bytes): off_bank5, off_mus, off_elev

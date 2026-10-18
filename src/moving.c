@@ -214,41 +214,29 @@ u16 fdc_crc16(const u8* p, u16 len) {
 }
 u8 fdc_load_file(u8 home_bank, const DiskFileDesc* d, u8 bk, void* ad) {
     volatile const DiskFileDesc* file_d = d;
-    // home es passa tal qual al shim (el caller sap on corre: 0xC0 GAME;
-    // C4 FRONT futur). L'stub no l'interpreta; el seu restore usa bank_get().
     if (!s_fdc_ready) {
-        // Copia C6:0x7000 -> scratch linkat + VERIFICA (blanc si corrupte:
-        // sense aixo un scratch dolent fa deriva salvatge al motor).
-        // A mes, desa una copia mestra permanent a C0:0x7800 per als seguents nivells.
-        u8 tries = 3, ok = 0;
-        while (tries-- && !ok) {
-            u8 prev = bank_get();
-            if (!s_fdc_master_saved) {
-                u8 i;
-                for (i = 0; i < 2; i++) {
-                    u16 off = (u16)(i << 9);
-                    bank_set(0xC6);
-                    cpct_memcpy((void*)0xBC00, (const void*)(0x7000 + off), 512);
-                    bank_set(0xC0);
-                    cpct_memcpy((void*)(FDC_BANK_BASE + off), (const void*)0xBC00, 512);
-                    cpct_memcpy((void*)(0x7800 + off), (const void*)0xBC00, 512);
-                }
-            } else {
-                bank_set(0xC0);
-                cpct_memcpy((void*)FDC_BANK_BASE, (const void*)0x7800, g_len_fdc);
-            }
-            bank_restore(prev);
-            if (fdc_crc16((const u8*)FDC_BANK_BASE, g_len_fdc) == g_crc_fdc) ok = 1;
+        u8 prev = bank_get();
+        u8 i;
+        for (i = 0; i < 2; i++) {
+            u16 off = (u16)(i << 9);
+            bank_set(0xC6);
+            cpct_memcpy((void*)0xBC00, (const void*)(0x7000 + off), 512);
+            bank_set(0xC0);
+            cpct_memcpy((void*)(0x7800 + off), (const void*)0xBC00, 512);
         }
-        if (!ok) { cpct_setBorder(0x4B); while (1) { } }
-        s_fdc_master_saved = 1;
+        bank_restore(prev);
         s_fdc_ready = 1;
     }
     if (!file_d) return 1;
-    // Blink FDC silencios (NAU_FDC_BLINK bit 7): a mig joc no es toca la
-    // paleta; a l'arrencada ja informen els colors de vora.
+
+    // VRAM Page 1 (0x8000..0xBFFF) is overwritten during gameplay.
+    // Always restore the resident FDC driver to 0x8000 from master copy at C0:0x7800.
+    {
+        u8 prev = bank_set(0xC0);
+        cpct_memcpy((void*)FDC_BANK_BASE, (const void*)0x7800, g_len_fdc);
+        bank_restore(prev);
+    }
+
     *(volatile u8*)0xBE0A |= 0x80;
-    // Home 0xC0: el GAME corre en central (mai paginat); el motor hi torna.
-    // (FRONT futur banked passara el seu banc aqui.)
     return FDC_BANK_ENTRY(home_bank, (const DiskFileDesc*)file_d, bk, ad);
 }

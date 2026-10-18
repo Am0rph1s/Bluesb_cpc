@@ -16,6 +16,10 @@
 #define LEVEL_START_PY      1106
 #define LEVEL_CAM0_X4       0
 #define LEVEL_CAM0_ROW      124
+#define LEVEL_CHK_PX        352
+#define LEVEL_CHK_PY        464
+#define LEVEL_CHK_CAM_X4    68
+#define LEVEL_CHK_CAM_ROW   48
 
 #define LEVEL_ELEVATOR_COUNT 5
 #define LEVEL_INST_COL      0

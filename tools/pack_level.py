@@ -90,6 +90,13 @@ def build_level_pkg(level_idx=0):
         cam0_x4 = 0
         cam0_row = max(0, (map_h * 2) - 20)
 
+    DOS_RESTART_X = [720, 912, 336, 288, 960, 64]
+    DOS_RESTART_Y = [496, 752, 816, 304, 592, 352]
+    chk_px = (DOS_RESTART_X[level_idx] - 16) // 2
+    chk_py = DOS_RESTART_Y[level_idx] - 32
+    chk_cam_x4 = max(0, min((map_w * 2) - 40, (chk_px - 80) // 4))
+    chk_cam_row = max(0, min((map_h * 2) - 20, (chk_py - 80) // 8))
+
     # Escanejar MAP0.BIN + TRIG0.BIN per extreure spans de tiles animats (cintes + aigua)
     map_bin = open(os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN"), "rb").read()
     trig_bin = open(os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN"), "rb").read()
@@ -160,6 +167,10 @@ def build_level_pkg(level_idx=0):
         f"#define LEVEL_START_PY      {start_py}",
         f"#define LEVEL_CAM0_X4       {cam0_x4}",
         f"#define LEVEL_CAM0_ROW      {cam0_row}",
+        f"#define LEVEL_CHK_PX        {chk_px}",
+        f"#define LEVEL_CHK_PY        {chk_py}",
+        f"#define LEVEL_CHK_CAM_X4    {chk_cam_x4}",
+        f"#define LEVEL_CHK_CAM_ROW   {chk_cam_row}",
         "",
         f"#define LEVEL_ELEVATOR_COUNT {len(elev_x)}",
         f"#define LEVEL_INST_COL      {inst_col}",

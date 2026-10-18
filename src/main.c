@@ -89,6 +89,7 @@ i8  s_ground_elevator = -1;
 u8  g_face;
 u8  s_anim_idx, s_anim_timer;
 u8  s_dazed_timer;
+u8  s_dying_timer;
 u8  s_invuln_timer;
 
 static u8  s_have_drawn[2];
@@ -229,6 +230,7 @@ static void enter_door(u8 dst_col, u8 dst_row) {
     s_vy = 0;
     s_on_ground = 1;
     s_dazed_timer = 0;
+    s_dying_timer = 0;
     s_jump_prev = 0;
 
     if (dst_row >= 72) {
@@ -414,6 +416,10 @@ static u8 anim_step(u8 speed, u8 max_idx) {
 }
 
 static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) {
+    if (s_dying_timer) {
+        if (!s_on_ground) return 4;
+        return (s_dying_timer & 8) ? 10 : 11;
+    }
     if (s_dazed_timer) {
         // Frames 26, 27, 28 (dazed1, dazed2, dazed3): estrelletes autèntiques DOS girant sobre el cap!
         u8 f = (u8)(s_dazed_timer >> 2);
@@ -814,6 +820,7 @@ void main(void) {
     s_carry_state = 0; s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
     s_anim_idx = 0; s_anim_timer = 0;
     s_dazed_timer = 0;
+    s_dying_timer = 0;
     s_invuln_timer = 0;
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
@@ -848,8 +855,8 @@ void main(void) {
             s_up_prev = up_key;
         }
 
-        if (s_dazed_timer) {
-            s_dazed_timer--;
+        if (s_dazed_timer || s_dance_timer || s_dying_timer) {
+            if (s_dazed_timer) s_dazed_timer--;
             move = 0;
             jump = 0;
             crouch = 0;
@@ -880,46 +887,64 @@ void main(void) {
         // 1:1 DOS Col·lisió Jake <-> Enemics / Projectils (level.c:1583-1658)
         if (s_invuln_timer) {
             s_invuln_timer--;
-        } else if (!s_in_room) {
+        } else if (!s_in_room && !s_dying_timer) {
             i16 px = (i16)(s_px8 >> 3);
             i16 py = (i16)(s_py8 >> 3);
             if (enemy_check_player_hit(px, py, crouch)) {
                 if (g_hearts_count > 0) g_hearts_count--;
                 s_invuln_timer = 75; // 1:1 DOS blinking_counter = 75
-                s_dazed_timer = 20;  // 1:1 DOS special_anim = 18 (estrelletes al cap)
                 if (s_carry_kind) carry_abort();
                 if (g_hearts_count == 0) {
-                    if (g_lives_count > 0) g_lives_count--;
-                    if (g_lives_count == 0) {
-                        moving_init();
-                        enemy_init();
-                    }
-                    g_hearts_count = 3;
+                    s_dying_timer = 64; // 1:1 DOS death dance (~1.3s a 50Hz)
+                    s_dazed_timer = 0;
+                    s_invuln_timer = 255;
+                } else {
+                    s_dazed_timer = 20;  // 1:1 DOS special_anim = 18 (estrelletes al cap)
+                }
+            }
+        }
+
+        if (s_dying_timer) {
+            s_dying_timer--;
+            if (s_dying_timer == 0) {
+                if (g_lives_count > 0) g_lives_count--;
+                if (g_lives_count == 0) {
+                    moving_init();
+                    enemy_init();
+                    g_checkpoint = 0;
+                }
+                g_hearts_count = 3;
+                if (g_checkpoint) {
+                    s_px8 = (i16)(LEVEL_CHK_PX * SUB);
+                    s_py8 = (i16)(LEVEL_CHK_PY * SUB);
+                    g_cam_x4 = LEVEL_CHK_CAM_X4;
+                    g_cam_row = LEVEL_CHK_CAM_ROW;
+                } else {
                     s_px8 = (i16)(LEVEL_START_PX * SUB);
                     s_py8 = (i16)(LEVEL_START_PY * SUB);
-                    s_vx = 0; s_vy = 0;
-                    s_on_ground = 1;
-                    s_ground_elevator = -1;
                     g_cam_x4 = LEVEL_CAM0_X4;
                     g_cam_row = LEVEL_CAM0_ROW;
-                    s_invuln_timer = 75;
-                    s_dazed_timer = 0;
-                    s_in_room = 0;
-                    s_scrolling_locked = 0;
-                    s_carry_kind = 0;
-                    s_carry_state = 0;
-                    s_carry_drawn[0] = 0;
-                    s_carry_drawn[1] = 0;
-                    s_have_drawn[0] = 0;
-                    s_have_drawn[1] = 0;
-                    s_rep_n = 0;
-                    enemy_room_exit(0, 0);
-                    palette_black();
-                    repaint_both_buffers();
-                    moving_draw(0, g_cam_x4, g_cam_row);
-                    moving_draw(1, g_cam_x4, g_cam_row);
-                    palette_restore();
                 }
+                s_vx = 0; s_vy = 0;
+                s_on_ground = 1;
+                s_ground_elevator = -1;
+                s_invuln_timer = 75;
+                s_dazed_timer = 0;
+                s_in_room = 0;
+                s_scrolling_locked = 0;
+                s_carry_kind = 0;
+                s_carry_state = 0;
+                s_carry_drawn[0] = 0;
+                s_carry_drawn[1] = 0;
+                s_have_drawn[0] = 0;
+                s_have_drawn[1] = 0;
+                s_rep_n = 0;
+                enemy_room_exit(0, 0);
+                palette_black();
+                repaint_both_buffers();
+                moving_draw(0, g_cam_x4, g_cam_row);
+                moving_draw(1, g_cam_x4, g_cam_row);
+                palette_restore();
             }
         }
 
@@ -942,7 +967,7 @@ void main(void) {
         {
             i16 px = (i16)(s_px8 >> 3);
             i16 py = (i16)(s_py8 >> 3);
-            if (!s_scrolling_locked) {
+            if (!s_scrolling_locked && !s_dying_timer) {
                 i16 sy = (i16)(py - (i16)(g_cam_row * 8));
                 i16 sx = (i16)(px - (i16)(g_cam_x4 * 4));
                 if (sx > DEAD_R && g_cam_x4 < ((LEVEL_W_PX / 4) - PLAY_CHARS)) {
@@ -1009,7 +1034,7 @@ void main(void) {
         g_spr_y = (u8)dsy;
         g_spr_x = (u8)dsx;
 
-        if (!(s_invuln_timer & 2)) {
+        if (s_dying_timer || !(s_invuln_timer & 2)) {
             u16 spr_addr = (u16)(PLAYER_FRAMES_BASE + ((u16)cur << 9) - ((u16)cur << 5));
             const u8* fr_addr = (const u8*)spr_addr;
             u8 prev_b = bank_set(PLAYER_FRAMES_BANK);

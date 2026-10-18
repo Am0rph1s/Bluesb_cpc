@@ -927,6 +927,31 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - **Truc de teleport (CORRECCIO IMPORTANT)**: el protocol remot de ZEsarUX vol les adreces de **`write-memory`/`read-memory` en DECIMAL**. Escriure-les en hex fa que la escriptura no s'apliqui (semblava que el joc "resetejava" en Jake). `zrcp.py` ja fa servir decimal a `read_mem`.
 - **Altres pendents d'aquest fil (no tocats)**: (a) les 5 plataformes tenen les coordenades a ma a `tools/pack_level.py` (`y = dos_y`, sense el −32 oficial) -> surten 18 px baixes; (b) falta l'objecte DOS `op4` (tipus 16) a CPC (816,768), l'ascensor de debò; (c) el DOS anima tambe els tiles de les cintes (29-32) i les peixeres (76-78) — aixo SI que ho tenim — i n'hi ha d'altres (53/54/55/63) que no.
 
+## Sessio 2026-10-19 (27): Frames d'enemics COMPRIMITS amb ZX0 + cache (allibera ~2,6 KB de C6)
+
+- **Motiu**: el banc C6 estava ple (14 celes crues = 7.168 B) i no hi cabien ni la pose de tirc de la policia ni res mes.
+- **Solucio implementada (prototip validat)**: els 14 frames es guarden **comprimits amb ZX0, un flux INDEPENDENT per cela** (ZX0 es sequencial: amb blocs separats es pot saltar directament a qualsevol), i es descomprimeixen **a l'vol** cap a una **cache de 4 slots de 512 B** dins el mateix C6.
+  - Numeros: 7.168 B en cru -> **2.321 B** en 14 blocs (cela mes gran 212 B, la mes petita 59 B). Estalvi 4.847 B.
+  - **Cost REAL mesurat a l'emu: 16 fallades de cache en 20,2 s = 0,79/s** (~0,3% del temps a 3,5 ms/fallada). El `ldir` del depaquetador es el terra: 512 B x 21 T = 2,7 ms minim; ~3,5 ms real.
+  - Per que el cost es tant baix: cada enemic nomes alterna 2 celes i la cache en te 4 -> gairebe sempre encert.
+- **Layout C6 nou** (el genera `tools/build.py`, `build_enemybank`):
+  | adreca | contingut |
+  |---|---|
+  | `0x4000..0x403F` | taula de 16 punters absoluts (2 B/cela; 14 usades) |
+  | `0x4040..~0x4951` | blocs ZX0 per cela |
+  | `0x5000..0x57FF` | **cache**: 4 slots de 512 B (scratch) |
+  | `0x5800..0x581F` | estat cache: cela per slot (0xFF buit) + next |
+  | `0x5820..0x5BD8` | `_DATA` d'enemics (**moguda** de 0x7530; ara creix cap al codi) |
+  | `0x5C00..0x7594` | codi (`ENEMYCODE.BIN`, 6.548 B) |
+  | `0x7595..0x78FF` | lliure (~875 B) |
+  | `0x7900` / `0x7A00..0x7FFF` | LUT del H-flip (256 B) / pool de fons (6x256) |
+  - Asserts nous al build: blocs <= 0x5000, cache+estat <= 0x5820, `_DATA` <= 0x5C00, codi <= 0x7900.
+  - La imatge que es carrega del disc NO creix (els blocs es generen al build i la resta es zero); `L1ENEMI.ZX0` puja una mica (els blocs ja son incompressibles).
+- **Codi**: `src/enemy.c` `en2_cell(cell)` (cerca a la cache, si falla descomprimeix amb `zx0_decompress` -resident, cridable des de C6- i actualitza round-robin). Substitueix els `ENEMY_FRAMES_BASE + (cell << 9)` de walkers i projectils. `g_enemy_decomp_cnt` (resident, `moving.c/h`) es el comptador de fallades per mesurar des de l'emu.
+- **VERIFICAT a l'emu**: la policia del carrer i la resta de walkers es dibuixen correctes (captures `scratch/zx_inici.png`, `scratch/zx_final.png`) i el comptador dona 0,79 fallades/s. Script: `scratch/test_zx0_cache.py`.
+- **Espai lliure ara a C6**: ~1.711 B entre blocs i cache + 39 B + ~875 B dalt = **~2,6 KB**. Amb aixo ja hi caben celes noves (pose de tirc de la policia ~150 B comprimida, cambrera, etc.).
+- **Alternatives mes rapides que ZX0 v1**: cap de significativa. Qualsevol descompressor ha d'escriure els 512 B (`ldir` = 21 T/byte = 2,7 ms de terra). LZSA2/ZX0-fast retallarien ~10-20% del que hi ha *per sobre* del terra, a canvi de pitjor rati. Amb la cache el cost es irrellevant.
+
 ## Sessio 2026-10-18 (26): Peixos = decoracio (classe de colisio 0)
 
 - **Report de l'usuari**: els peixos de les peixeres feien mal; al DOS son **decoracio pura**.

@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 build.py - Build de Blues Brothers CPC amb SDCC 4.5 (natiu Windows).
-Compila, enllaça, empaqueta el DSK (afegint els fitxers de dades PRIMER per
+Compila, enllaÃ§a, empaqueta el DSK (afegint els fitxers de dades PRIMER per
 que les seves coordenades CHS no depenguin del tamany del codi) i genera
 src/disk_tables.h amb les taules CHS per al carregador FDC raw.
 """
@@ -76,7 +76,7 @@ DSKNAME8 = "BLUESB"
 # (engine/enemy_table.s, slots init/update/restore/draw); codi+dades
 # fins 0x8000 (pool de fons inclos). ENEMI.BIN = frames + imatge codi.
 ENEMY_BASE = 0x5C00
-ENEMY_DATA = 0x7530  # codi (0x5C00..~0x7529) + dades C6 (fins ~0x78E8, marge fins LUT 0x7900 / BG_BASE 0x7A00)
+ENEMY_DATA = 0x5820  # dins l'area alliberada pels frames comprimits (cache 0x5000..0x57FF, estat 0x5800..0x581F)
 ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 ENEMY_C_SOURCES = ["src/enemy.c"]
 ENEMY_ASM_SOURCES = ["engine/enemy_table.s"]
@@ -85,11 +85,11 @@ ENEMY_C_HEADERS = {
                     "src/moving.h", "src/sprite.h", "src/enemy.h", "src/level_pkg.h"],
 }
 
-# --- Banc 5 (CP-2.2): lògica moving.* a 0x6E00; slots fixos 0x6E00+3k
+# --- Banc 5 (CP-2.2): lÃ²gica moving.* a 0x6E00; slots fixos 0x6E00+3k
 # (han de coincidir amb engine/bank5_table.s; build_bank() ho verifica).
 BANK5_BASE = 0x6E00
 BANK5_MAXLEN = 0x1200   # finestra: CODE + pad zeros fins fi _DATA (0x7E07);
-                        # el banc físic dona fins 0x7FFF, de sobres.
+                        # el banc fÃ­sic dona fins 0x7FFF, de sobres.
 BANK_C_SOURCES = ["src/moving_bank.c"]
 BANK_ASM_SOURCES = ["engine/bank5_table.s"]
 BANK_C_HEADERS = {
@@ -131,7 +131,7 @@ DATA_FILES = [
     # 1. Boot / Starter
     ("FDC",     "BIN", os.path.join(PROJ, "obj", "FDC.BIN")),
     ("FRONT",   "BIN", os.path.join(PROJ, "obj", "FRONT.BIN")),
-    # 2. Menú / Prejoc
+    # 2. MenÃº / Prejoc
     ("FSPLASH", "ZX0", os.path.join(PROJ, "obj", "FSPLASH.ZX0")),
     ("MUSBANK", "BIN", os.path.join(PROJ, "obj", "MUSBANK.BIN")),
     ("FSELECT", "ZX0", os.path.join(PROJ, "obj", "FSELECT.ZX0")),
@@ -153,12 +153,12 @@ def run(cmd):
 
 
 def is_stale(target, sources):
-    # Frescor per mtime O per hash de contingut (l'mtime sol no és fiable:
+    # Frescor per mtime O per hash de contingut (l'mtime sol no Ã©s fiable:
     # algunes eines preserven mtime en editar i el build incremental
-    # enllaçaria .rel rancis amb taules noves = DSK incoherent).
+    # enllaÃ§aria .rel rancis amb taules noves = DSK incoherent).
     # PURA consulta (sense efectes): el marcatge es fa amb mark_fresh()
-    # DESPRÉS de compilar bé (abans, un kill a mig SDCC enverinava el
-    # hash i el següent build saltava la recompilació = binari ranci).
+    # DESPRÃ‰S de compilar bÃ© (abans, un kill a mig SDCC enverinava el
+    # hash i el segÃ¼ent build saltava la recompilaciÃ³ = binari ranci).
     if not os.path.exists(target):
         return True
     t = os.path.getmtime(target)
@@ -237,9 +237,9 @@ def code_length(map_path, default=0x8000):
 
 
 def image_length(map_path, base, default=0x8000):
-    """Span de la imatge a carregar: des de `base` fins al final de l'última
-    àrea útil (CODE/DATA/INITIALIZED/INITIALIZER). El gap s'omple amb zeros
-    (BSS) i el template INITIALIZER ve de l'ihx. Sense això, _DATA/_INITIALIZED
+    """Span de la imatge a carregar: des de `base` fins al final de l'Ãºltima
+    Ã rea Ãºtil (CODE/DATA/INITIALIZED/INITIALIZER). El gap s'omple amb zeros
+    (BSS) i el template INITIALIZER ve de l'ihx. Sense aixÃ², _DATA/_INITIALIZED
     queden fora del .bin (mai carregats) i el CRT manual llegeix brossa."""
     if not os.path.exists(map_path):
         return default
@@ -297,7 +297,7 @@ def crt_addrs_text(map_path):
 
 
 def map_area(map_path, area):
-    """Retorna (start, length) d'una àrea del mapa (s__X/l__X)."""
+    """Retorna (start, length) d'una Ã rea del mapa (s__X/l__X)."""
     s = ln = None
     if os.path.exists(map_path):
         with open(map_path, "r", encoding="latin1") as f:
@@ -399,7 +399,7 @@ def report_and_assert_memory_budget(map_path):
 
 
 def map_symbols(map_path):
-    """Llegeix símbols globals {nom: addr} d'un .map d'sdasz80."""
+    """Llegeix sÃ­mbols globals {nom: addr} d'un .map d'sdasz80."""
     syms = {}
     with open(map_path, "r", encoding="latin1") as f:
         for line in f:
@@ -411,7 +411,7 @@ def map_symbols(map_path):
 
 def build_bank_equ(resident_map):
     """Genera obj/bank_equ.s amb .equ de tots els globals residents
-    (perquè el link separat del banc resolgui les seves refs externes)."""
+    (perquÃ¨ el link separat del banc resolgui les seves refs externes)."""
     obj = os.path.join(PROJ, "obj")
     syms = map_symbols(resident_map)
     lines = [".module bank_equ"]
@@ -435,7 +435,7 @@ def build_bank_equ(resident_map):
 
 
 def build_bank(force):
-    """Compila+enllaça el Banc 5 (moving_bank) a 0x6E00. Retorna BANK5.BIN."""
+    """Compila+enllaÃ§a el Banc 5 (moving_bank) a 0x6E00. Retorna BANK5.BIN."""
     obj = os.path.join(PROJ, "obj")
     resident_map = os.path.join(obj, "bluesb.map")
     build_bank_equ(resident_map)
@@ -488,7 +488,7 @@ def build_bank(force):
                 max_length=image_length(map_path, BANK5_BASE))
     size = os.path.getsize(bin_path)
     if size > BANK5_MAXLEN:
-        print("\n[FATAL] Banc 5: %d bytes > límit 0x%04X! Cal aprimar moving_bank.c." %
+        print("\n[FATAL] Banc 5: %d bytes > lÃ­mit 0x%04X! Cal aprimar moving_bank.c." %
               (size, BANK5_MAXLEN))
         sys.exit(1)
     print("BANC5: 0x%04X (%d bytes, code=%d B, marge_code=%d B)" %
@@ -525,13 +525,15 @@ def build_enemybank(force):
     map_path = os.path.join(obj, "enemybank.map")
     en_code_s, en_code_l = map_area(map_path, "CODE")
     en_data_s, en_data_l = map_area(map_path, "DATA")
-    if en_code_s is not None and en_data_s is not None and (en_code_s + en_code_l) > en_data_s:
-        print("\n[FATAL] Banc C3 _CODE (0x%04X..0x%04X) envaeix _DATA (0x%04X)!" %
-              (en_code_s, en_code_s + en_code_l, en_data_s))
+    # Layout C6 nou: frames comprimits 0x4000, cache 0x5000, estat 0x5800,
+    # dades 0x5820..<0x5C00, codi 0x5C00..<0x7900 (LUT).
+    if en_code_s is not None and (en_code_s + en_code_l) > 0x7900:
+        print("\n[FATAL] Banc C6 _CODE (0x%04X..0x%04X) envaeix la LUT (0x7900)!" %
+              (en_code_s, en_code_s + en_code_l))
         sys.exit(1)
-    if en_data_s is not None and (en_data_s + en_data_l) > 0x7A00:
-        print("\n[FATAL] Banc C6 _DATA (0x%04X..0x%04X) envaeix BG_BASE (0x7A00)!" %
-              (en_data_s, en_data_s + en_data_l))
+    if en_data_s is not None and (en_data_s + en_data_l) > ENEMY_BASE:
+        print("\n[FATAL] Banc C6 _DATA (0x%04X..0x%04X) envaeix el codi (0x%04X)!" %
+              (en_data_s, en_data_s + en_data_l, ENEMY_BASE))
         sys.exit(1)
     syms = map_symbols(map_path)
     slot_names = {"_en_update": 0, "_en_restore": 1, "_en_draw": 2, "_en_init": 3,
@@ -549,16 +551,53 @@ def build_enemybank(force):
     frames = open(ENEMY_FRAMES, "rb").read()
     code = open(code_path, "rb").read()
     assert len(frames) == 14 * 512, len(frames)
-    total = len(frames) + len(code)
+
+    # --- Frames comprimits PER CELA (ZX0) + cache de 4 slots (veure enemy.c) ---
+    # Layout dins C6 (imatge que es descomprimeix a 0x4000):
+    #   0x4000..0x403F  taula de 16 punters absoluts (2 B/cela; 14 usades)
+    #   0x4040..        blocs ZX0 per cela (1 flux independent per cela)
+    #   0x5000..0x57FF  cache de 4 slots de 512 B (scratch: no cal carregar-hi res)
+    #   0x5800..0x581F  estat de la cache (cela per slot + next + comptador)
+    #   0x5C00..        codi (ENEMYCODE.BIN)
+    from zx0pkg.zx0 import zx0_compress
+    EN_TABLE = 0x4000
+    EN_BLOCKS = 0x4040
+    EN_CACHE = 0x5000
+    EN_CACHE_SLOTS = 4
+    ncell = len(frames) // 512
+    table = bytearray()
+    blocks = bytearray()
+    for i in range(ncell):
+        out, _ = zx0_compress(bytes(frames[i * 512:(i + 1) * 512]),
+                              classic=True, quick=True)
+        table += struct.pack("<H", EN_BLOCKS + len(blocks))
+        blocks += bytes(out)
+    while len(table) < 32:
+        table += b"\x00\x00"
+    blocks_end = EN_BLOCKS + len(blocks)
+    if blocks_end > EN_CACHE:
+        print("\n[FATAL] Blocs ZX0 d'enemics (fins 0x%04X) envaeixen la cache 0x%04X!",
+              blocks_end, EN_CACHE)
+        sys.exit(1)
+    if EN_CACHE + EN_CACHE_SLOTS * 512 > 0x4000 + 0x1C00:
+        print("\n[FATAL] Cache d'enemics passa del final de frames (0x5C00)!")
+        sys.exit(1)
+    raw_len = 0x1C00                       # 0x4000..0x5BFF
+    im = bytearray(raw_len)
+    im[0:len(table)] = table
+    im[EN_BLOCKS - 0x4000:EN_BLOCKS - 0x4000 + len(blocks)] = blocks
+    im = bytes(im) + code
+    total = len(im)
+    print("ENEMY cells: %d B ZX0 (de %d B en cru) en %d blocs; cache %d x 512 B a 0x%04X"
+          % (len(blocks), len(frames), ncell, EN_CACHE_SLOTS, EN_CACHE))
     if 0x4000 + total > 0x8000:
         print("\n[FATAL] Imatge C3: %d bytes > finestra 0x4000!" % total)
         sys.exit(1)
     out_path = os.path.join(obj, "ENEMI.BIN")
-    im = frames + code
     if not os.path.exists(out_path) or open(out_path, "rb").read() != im:
         open(out_path, "wb").write(im)
-    print("ENEMYB: frames %d B + codi %d B = %d B (0x4000..0x%04X)" %
-          (len(frames), len(code), total, 0x4000 + total))
+    print("ENEMYB: blocs %d B + codi %d B = %d B (0x4000..0x%04X)"
+          % (len(blocks), len(code), total, 0x4000 + total))
     # EQU pel GAME (render.c llegeix s_hud_strips a 0x6000 paginant Banc C1 / C0).
     ext_s = os.path.join(obj, "enemy_ext.s")
     ext_txt = ("    .module enemy_ext\n"
@@ -613,7 +652,7 @@ def build_fdc_hold(force):
 
 
 def build_fdcbank(force):
-    """Enllaça FDC.BIN (motor FDC sencer) a 0x8000. Retorna FDC.BIN."""
+    """EnllaÃ§a FDC.BIN (motor FDC sencer) a 0x8000. Retorna FDC.BIN."""
     obj = os.path.join(PROJ, "obj")
     hold_rel = build_fdc_hold(force)
     bank_rels = [os.path.join(obj, "fdc.rel"), os.path.join(obj, "assets_fdc.rel"),
@@ -1061,11 +1100,11 @@ def placeholder_starter_tables():
     return "\n".join(lines) + "\n"
 
 
-# Starter: el firmware el carrega a ST_LOAD (0x3000) però s'hi executa
+# Starter: el firmware el carrega a ST_LOAD (0x3000) perÃ² s'hi executa
 # reubicat a ST_RUN (0xC000, VRAM): la imatge GAME (0x0100..0x3869) trepitja
-# 0x3000 mentre carrega i corrompria el CALL final (símptoma: cau a BASIC).
-# s_start és 100% PIC (només LD imm + LDIR + JP absolut a _s_main): pot
-# executar-se a 0x3000 tot i enllaçar a 0xC000, copiar la finestra sencera
+# 0x3000 mentre carrega i corrompria el CALL final (sÃ­mptoma: cau a BASIC).
+# s_start Ã©s 100% PIC (nomÃ©s LD imm + LDIR + JP absolut a _s_main): pot
+# executar-se a 0x3000 tot i enllaÃ§ar a 0xC000, copiar la finestra sencera
 # a VRAM i saltar-hi. L'exec del firmware ha de ser 0x3000 (load addr).
 ST_LOAD = 0x3000
 ST_RUN = 0xC000   # VRAM; s_start desconnecta ROMs (RMR) abans de copiar-hi
@@ -1074,7 +1113,7 @@ ST_WIN = 0x0800
 
 
 def build_starter(force):
-    """Compila+enllaça el starter (load 0x3000, run 0xC000). Retorna (bin, s_start)."""
+    """Compila+enllaÃ§a el starter (load 0x3000, run 0xC000). Retorna (bin, s_start)."""
     obj = os.path.join(PROJ, "obj")
     src = os.path.join(PROJ, "engine", "starter.c")
     rel = os.path.join(obj, "starter.rel")
@@ -1344,9 +1383,9 @@ def package(starter_path, starter_start, game_path):
             return (len(payload) + 128, len(chs) // 2, chs)
         return None
 
-    # BLUESB primer (starter, pistes 0-1): l'únic que carrega el firmware.
-    # load=0x3000; exec=s_start en adresses de càrrega (0x3000 + desplaçament
-    # dins la imatge). s_start és PIC: copia la finestra a 0xC000 i hi salta.
+    # BLUESB primer (starter, pistes 0-1): l'Ãºnic que carrega el firmware.
+    # load=0x3000; exec=s_start en adresses de cÃ rrega (0x3000 + desplaÃ§ament
+    # dins la imatge). s_start Ã©s PIC: copia la finestra a 0xC000 i hi salta.
     s_exec = ST_LOAD + (starter_start - ST_RUN)
     sdata = open(starter_path, "rb").read()
     add_file(DSKNAME8, "BIN", sdata, ST_LOAD, s_exec, make_table=False)
@@ -1423,7 +1462,7 @@ def placeholder_header():
         try:
             data_len = os.path.getsize(path)
         except OSError:
-            data_len = 4096  # generat (BANK5.BIN): estimació, el real ve després
+            data_len = 4096  # generat (BANK5.BIN): estimaciÃ³, el real ve desprÃ©s
         scount = ((data_len + 128 + 1023) // 1024) * 2   # blocs AMSDOS d'1 KB -> 2 sectors
         var = name8.lower()
         lines.append("static const u8 g_%s_chs[%d] = { 0 };" % (var, scount * 3))
@@ -1457,7 +1496,7 @@ def main():
         open(hdr_path, "w").write(placeholder_header())
     if not os.path.exists(crt_path):
         open(crt_path, "w").write(crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map")))
-    # Llavor si falta o és d'una generació antiga (sense GAME_LEN/GAME_CRC/g_file_fdc):
+    # Llavor si falta o Ã©s d'una generaciÃ³ antiga (sense GAME_LEN/GAME_CRC/g_file_fdc):
     # compilar-hi a sobre petaria amb 'Undefined identifier'.
     try:
         stab_txt = open(stab_path).read()

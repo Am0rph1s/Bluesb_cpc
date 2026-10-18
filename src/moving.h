@@ -1,4 +1,4 @@
-#ifndef MOVING_H
+﻿#ifndef MOVING_H
 #define MOVING_H
 
 #include "cpctelera.h"
@@ -37,7 +37,7 @@ extern u8 s_conveyor_phase;
 extern u8 s_conveyor_tick;
 extern u8 s_page_conveyor_phase[2];
 
-// Estat del jugador i càmera resident (Bloc 0), actualitzat des del Banc 5:
+// Estat del jugador i cÃ mera resident (Bloc 0), actualitzat des del Banc 5:
 extern u16 g_cam_x4;
 extern u16 g_cam_row;
 extern i16 s_px8, s_py8;
@@ -57,19 +57,20 @@ extern u8  s_anim_idx, s_anim_timer;
 extern u8  s_rep_n;
 extern u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
 
-// Estat d'ítems, bonus i malus (actualitzat al Banc 5):
+// Estat d'Ã­tems, bonus i malus (actualitzat al Banc 5):
 extern u8  g_vinyls_count;
 extern u8  g_hearts_count;
 extern u8  g_lives_count;
 extern u8  g_has_instrument;
 extern u8  g_level_complete;
 extern u8  g_checkpoint;
+extern u8  g_enemy_decomp_cnt;   // diagnostic: descompressions de cela d'enemic (cache miss)
 extern u8  s_dance_timer;
 
 void carry_abort(void);
 void moving_popup_restore(u8 page);
 
-// Bloc de paràmetres per crides bankades amb args/retorn (CP-2.2).
+// Bloc de parÃ metres per crides bankades amb args/retorn (CP-2.2).
 extern u16 bc_a, bc_b, bc_c, bc_d, bc_e;
 extern i16 bc_r;
 

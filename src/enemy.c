@@ -1,7 +1,7 @@
-// ============================================================
+﻿// ============================================================
 // enemy.c - Walkers del nivell 1 (kinds DOS 8/15/19 -> op1), BANC C6
 // ------------------------------------------------------------
-// S'enllaça a 0x5C00 (darrere els frames a 0x4000) amb taula de
+// S'enllaÃ§a a 0x5C00 (darrere els frames a 0x4000) amb taula de
 // salts fixa (engine/enemy_table.s): el resident hi crida via
 // call_banked(0xC6, slot). El banc es C6 (no C2/C3): OUT(0x7F00,0xC2)
 // penja la maquina i C3 reboota (vist 10/26); la imatge hi arriba
@@ -18,7 +18,7 @@
 // de 3 walkers visibles (mapa 1024 px, vista 160); si s'exhaureix
 // es salta el draw (segur).
 // Subsistema de projectils integrat (ou, bala, plat) amb buffer propi.
-// Flip dinàmic sota demanda en ASM (estalvia 2.560 B de RAM).
+// Flip dinÃ mic sota demanda en ASM (estalvia 2.560 B de RAM).
 // ============================================================
 #include "cpctelera.h"
 #include "moving.h"
@@ -61,7 +61,7 @@ typedef struct {
     i16 vx;
     i16 vy;
     u8 kind;        // 0=inactiu, 4=bala, 9=plat, 10=ou
-    u8 ht;          // alçada (bala=6, plat=11, ou=13)
+    u8 ht;          // alÃ§ada (bala=6, plat=11, ou=13)
     u8 row_offset;  // a cela 13 (bala=13, plat=19, ou=0)
     u8 cooldown;
     u8 drawn_byte_count[2];
@@ -83,7 +83,7 @@ static u16 s_slot_dst[BG_SLOTS];
 static u8 s_slot_span[BG_SLOTS];
 static u8 s_slot_rows[BG_SLOTS];
 
-// Buffer dinàmic de flip sota demanda per a enemics encarats a l'esquerra:
+// Buffer dinÃ mic de flip sota demanda per a enemics encarats a l'esquerra:
 static u8 s_flip_buffer[ENEMY_FRAME_SIZE];
 static u8 s_flipped_cell;
 
@@ -91,9 +91,49 @@ extern u8 tile_type(u16 col, u16 row);
 extern u8 tile_flags(u16 col, u16 row);
 extern u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
 
-// Rutines ràpides en ASM per flipejar la cela a s_flip_buffer (engine/enemy_table.s):
+// Rutines rÃ pides en ASM per flipejar la cela a s_flip_buffer (engine/enemy_table.s):
 extern void en2_init_lut(void);
 extern void en2_flip_cell(const u8* src, u8* dst);
+
+// Descompressor ZX0 resident (Bloc 0; sempre mapejat, es pot cridar des de C6).
+extern void zx0_decompress(const void* src, void* dst);
+
+// ============================================================
+// CelÂ·les d'enemic COMPRIMIDES amb ZX0 + cache de 4 slots (C6).
+// Layout generat per tools/build.py (build_enemybank):
+//   0x4000  taula de 16 punters absoluts (2 B per cela; 14 usades)
+//   0x4040  blocs ZX0, un flux INDEPENDENT per cela (permte salt directe)
+//   0x5000  cache: 4 slots de 512 B (scratch)
+//   0x5800  estat: cela dins cada slot (0xFF = buit), next i comptador
+// El codi i les dades de C6 no es mouen; s'alliberen ~2,5 KB de frames.
+// Cost: ~3,5 ms per cela descomprimida (ldir 21 T/byte a 4 MHz), pero
+// nomes en fallada de cache (comptador a 0x5818 per mesurar-ho a l'emu).
+// ============================================================
+#define ENEMY_CELLS        14
+#define ENEMY_CELL_SIZE    512
+#define ENEMY_CELL_TABLE   ((const u8*)0x4000)
+#define ENEMY_CACHE_BASE   ((u8*)0x5000)
+#define ENEMY_CACHE_SLOTS  4
+#define ENEMY_CACHE_WHO    ((u8*)0x5800)
+#define ENEMY_CACHE_NEXT   (*(u8*)0x5810)
+// comptador real resident (diagnostic; es pot llegir des de l'emu)
+
+static const u8* en2_cell(u8 cell) {
+    u8 s;
+    if (cell >= ENEMY_CELLS) cell = 0;
+    for (s = 0; s < ENEMY_CACHE_SLOTS; s++) {
+        if (ENEMY_CACHE_WHO[s] == cell)
+            return ENEMY_CACHE_BASE + ((u16)s << 9);
+    }
+    s = ENEMY_CACHE_NEXT;
+    ENEMY_CACHE_NEXT = (u8)((s + 1) & (ENEMY_CACHE_SLOTS - 1));
+    zx0_decompress((const void*)(*(const u16*)
+                   (ENEMY_CELL_TABLE + ((u16)cell << 1))),
+                   ENEMY_CACHE_BASE + ((u16)s << 9));
+    ENEMY_CACHE_WHO[s] = cell;
+    g_enemy_decomp_cnt++;
+    return ENEMY_CACHE_BASE + ((u16)s << 9);
+}
 
 // Taula d'spawn (20 slots L1). VALORS = FORMULA OFICIAL
 // (docs/DOS_CPC_COORDINATES.md / AGENTS.md regla 4):
@@ -114,9 +154,9 @@ static const Spawn s_spawn[ENEMY_N] = {
     { 280, 1088 << 3,  4, 24,  3 }, //  4: Policia 2 (carrer, PB Store) [slot 0]
                                    //     Abans hi havia (816,784) vx=0, fila sense
                                    //     parell a staticres.c: on_ground=1 inicial ->
-                                   //     no queia mai i pivotava al replà d'ascensors.
+                                   //     no queia mai i pivotava al replÃ  d'ascensors.
     { 272,  960 << 3,  4, 24,  3 }, //  5: Policia 3 (1r pis sota escala) [slot 7]
-    { 768,  496 << 3,  4,  0,  3 }, //  6: Policia 4 (2n pis replà ascensors) [slot 29]
+    { 768,  496 << 3,  4,  0,  3 }, //  6: Policia 4 (2n pis replÃ  ascensors) [slot 29]
     { 688,  320 << 3,  4, 24,  3 }, //  7: Policia 5 (3r pis) [slot 18]
 
     // 2 Peixos (kind 8, DOS op0): slots 24 i 12 dels 4 oficials (11/12/24/25)
@@ -124,9 +164,9 @@ static const Spawn s_spawn[ENEMY_N] = {
     { 548,  496 << 3,  8, 16,  0 }, //  9: Peix 2 (Peixera 2) [slot 12]
 
     // 3 Ocells (kind 19, DOS op8): slots 26, 27, 28
-    { 232,   64 << 3, 19, 32,  5 }, // 10: Ocell 1 (Núvols esquerra) [slot 26]
-    { 512,   48 << 3, 19, 32,  5 }, // 11: Ocell 2 (Núvols centre) [slot 27]
-    { 808,   64 << 3, 19, 32,  5 }, // 12: Ocell 3 (Núvols dreta) [slot 28]
+    { 232,   64 << 3, 19, 32,  5 }, // 10: Ocell 1 (NÃºvols esquerra) [slot 26]
+    { 512,   48 << 3, 19, 32,  5 }, // 11: Ocell 2 (NÃºvols centre) [slot 27]
+    { 808,   64 << 3, 19, 32,  5 }, // 12: Ocell 3 (NÃºvols dreta) [slot 28]
 
     // 2 Grangers (kind 18, DOS op1): slots 16, 17
     { 352,  320 << 3, 18, 24,  7 }, // 13: Granger 1 (escala vinils esq) [slot 16]
@@ -160,6 +200,9 @@ void en2_init(void) {
     const Spawn* sp = s_spawn;
     en2_init_lut();
     s_flipped_cell = 0xFF;
+    for (i = 0; i < 16; i++) ENEMY_CACHE_WHO[i] = 0xFF;
+    ENEMY_CACHE_NEXT = 0;
+    g_enemy_decomp_cnt = 0;
     for (i = 0; i < ENEMY_N; i++, e++, sp++) {
         e->x = sp->x;
         e->y8 = sp->y8;
@@ -218,7 +261,7 @@ void en2_update(void) {
                 u8 is_cop = (sp->kind == 4);
                 if (abs_dx > 8 && abs_dx < (is_cop ? 75 : 85)) {
                     e->dir = (dx_jake >= 0) ? 1 : -1;
-                    e->shoot_timer = 2; // Manté aturat mentre Jake estigui a distància de tir
+                    e->shoot_timer = 2; // MantÃ© aturat mentre Jake estigui a distÃ ncia de tir
                     if (!s_proj.kind && !s_proj.cooldown) {
                         i16 sx = (e->dir > 0) ? (i16)(e->x + 14) : (i16)(e->x - 6);
                         if (is_cop) {
@@ -242,7 +285,7 @@ void en2_update(void) {
         }
 
         if (sp->vx == 0) {
-            // Estàtic (ex: policia replà ascensors): gira encarant Jake o periòdicament
+            // EstÃ tic (ex: policia replÃ  ascensors): gira encarant Jake o periÃ²dicament
             i16 dy = jake_y - y;
             if (dy >= -24 && dy <= 32) {
                 i16 dx_jake = jake_x - e->x;
@@ -342,7 +385,7 @@ e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
         e->tick++;
     }
 
-    // Actualització del projectil actiu:
+    // ActualitzaciÃ³ del projectil actiu:
     if (s_proj.cooldown) s_proj.cooldown--;
     if (s_proj.kind) {
         s_proj.x = (i16)(s_proj.x + (s_proj.vx >> 3));
@@ -446,11 +489,11 @@ void en2_draw(void) {
         row_count = (u8)(clip_y1 - clip_y0);
         if (!byte_count || !row_count) continue;
 
-        // Selecció de cela i flip dinàmic amb cache de cela:
+        // SelecciÃ³ de cela i flip dinÃ mic amb cache de cela:
         {
             u8 step = (e->dead || sp->kind == 8 || sp->vx == 0 || e->shoot_timer) ? 0 : (u8)((e->tick >> 2) & 1);
             u8 cell = (u8)(sp->base_cell + step);
-            const u8* src = ENEMY_FRAMES_BASE + ((u16)cell << 9);
+            const u8* src = en2_cell(cell);
             if (e->dir < 0) {
                 if (s_flipped_cell != cell) {
                     en2_flip_cell(src, s_flip_buffer);
@@ -475,7 +518,7 @@ void en2_draw(void) {
         s_slot_rows[(u8)s] = row_count;
     }
 
-    // 2. Dibuixa projectil si està actiu:
+    // 2. Dibuixa projectil si estÃ  actiu:
     if (s_proj.kind && !s_proj.drawn_row_count[page]) {
         i16 world_x = s_proj.x;
         i16 world_y = (i16)(s_proj.y8 >> 3);
@@ -493,12 +536,12 @@ void en2_draw(void) {
                 const u8* frame;
                 if (s_proj.vx < 0) {
                     if (s_flipped_cell != 13) {
-                        en2_flip_cell(ENEMY_FRAMES_BASE + (13 << 9), s_flip_buffer);
+                        en2_flip_cell(en2_cell(13), s_flip_buffer);
                         s_flipped_cell = 13;
                     }
                     frame = s_flip_buffer + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
                 } else {
-                    frame = ENEMY_FRAMES_BASE + (13 << 9) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
+                    frame = en2_cell(13) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
                 }
 
                 g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);

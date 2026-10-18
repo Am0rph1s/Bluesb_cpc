@@ -1,10 +1,10 @@
-// ============================================================
-// moving.c - Part RESIDENT del mòdul d'objectes mòbils (CP-2.2)
+﻿// ============================================================
+// moving.c - Part RESIDENT del mÃ²dul d'objectes mÃ²bils (CP-2.2)
 // ------------------------------------------------------------
-// La lògica (init/update/conveyor/push/find + efectes de tiles
-// i física de nivell) viu al Banc 5 (src/moving_bank.c, 0x6E00)
-// i s'hi crida via call_banked() amb el bloc de paràmetres bc_*.
-// Aquí queden únicament les dades residents, ring_address i el
+// La lÃ²gica (init/update/conveyor/push/find + efectes de tiles
+// i fÃ­sica de nivell) viu al Banc 5 (src/moving_bank.c, 0x6E00)
+// i s'hi crida via call_banked() amb el bloc de parÃ metres bc_*.
+// AquÃ­ queden Ãºnicament les dades residents, ring_address i el
 // restore/draw d'ascensors que accedeixen al Banc 7 (0xC7).
 // ============================================================
 #include "cpctelera.h"
@@ -21,7 +21,7 @@
 MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
 static u16 s_elev_dst[2][MAG_ELEVATOR_COUNT];
 
-// Bloc de paràmetres resident per crides bankades (CP-2.2).
+// Bloc de parÃ metres resident per crides bankades (CP-2.2).
 u16 bc_a, bc_b, bc_c, bc_d, bc_e;
 i16 bc_r;
 
@@ -35,6 +35,7 @@ u8 g_lives_count;
 u8 g_has_instrument;
 u8 g_level_complete;
 u8 g_checkpoint;
+u8 g_enemy_decomp_cnt;
 u8 s_dance_timer;
 
 void moving_init(void) { call_banked(0xC5, BC_INIT); }
@@ -48,9 +49,9 @@ void moving_popup_restore(u8 page) { bc_a = page; call_banked(0xC5, BC_RESTORE);
 #define ELEVATOR_FRAMES_BASE ((const u8*)0x7000)
 #define ELEVATOR_FRAME_SIZE  224
 
-// CP-2.2b: restore/draw SÓN residents (el codi bancat no pot niuar de banc:
+// CP-2.2b: restore/draw SÃ“N residents (el codi bancat no pot niuar de banc:
 // en commutar, el propi codi a 0x4000-0x7FFF desapareix). Els bank_set(C1)
-// aquí són segurs (codi central, sempre mapejat).
+// aquÃ­ sÃ³n segurs (codi central, sempre mapejat).
 void moving_restore(u8 page, u8 force) {
     u8 prev_bank;
     u8 i;

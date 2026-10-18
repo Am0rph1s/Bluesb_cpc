@@ -76,7 +76,7 @@ DSKNAME8 = "BLUESB"
 # (engine/enemy_table.s, slots init/update/restore/draw); codi+dades
 # fins 0x8000 (pool de fons inclos). ENEMI.BIN = frames + imatge codi.
 ENEMY_BASE = 0x5C00
-ENEMY_DATA = 0x7830  # codi (0x5C00..) + dades C6 (fins <0x7A00 pool de fons)
+ENEMY_DATA = 0x7530  # codi (0x5C00..~0x7529) + dades C6 (fins ~0x78E8, marge fins LUT 0x7900 / BG_BASE 0x7A00)
 ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 ENEMY_C_SOURCES = ["src/enemy.c"]
 ENEMY_ASM_SOURCES = ["engine/enemy_table.s"]
@@ -548,7 +548,7 @@ def build_enemybank(force):
                 max_length=en_code_l)
     frames = open(ENEMY_FRAMES, "rb").read()
     code = open(code_path, "rb").read()
-    assert len(frames) == 14 * 512, len(frames)   # 13 walk/projectil + 1 tir policia
+    assert len(frames) == 14 * 512, len(frames)
     total = len(frames) + len(code)
     if 0x4000 + total > 0x8000:
         print("\n[FATAL] Imatge C3: %d bytes > finestra 0x4000!" % total)

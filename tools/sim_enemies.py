@@ -171,15 +171,19 @@ class Enemy:
 
 
 def parse_spawn_table():
-    """Extreu src/enemy.c s_spawn[20] (x, y8, kind, vx, base_cell, dos_slot, alt)."""
+    """Extreu src/enemy.c s_spawn[20] (x, y8, kind, vx, base_cell[, dos_slot, alt])."""
     src = open(os.path.join(PROJ, "src", "enemy.c"), encoding="utf-8", errors="replace").read()
     m = re.search(r"static const Spawn s_spawn\[ENEMY_N\] = \{(.*?)\n\};", src, re.S)
-    rows = re.findall(r"\{\s*(\d+),\s*(\d+)\s*<<\s*3,\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\s*\},?\s*//\s*(.*)", m.group(1))
+    # 6 camps (x, y8, kind, vx, base_cell) o 7 (amb dos_slot i alt).
+    rows = re.findall(
+        r"\{\s*(\d+),\s*(\d+)\s*<<\s*3,\s*(\d+),\s*(\d+),\s*(\d+)"
+        r"(?:,\s*(\d+),\s*(\d+))?\s*\},?\s*//\s*(.*)", m.group(1))
     out = []
     for r in rows:
         out.append({"x": int(r[0]), "y8": int(r[1]) << YSHIFT, "kind": int(r[2]),
-                    "vx": int(r[3]), "cell": int(r[4]), "slot": int(r[5]),
-                    "alt": int(r[6]), "com": r[7].strip()})
+                    "vx": int(r[3]), "cell": int(r[4]),
+                    "slot": int(r[5]) if r[5] else -1,
+                    "alt": int(r[6]) if r[6] else -1, "com": r[7].strip()})
     return out
 
 
@@ -231,9 +235,8 @@ def main():
     off = official_positions()
 
     # Parell slot DOS <-> fila de la taula, verificat a ma (tipus + proximitat).
-    # 4 = policia del repla: cap parell exacte al rumb (slot 0 oficial es al
-    # carrer) -> None per marcar-ho com a PENDENT.
-    DOS_SLOT = {0: 1, 1: 2, 2: 5, 3: 3, 4: None, 5: 7, 6: 29, 7: 18,
+    # 4 = policia del carrer (PB Store), slot 0 oficial de staticres.c.
+    DOS_SLOT = {0: 1, 1: 2, 2: 5, 3: 3, 4: 0, 5: 7, 6: 29, 7: 18,
                 8: 24, 9: 12, 10: 26, 11: 27, 12: 28, 13: 16, 14: 17,
                 15: 10, 16: 6, 17: 15, 18: 9, 19: 13}
 

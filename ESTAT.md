@@ -894,6 +894,9 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
   - `op14` (esglaons) es tracta com a terra solida (la referencia DOS deixa `trigger_func_op14` sense implementar).
   - Els 2 rockers de slots 4 i 8 de `staticres.c` son dins d'habitacions (fila 80) i no s'han afegit.
 
+- **REGRESSIO detectada per l'usuari i corregida (pivot en punt fixe)**: en afegir la **fila de peus** a la sonda de paret (`tile_flags(acol, frow)`), tots els walkers del carrer giraven sense moure's. Causa: al L1 les rajoles del terra (op20, fila 71) tenen `flags = 3` a TOT arreu del mapa, aixi que la sonda donava "paret" sempre. La sonda de paret només ha de mirar les files **peus-1 i peus-2** (`unk2E` 1/2 de `fixup_xpos16`); la de penya-segat mira `tile_type` a files peus i peus-1. Sim: abans 0 px recorreguts, ara 48-192 px per enemic. Emu: iaia 2 patrolling x 624-706 i iaia 3 al 1r pis x 624-672.
+- **Truc de verificacio**: `write-memory` a `s_px8` (`0x3C1C`) teleporta en Jake per arribar a una zona sense que el matin ningun cotxe (a peu de mort constant en recar); la camera el segueix i els enemics del bbox desperten.
+
 ## Sessio 2026-10-16 (15): Taula d'Enemics L1 a 20 slots + 14 celes Mode 0 al Banc C6
 - **Ampliació de la plantilla d'enemics a 20 slots**: 3 iaies (kind 15), 5 policies (kind 4), 2 peixos (kind 8), 3 ocells (kind 19), 2 grangers (kind 18), 1 cambrera (kind 17), 4 rockers (kind 20).
 - **Extracció de celes `tools/gen_enemy_frames.py`**: 14 celes Mode 0 de 16 px × 32 línies (512 B cadascuna, total 7.168 B) generades des d'ENEMI1.SQV de DOS i col·locades al Banc C6 (`0x4000..0x5BFF`). Codi del motor C6 reubicat a `0x5C00..0x7486` (`ENEMYCODE.BIN`, 6.278 B).

@@ -78,6 +78,7 @@ class Enemy:
 
     def __init__(self, x, y8, kind, vx):
         self.x = x              # vora esquerra (Mode 0)
+        self.x0 = x             # x d'spawn (enemy.c usa sp->x per a les caixes)
         self.y8 = y8            # top en subpixels
         self.kind = kind
         self.vx = vx            # 0 = estatic
@@ -101,10 +102,10 @@ class Enemy:
         # volten/ neden en una caixa lliure i només patrullen en x.
         if self.kind in (8, 19):
             if self.kind == 8:
-                min_x = 388 if self.x < 500 else 564
+                min_x = 388 if self.x0 < 500 else 564
                 max_x = min_x + 48
             else:
-                min_x, max_x = self.x - 96, self.x + 96
+                min_x, max_x = self.x0 - 96, self.x0 + 96
             nx = self.x + dx
             if nx < min_x:
                 self.x, self.dir = min_x, 1
@@ -132,8 +133,7 @@ class Enemy:
             pcol = ccol + (2 if self.dir > 0 else -2)
             acol = (nx + (12 if self.dir > 0 else 2)) >> 3
             bit = 1 if self.dir > 0 else 2
-            if (tile_type(pcol, frow) == 1 or
-                    (tile_flags(acol, frow) & bit) or
+            if (tile_type(pcol, frow) == 1 or tile_type(pcol, brow) == 1 or
                     (tile_flags(acol, brow) & bit) or
                     (tile_flags(acol, c2row) & bit)):
                 self.dir = -self.dir

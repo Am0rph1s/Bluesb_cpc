@@ -268,11 +268,14 @@ void en2_update(void) {
             // WALKERS (Iaia 15, Policia 4, Granger 18, Cambrera 17, Rocker 20):
             if (nx < 0) { nx = 0; e->dir = 1; }
             if (nx > (i16)(LEVEL_W_PX - ENEMY_W)) { nx = (i16)(LEVEL_W_PX - ENEMY_W); e->dir = -1; }
-            // Tiles: DOS mira SEMPRE la columna del centre (xpos16), mai les
+// Tiles: DOS mira SEMPRE la columna del centre (xpos16), mai les
             // del cos. En CPC el centre es x+8 (mitja amplada de 16 px).
-            //   penya-segat (op0/op8): tile_type==1 a centre+-2, fila peus
-            //   paret (fixup_xpos16): flags bit 1/2 a (nx+-4)>>3, peus i
-            //     peus-1 (unk2E) i, si hi ha aire, també peus-2.
+            //   penya-segat (op0/op8): tile_type==1 (aire) a centre+-2,
+            //     a la fila de peus i la de sobre.
+            //   paret (fixup_xpos16): flags bit 1/2 a (nx+-4)>>3, files
+            //     peus-1 i peus-2 (unk2E 1/2). NO la fila de peus: al
+            //     L1 les rajoles del terra (op20) tenen flags=3 a tot
+            //     arreu i hi farien girar sempre (pivot en punt fixe).
             {
                 u8 frow = (u8)((y + ENEMY_HT) >> 4);
                 u8 brow = (u8)((y + ENEMY_HT - 1) >> 4);
@@ -281,11 +284,10 @@ void en2_update(void) {
                 u16 pcol = (u16)(ccol + (e->dir > 0 ? 2 : -2));
                 u16 acol = (u16)((nx + (e->dir > 0 ? 12 : 2)) >> 3);
                 u8 bit = (u8)(e->dir > 0 ? 1 : 2);
-                if (tile_type(pcol, frow) == 1 ||
-                    (tile_flags(acol, frow) & bit) ||
+                if (tile_type(pcol, frow) == 1 || tile_type(pcol, brow) == 1 ||
                     (tile_flags(acol, brow) & bit) ||
                     (tile_flags(acol, c2row) & bit)) {
-                    e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
+e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
                 } else {
                     e->x = nx;
                 }

@@ -95,42 +95,51 @@ extern u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
 extern void en2_init_lut(void);
 extern void en2_flip_cell(const u8* src, u8* dst);
 
-// Taula d'spawn precalculada (20 slots L1):
+// Taula d'spawn (20 slots L1). VALORS = FORMULA OFICIAL
+// (docs/DOS_CPC_COORDINATES.md / AGENTS.md regla 4):
+//   cpc_x = dos_x / 2 - 8   (vora esquerra; dos_x es el CENTRE a DOS)
+//   cpc_y = dos_y - 32      (top; dos_y es la base dels peus a DOS)
+// Generada amb `py -3 tools/dos_coord_converter.py --level 0`; el camp
+// "slot DOS" del comentario es l'index de staticres.c del qual surt.
+// Aterratge validat amb `py -3 tools/sim_enemies.py` (MAP0/TRIG0 reals).
 // 3 iaies, 5 policies, 2 peixos, 3 ocells, 2 grangers, 1 cambrera, 4 rockers.
 static const Spawn s_spawn[ENEMY_N] = {
-    // 3 Iaies (kind 15):
-    { 464, 1104 << 3, 15, 36,  1 }, //  0: Iaia 1 (PB Store)
-    { 632, 1104 << 3, 15, 36,  1 }, //  1: Iaia 2 (PB Bar)
-    { 600,  976 << 3, 15, 36,  1 }, //  2: Iaia 3 (1r pis botiga)
+    // 3 Iaies (kind 15, DOS op0): slots 1, 2, 5
+    { 456, 1088 << 3, 15, 36,  1 }, //  0: Iaia 1 (PB Store)
+    { 624, 1088 << 3, 15, 36,  1 }, //  1: Iaia 2 (PB Bar)
+    { 592,  960 << 3, 15, 36,  1 }, //  2: Iaia 3 (1r pis botiga)
 
-    // 5 Policies (kind 4):
-    { 752, 1104 << 3,  4, 24,  3 }, //  3: Policia 1 (PB dreta botigues)
-    { 816,  784 << 3,  4,  0,  3 }, //  4: Policia 2 (replà racó 1r ascensor: ESTÀTIC 1:1 DOS)
-    { 280,  976 << 3,  4, 24,  3 }, //  5: Policia 3 (1r pis sota escala)
-    { 776,  512 << 3,  4,  0,  3 }, //  6: Policia 4 (2n pis replà ascensors: ESTÀTIC)
-    { 696,  336 << 3,  4, 24,  3 }, //  7: Policia 5 (3r pis replà superior ascensors)
+    // 5 Policies (kind 4, DOS op2): slots 3, ?, 7, 29, 18
+    { 744, 1088 << 3,  4, 24,  3 }, //  3: Policia 1 (PB dreta botigues) [slot 3]
+    { 816,  784 << 3,  4,  0,  3 }, //  4: Policia 2 (replà racó 1r ascensor, ESTÀTIC)
+                                   //     PENDENT: cap parell DOS exacte (el slot 0
+                                   //     oficial es (280,1088) al carrer)
+    { 272,  960 << 3,  4, 24,  3 }, //  5: Policia 3 (1r pis sota escala) [slot 7]
+    { 768,  496 << 3,  4,  0,  3 }, //  6: Policia 4 (2n pis replà ascensors) [slot 29]
+    { 688,  320 << 3,  4, 24,  3 }, //  7: Policia 5 (3r pis) [slot 18]
 
-    // 2 Peixos (kind 8):
-    { 416,  512 << 3,  8, 16,  0 }, //  8: Peix 1 (Peixera 1)
-    { 584,  512 << 3,  8, 16,  0 }, //  9: Peix 2 (Peixera 2)
+    // 2 Peixos (kind 8, DOS op0): slots 24 i 12 dels 4 oficials (11/12/24/25)
+    { 428,  480 << 3,  8, 16,  0 }, //  8: Peix 1 (Peixera 1) [slot 24]
+    { 548,  496 << 3,  8, 16,  0 }, //  9: Peix 2 (Peixera 2) [slot 12]
 
-    // 3 Ocells (kind 19):
-    { 240,   48 << 3, 19, 32,  5 }, // 10: Ocell 1 (Núvols esquerra)
-    { 520,   48 << 3, 19, 32,  5 }, // 11: Ocell 2 (Núvols centre)
-    { 816,   48 << 3, 19, 32,  5 }, // 12: Ocell 3 (Núvols dreta)
+    // 3 Ocells (kind 19, DOS op8): slots 26, 27, 28
+    { 232,   64 << 3, 19, 32,  5 }, // 10: Ocell 1 (Núvols esquerra) [slot 26]
+    { 512,   48 << 3, 19, 32,  5 }, // 11: Ocell 2 (Núvols centre) [slot 27]
+    { 808,   64 << 3, 19, 32,  5 }, // 12: Ocell 3 (Núvols dreta) [slot 28]
 
-    // 2 Grangers (kind 18):
-    { 360,  336 << 3, 18, 24,  7 }, // 13: Granger 1 (escala vinils esq)
-    { 504,  336 << 3, 18, 24,  7 }, // 14: Granger 2 (escala vinils dreta)
+    // 2 Grangers (kind 18, DOS op1): slots 16, 17
+    { 352,  320 << 3, 18, 24,  7 }, // 13: Granger 1 (escala vinils esq) [slot 16]
+    { 496,  320 << 3, 18, 24,  7 }, // 14: Granger 2 (escala vinils dreta) [slot 17]
 
-    // 1 Cambrera (kind 17):
-    {  72,  624 << 3, 17, 20,  9 }, // 15: Cambrera (Bar/Restaurant 1r pis)
+    // 1 Cambrera (kind 17, DOS op10): slot 10
+    {  72,  592 << 3, 17, 20,  9 }, // 15: Cambrera (Bar/Restaurant) [slot 10]
 
-    // 4 Rockers (kind 20):
-    { 440,  976 << 3, 20, 24, 11 }, // 16: Rocker 1 (1r pis davant botiga)
-    { 632,  784 << 3, 20, 24, 11 }, // 17: Rocker 2 (2n pis dreta)
-    {  80,  480 << 3, 20, 24, 11 }, // 18: Rocker 3 (prop Bar/Restaurant)
-    { 592,  736 << 3, 20, 24, 11 }, // 19: Rocker 4 (2n pis)
+    // 4 Rockers (kind 20, DOS op1): slots 6, 15, 9, 13
+    // (els slots 4 i 8 son dins d'habitacions, files 80: no a l'exterior)
+    { 432,  960 << 3, 20, 24, 11 }, // 16: Rocker 1 (1r pis davant botiga) [slot 6]
+    { 624,  768 << 3, 20, 24, 11 }, // 17: Rocker 2 (2n pis dreta) [slot 15]
+    {  72,  464 << 3, 20, 24, 11 }, // 18: Rocker 3 (prop Bar/Restaurant) [slot 9]
+    { 584,  720 << 3, 20, 24, 11 }, // 19: Rocker 4 (2n pis) [slot 13]
 };
 
 static void en2_spawn_proj(u8 kind, u8 ht, u8 row_off, i16 x, i16 y, i16 vx, i16 vy, u8 cd) {
@@ -182,7 +191,7 @@ void en2_update(void) {
         i16 y;
         i16 nx, dx;
 
-        if (sp->x < (i16)(view_x - 70) || sp->x > (i16)(view_x + 230) ||
+        if (sp->x < (i16)(view_x - 78) || sp->x > (i16)(view_x + 222) ||
             sp->y8 < (i16)((view_y - 132) << 3) || sp->y8 > (i16)((view_y + 318) << 3))
             continue;
 
@@ -259,15 +268,24 @@ void en2_update(void) {
             // WALKERS (Iaia 15, Policia 4, Granger 18, Cambrera 17, Rocker 20):
             if (nx < 0) { nx = 0; e->dir = 1; }
             if (nx > (i16)(LEVEL_W_PX - ENEMY_W)) { nx = (i16)(LEVEL_W_PX - ENEMY_W); e->dir = -1; }
+            // Tiles: DOS mira SEMPRE la columna del centre (xpos16), mai les
+            // del cos. En CPC el centre es x+8 (mitja amplada de 16 px).
+            //   penya-segat (op0/op8): tile_type==1 a centre+-2, fila peus
+            //   paret (fixup_xpos16): flags bit 1/2 a (nx+-4)>>3, peus i
+            //     peus-1 (unk2E) i, si hi ha aire, també peus-2.
             {
                 u8 frow = (u8)((y + ENEMY_HT) >> 4);
                 u8 brow = (u8)((y + ENEMY_HT - 1) >> 4);
-                u16 pcol = (u16)((e->x >> 3) + (e->dir > 0 ? 2 : -2));
+                u8 c2row = (u8)((y + ENEMY_HT - 2) >> 4);
+                u16 ccol = (u16)((e->x + 8) >> 3);          // centre = xpos16
+                u16 pcol = (u16)(ccol + (e->dir > 0 ? 2 : -2));
                 u16 acol = (u16)((nx + (e->dir > 0 ? 12 : 2)) >> 3);
                 u8 bit = (u8)(e->dir > 0 ? 1 : 2);
-                if (tile_type(pcol, brow) == 1 || tile_type(pcol, frow) == 1 ||
-                    (tile_flags(acol, brow) & bit) || (brow > 0 && (tile_flags(acol, (u8)(brow - 1)) & bit))) {
-                    e->dir = (i8)-e->dir;   // trigger Titus DOS o fi de terra
+                if (tile_type(pcol, frow) == 1 ||
+                    (tile_flags(acol, frow) & bit) ||
+                    (tile_flags(acol, brow) & bit) ||
+                    (tile_flags(acol, c2row) & bit)) {
+                    e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
                 } else {
                     e->x = nx;
                 }
@@ -284,10 +302,10 @@ void en2_update(void) {
                 feet = (i16)(y + ENEMY_HT);
                 trow = (u8)(feet >> 4);
                 if (trow < LEVEL_MAP_H) {
-                    u16 c1 = (u16)((e->x + 3) >> 3);
-                    u16 c2 = (u16)((e->x + 12) >> 3);
+                    // Columna del CENTRE (xpos16 a DOS), no les del cos.
+                    u16 cc = (u16)((e->x + 8) >> 3);
                     i16 surf = (i16)(trow << 4);
-                    if ((is_floor_solid(c1, trow, 0, 0) || is_floor_solid(c2, trow, 0, 0)) &&
+                    if (is_floor_solid(cc, trow, 0, 0) &&
                         prev_feet <= (surf + 8) && feet >= surf) {
                         e->y8 = (i16)((surf - ENEMY_HT) << 3);
                         e->vy = 0;
@@ -297,9 +315,8 @@ void en2_update(void) {
             } else if ((e->tick & 3) == 0) {
                 u8 trow = (u8)((y + ENEMY_HT) >> 4);
                 if (trow < LEVEL_MAP_H) {
-                    u16 c1 = (u16)((e->x + 3) >> 3);
-                    u16 c2 = (u16)((e->x + 12) >> 3);
-                    if (!is_floor_solid(c1, trow, 0, 0) && !is_floor_solid(c2, trow, 0, 0)) {
+                    u16 cc = (u16)((e->x + 8) >> 3);
+                    if (!is_floor_solid(cc, trow, 0, 0)) {
                         e->on_ground = 0;
                     }
                 }

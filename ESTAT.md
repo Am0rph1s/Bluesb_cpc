@@ -876,6 +876,24 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - **Comandos**: `py -3 -u tools/build.py` (~12min, FATAL si Bloc 0/C6 envaeixen); emu: `zesarux --noconfigfile --machine CPC6128 --vo null --ao null --aofile NUL --enable-remoteprotocol bluesb.dsk`; tecles ZRCP: 128 espai, 142 esq, 143 dreta, 145 amunt; `read_mem 0x378C 2` = ticks (Compte: COMPTA ENRERE!), `0x3B19` = cam_x4 (u16le), view_x = cam_x4*4, view_y = cam_row*8.
 - **PENDENT usuari**: validar posicions DOS reals (s26@top144? s27@112 o @528?).
 
+## Sessio 2026-10-18 (23): Spawns d'enemics a la formula oficial + sondes a la columna del centre
+
+- **Arrel trobada (regla 1, lectura del codi DOS)**: la taula `s_spawn[20]` de `src/enemy.c` estava desfasada **+8 en x i +16 en y** de la formula oficial (`dos_x/2-8`, `dos_y-32`) a 13 de 20 entrades. La hipotesi inicial (que el +16 compensava una mecanica de terra absent) **era FALSA**: al L1 tots els tiles tenen `unk16` (TRIG byte 7) = 0, aixi que `level_call_trigger_func` (`tiles.c:607`) sempre resol `case 25: break` (no-op); el terra del carrer es el **clamp del mapa** de `do_level_fixup_object_ypos16` (`ypos > tilemap_h -> tilemap_h-16` = 1136 = top 1104), que el motor ja reprodueix via `is_floor_solid` (`row >= MAP_H-1`). L'unica excepcio real son els esglaons `op=14` (files 70, cols 77-81).
+- **Canvis a `src/enemy.c`**:
+  - `s_spawn[20]` regenerada amb `py -3 tools/dos_coord_converter.py --level 0`: `cpc_x = dos_x/2-8`, `cpc_y = dos_y-32`. 19/20 coincideixen exact amb el slot DOS (comentari `[slot N]` a cada fila); l'unic sense parell es la fila 4 (policia "repla raco", posicio no trobada a `staticres.c` — pendent de contrastar amb captura DOS).
+  - Sondes de tile a la **columna del centre** (`(x+8)>>3` = `xpos16` a DOS), mai les del cos: penya-segat `tile_type==1` a centre±2 (fila peus), paret `tile_flags` bit 1/2 a `(nx±)>>3` a files peus/peus-1/peus-2 (`fixup_xpos16` + `unk2E`).
+  - Sonde de terra (`is_floor_solid`) a la columna del centre (abans dues columnes del cos `x+3`/`x+12`).
+  - Bbox d'activacio derivat de DOS: `x ∈ [view-78, view+222]` (abans ±70/230, valid per a `x`=centre) i `y ∈ [view_y-132, view_y+318]` (ja correcte: `[yo-100, yo+350]` passat a coordenada *top* amb `-32`).
+- **Eina nova `tools/sim_enemies.py`**: simulador host-side fidel a `src/enemy.c` (gravetat + snap + sondes + re-chequeo de terra cada 4 ticks) amb `MAP0.BIN`/`TRIG0.BIN` reals. Compara la taula contra la formula oficial slot a slot i detecta enemics que cauen al buit oDerived de la partida. `py -3 tools/sim_enemies.py [--slot N --verbose]`.
+- **VERIFICAT**: sim → tots 20 aterren (`terra`), cap al buit; emu → iaia 3walking al 1r pis (x 592-618, y 976), policia 1 al carrer (744, 1104), iaia 2 fent exactament el que prediu el sim (puja l'esglaon a y 1088 en x 632-656 i **baixa al carrer a y 1104 en x≈660**, cam x 664→624). sense artefactes visuals.
+- **Forats encara oberts (evidencia, no implementats)**:
+  - **Velocitats per op DOS** (`objects.c`, `xmaxvelocity`, pas `>>3`): op0 (iaia/peix) 40 = 2,5 px/f CPC, op1 (granger/rocker) 40, op2 (policia) 24 = 1,5 px/f, op8 (ocell) 48 = 3 px/f, op10 (cambrera) 32 = 2 px/f. Ara hi ha `vx` per tipus (iaia 36, policia 24, ocell 32, cambrera 20, peix 16) → la iaia va un 60% rera i la policia al doble. Cal pas fraccionari (acumulador 1/8 px) per a 2,5 i 1,5.
+  - **Ocell**: DOS `object_func_op8` té pics (`player_ydist<=100 && |player_xdist|<90` -> `unk42=1`,anada enpic) i NO te caixa de patrulla; el codi fa +-96 inventat.
+  - **Peixos**: DOS fa servir `object_func_op0` (caminar amb gir a penya-segat), no una caixa de nedar.
+  - **Rang de tir de la policia**: DOS `|player_xdist| < 80` i `player_ydist <= 20`; el codi fa 75/85 i -16..24.
+  - `op14` (esglaons) es tracta com a terra solida (la referencia DOS deixa `trigger_func_op14` sense implementar).
+  - Els 2 rockers de slots 4 i 8 de `staticres.c` son dins d'habitacions (fila 80) i no s'han afegit.
+
 ## Sessio 2026-10-16 (15): Taula d'Enemics L1 a 20 slots + 14 celes Mode 0 al Banc C6
 - **Ampliació de la plantilla d'enemics a 20 slots**: 3 iaies (kind 15), 5 policies (kind 4), 2 peixos (kind 8), 3 ocells (kind 19), 2 grangers (kind 18), 1 cambrera (kind 17), 4 rockers (kind 20).
 - **Extracció de celes `tools/gen_enemy_frames.py`**: 14 celes Mode 0 de 16 px × 32 línies (512 B cadascuna, total 7.168 B) generades des d'ENEMI1.SQV de DOS i col·locades al Banc C6 (`0x4000..0x5BFF`). Codi del motor C6 reubicat a `0x5C00..0x7486` (`ENEMYCODE.BIN`, 6.278 B).

@@ -136,7 +136,7 @@ static void b5_update_entities_and_spans(void) {
             e->delta_y = (i8)step;
         }
 
-        e->frame = (u8)((e->anim_tick >> 2) & 1);
+        // (criteri Amiga: sense frame de motor, no hi ha swap aqui)
         e->anim_tick++;
     }
 

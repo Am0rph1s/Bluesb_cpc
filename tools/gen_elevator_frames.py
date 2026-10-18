@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Convert the Magasin lift animation (ENEMI1.SQV frames 0/1) to CPC Mode 0."""
+"""Convert the Magasin lift (ENEMI1.SQV frame 0) to CPC Mode 0.
+
+NOTA (criteri Amiga): el DOS anima l'ascensor alternant dos frames
+(l'ENEMI1.SQV 0 i 1: son la mateixa peça amb diferent fase de la banda
+del motor, pen 11/pen 4). A la versio Amiga el grafic es identic pero
+SENSE cap animacio. Aqui exportem NOMES el frame 0 (estalvia 224 B al
+banc C0 i treu l'swap per frame de moving_bank.c). Es una desviacio
+deliberada respecte al DOS, documentada a ESTAT.md.
+"""
 import os
 import sys
 
@@ -28,8 +36,11 @@ def convert_frame(frame):
         for bx in range(8):
             left = row[bx * 2]
             right = row[bx * 2 + 1]
-            pen_l = None if left in (0, 11) else dos_to_cpc_pen.get(left, 0)
-            pen_r = None if right in (0, 11) else dos_to_cpc_pen.get(right, 0)
+            # Només el pen 0 és transparent (com fa l'exportador d'enemics
+            # per al mateix fitxer). El pen 11 és un color VISIBLE en aquest
+            # sprite: marcar-lo transparent esborrava mitja banda del motor.
+            pen_l = None if left == 0 else dos_to_cpc_pen.get(left, 0)
+            pen_r = None if right == 0 else dos_to_cpc_pen.get(right, 0)
             inv_mask, image = encode_pair(pen_l, pen_r)
             data.extend((inv_mask, image))
     return bytes(data)
@@ -37,7 +48,7 @@ def convert_frame(frame):
 
 def main():
     frames = load_sqv_frames(SQV, reverse=False)
-    converted = [convert_frame(frames[i]) for i in (0, 1)]
+    converted = [convert_frame(frames[0])]          # criteri Amiga: 1 sol frame
     lines = [
         "#ifndef ELEVATOR_FRAMES_H",
         "#define ELEVATOR_FRAMES_H",
@@ -60,8 +71,8 @@ def main():
         f.write("\n".join(lines))
     print("Generated %s" % OUT)
 
-    raw_bin = converted[0] + converted[1]
-    assert len(raw_bin) == 448
+    raw_bin = converted[0]
+    assert len(raw_bin) == 224
     with open(OUT_BIN, "wb") as f:
         f.write(raw_bin)
     print("Generated %s (%d bytes)" % (OUT_BIN, len(raw_bin)))

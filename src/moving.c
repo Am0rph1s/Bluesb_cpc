@@ -43,7 +43,8 @@ void moving_update(void) { call_banked(0xC5, BC_UPDATE); }
 
 void moving_popup_restore(u8 page) { bc_a = page; call_banked(0xC5, BC_RESTORE); }
 
-// Frames d'ascensor al Banc C1 (ELEV.BIN a 0x7000, 2x224 B).
+// Frames d'ascensor al Banc C0 (ELEV.BIN a 0x7000, 1x224 B; criteri Amiga:
+// un sol frame, sense l'animacio de motor del DOS).
 #define ELEVATOR_FRAMES_BASE ((const u8*)0x7000)
 #define ELEVATOR_FRAME_SIZE  224
 
@@ -105,8 +106,7 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
         start_row = (u8)(clip_y0 - world_y);
         row_count = (u8)(clip_y1 - clip_y0);
         if (!byte_count || !row_count) continue;
-        frame = e->frame ? (ELEVATOR_FRAMES_BASE + ELEVATOR_FRAME_SIZE)
-                           : ELEVATOR_FRAMES_BASE;
+        frame = ELEVATOR_FRAMES_BASE;   // 1 sol frame (criteri Amiga)
 
         g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
         s_elev_dst[page][i] = g_moving_dst;

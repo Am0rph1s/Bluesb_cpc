@@ -517,6 +517,14 @@ void en2_draw(void) {
     }
 }
 
+// 1:1 DOS level_obj_type[] (staticres.c): 0 = sense colisio, 1 = bonus,
+// 2 = fa mal. Dels kinds que fem servir, NOMES el peix (kind 8) es classe 0:
+// al DOS es decoracio pura (op1, anims locals 2/14 que son identiques) i no
+// pot tocar ni Jake ni la caixa. La resta de walkers son classe 2.
+static u8 en2_collide_class(u8 kind) {
+    return (kind == 8) ? 0 : 2;
+}
+
 void en2_check_player_hit(void) {
     i16 px = (i16)bc_a;
     i16 py = (i16)bc_b;
@@ -541,10 +549,11 @@ void en2_check_player_hit(void) {
         }
     }
 
-    // 2. Walkers / Enemics:
+    // 2. Walkers / Enemics (nomes els de classe 2: el peix es decoracio):
     e = s_enemies;
     for (i = 0; i < ENEMY_N; i++, e++) {
         if (e->dead) continue;
+        if (en2_collide_class(s_spawn[i].kind) != 2) continue;
         if ((u16)(e->x - px + 6) < 16 &&
             (u16)((e->y8 >> 3) - py + 24) < 50) {
             bc_r = 1;
@@ -563,6 +572,7 @@ void en2_check_crate_hit(void) {
     bc_r = 0;
     for (i = 0; i < ENEMY_N; i++, e++) {
         if (e->dead) continue;
+        if (en2_collide_class(s_spawn[i].kind) != 2) continue;
         if ((u16)(e->x - cx + 6) < 20 &&
             (u16)((e->y8 >> 3) - cy + 12) < 36) {
             e->dead = 1;

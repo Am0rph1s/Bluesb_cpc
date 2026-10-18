@@ -941,6 +941,7 @@ void main(void) {
                     g_checkpoint = 0;
                     mus_stop();
                     g_mus_hold = 1;
+                    g_mus_ready = 0;
                     palette_black();
                     crtc_set_display_start(0x3000);
                     {
@@ -949,7 +950,10 @@ void main(void) {
                             if (!fdc_load_file(0xC0, &g_file_front, 0xC4, (void*)0x4000)) continue;
                             ok = 1;
                         }
+                        if (!ok) { cpct_setBorder(0x4C); while (1) { } }
                     }
+                    s_back_page = 1;
+                    g_vram_base_hi = 0x80;
                     break;
                 }
                 g_lives_count--;

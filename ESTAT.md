@@ -1,18 +1,32 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-17 — Desaparició neta de discos a les habitacions (restauració de fons negre a world_flush_repaints), optimització de memòria radical (+768 B alliberats de _DATA al Banc 7; Pila lliure: 1.573 B; Marge _CODE: +205 B), correcció 1:1 DOS del salt amb caixa contra el sostre (no s'avorta la càrrega) i alineació de bytes en caixes.
+Última actualització: 2026-10-18 — Cicle complet de Game Over, animació de ball de mort (1:1 DOS), resolució del crash en recarregar l'Splash (preservació de registres al FDC i protecció de la ISR musical), retorn net a FRONT_RUN i reinici de partida verificats en ZEsarUX.
 Idioma de treball amb l'usuari: **català**.
 
-## Estat vigent — Paritat 1:1 DOS (Discos d'Habitacions, Salt amb Caixa, Memòria Neta)
+## Estat vigent — Cicle de Mort, Game Over 1:1 DOS i Retorn Net a l'Splash
 
-- **1) Recollida i Desaparició Neta de Discos a les Habitacions (Room 2 / 3a Habitació)**:
-  - **Causa**: S'havia introduït temporalment un bloqueig `if (s_in_room) { s_rep_n = 0; return; }` a `world_flush_repaints()`. Quan en Jake recollia un vinil o ítem a una sala interior (`check_room_bonus`), es posava la rajola de fons 96 a la cua de repintat (`s_rep_`), però la rutina descartava la cua immediatament sense pintar-la al doble buffer de pantalla. Els discos continuaven visibles a la pantalla tot i haver incrementat el comptador del HUD.
-  - **Solució**: Suprimit el bloqueig a `world_flush_repaints()`. Les cues entre carrer i habitacions ja queden 100% buidades a `enter_door()` (`s_rep_n = 0`), de manera que els repintats generats dins l'habitació es processen netament als dos buffers VRAM (`render_tile_world` amb tile 96).
-  - **Verificació**: Amb `tools/test_room_vinyls.py`, en Jake camina per la sala de música recollint 8 vinils. Els discos recollits desapareixen instantàniament deixant el fons negre sòlid, el comptador puja a 08 i no hi ha cap parpelleig (`verify_room2_discs_collected_A.png` i `verify_room2_discs_collected_B.png`).
+- **1) Cicle de Vides i Animació de Ball de Mort (1:1 DOS)**:
+  - **Mecànica fidel a DOS (`level.c:1583-1658`)**: En perdre l'últim cor (`g_hearts_count == 0`), en Jake s'immobilitza completament (`move = jump = grab = crouch = 0`, velocitats a zero) i executa l'animació de ball de mort durant ~1,3 segons (`s_dying_timer = 64` a 50 Hz). L'input de l'usuari queda bloquejat com a l'animació de noqueig (`s_dazed_timer`).
+  - **Respawn amb vides restants**: Si `g_lives_count > 1`, es resta una vida, es recuperen els 3 cors (`g_hearts_count = 3`) i en Jake reapareix a la posició inicial (o al checkpoint actiu `g_checkpoint`).
+  - **Game Over**: Si `g_lives_count <= 1`, en Jake entra en l'última mort. Durant el ball de mort, la pancarta gràfica `GAME OVER` (`draw_gameover_banner`, 0x6A00 del Banc C0) es dibuixa directament sobre l'acció al backbuffer. En expirar el temporitzador, s'atura la música, es posa la paleta en negre i es recarrega el paquet `FRONT.PAK` per tornar a la pantalla d'inici (`FRONT_RUN`).
 
-- **2) Salt amb Caixa contra el Sostre 1:1 DOS (La caixa es manté al cap)**:
-  - **Causa**: A `src/main.c` (línia 661), en col·lidir verticalment amunt contra un sostre sòlid (`is_ceiling_solid`), hi havia un `if (s_carry_kind == 1 && !s_carry_state) carry_abort();` erroni que destruïa la caixa i la feia desaparèixer.
-  - **Solució**: Eliminat l'avortament. Igual que a la versió original de DOS, en topar contra el sostre la velocitat vertical s'atura a zero (`s_vy = 0`), però en Jake manté la caixa agafada sobre el seu cap intacta durant el xoc i fins a tocar a terra. Verificat amb captura ZEsarUX (`verify_crate_bumped_ceiling_held.png`, `verify_crate_landed_held.png`).
+- **2) Diagnòstic i Resolució del Crash al Retorn a l'Splash (Ralles blanques i Reset a BASIC)**:
+  - **Causa Arrel 1 (Clobber de DE al driver FDC)**: A `src/moving.c` dins de `fdc_load_file()`, per restaurar el driver FDC a RAM scratch `0x8000` des de `C0:0x7800`, hi havia un bloc `__asm` que feia `ld de, #0x8000` seguit de `ldir`. Segons la convenció ABI d'SDCC 4.5 (`__sdcccall(1)`), el segon paràmetre d'una funció (`const DiskFileDesc* desc`) es passa en el registre `DE`. Com que el bloc ASM no preservava `DE`, aquest acabava amb el valor `0x8311` (final del buffer de còpia). En cridar tot seguit `FDC_BANK_ENTRY(0x8000)`, el driver FDC intentava interpretar `0x8311` com a descriptor de fitxer, llegia sectors CHS brossa del disquet i escrivia bytes corruptes arreu de la RAM del sistema (generant les ratlles blanques i trencant la pila cap a BASIC).
+  - **Solució 1**: Protegit el bloc d'assemblador amb `push de` / `pop de` i `push af` / `pop af`, preservant rigorosament el punter de descripció de disc i el banc previ.
+  - **Causa Arrel 2 (ISR musical activa sobre banc buit)**: A `engine/mus.s`, `_mus_stop` aturava els xips AY però no netejava el flag `_g_mus_ready`. En recarregar `MUSBANK` a `0xC1`, la interrupció de 300 Hz podia cridar un player encara no inicialitzat o una zona buida de memòria. S'ha afegit `xor a; ld (_g_mus_ready), a` dins de `_mus_stop` com a blindatge atòmic.
+  - **Solució 3 (Reinicialització de variables de vídeo i VRAM)**: Abans de saltar a `FRONT_RUN` a `main.c`, es reajusten `s_back_page = 1` i `g_vram_base_hi = 0x80` per assegurar que la VRAM estigui sincronitzada amb el mòdul d'arrencada.
+
+- **3) Verificació de Regressió Completa en Temps Real (ZEsarUX)**:
+  - Desenvolupat el test de regressió `tools/test_gameover_natural.py`, que inicia el joc des de disquet, navega per selecció i mapa, carrega el Nivell 1 i fa avançar en Jake contínuament contra els enemics al llarg de 3 cicles complets de mort.
+  - S'ha verificat:
+    - Pèrdua progressiva de cors amb parpelleig d'invulnerabilitat.
+    - Ball de mort a cada caiguda i reaparició neta (vides: 3 -> 2 -> 1).
+    - Última mort amb pancarta de Game Over.
+    - Retorn net a la pantalla d'Splash (`FSPLASH`) sense cap píxel corrupte ni ratlles blanques.
+    - So i música d'inici reproduint-se correctament.
+    - Transició immediata a la selecció de personatge en prémer la barra d'espai.
+
+- **4) Paritat 1:1 DOS Prèvia (Discos d'Habitacions, Salt amb Caixa, Memòria Neta)**:
 
 - **3) Optimització Radical de Memòria i Expansió de Pila i Codi**:
   - **Causa**: Els buffers de restauració de fons d'objectes portats (`_s_carry_bg_c0` i `_s_carry_bg_80`, 640 B) i de caixes (`s_crate_bg[2][64]`, 128 B) residien a `_DATA` a la Base RAM 0, deixant la pila perillosament reduïda i el marge de `_CODE` molt ajustat.

@@ -12,7 +12,7 @@ class Zrcp:
             pass
 
     def cmd(self, line, wait=0.15):
-        self.s.sendall(line.encode() + b"\r")
+        self.s.sendall(line.encode() + b"\r\n")
         time.sleep(wait)
         buf = b""
         try:

@@ -78,6 +78,8 @@ _mus_play::
 ;; player no-iniciat (Stop nomes escriu regs + SaveSP, no llegeix canco).
 _mus_stop::
     di
+    xor     a
+    ld      (_g_mus_ready), a     ;; evita Play sobre canco/player descarregat
     push    af
     push    bc
     push    de

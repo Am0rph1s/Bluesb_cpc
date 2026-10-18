@@ -231,11 +231,23 @@ u8 fdc_load_file(u8 home_bank, const DiskFileDesc* d, u8 bk, void* ad) {
 
     // VRAM Page 1 (0x8000..0xBFFF) is overwritten during gameplay.
     // Always restore the resident FDC driver to 0x8000 from master copy at C0:0x7800.
-    {
-        u8 prev = bank_set(0xC0);
-        cpct_memcpy((void*)FDC_BANK_BASE, (const void*)0x7800, g_len_fdc);
-        bank_restore(prev);
-    }
+    __asm
+        push    de
+        ld      a, #0xC0
+        call    _bank_set
+        push    af
+        ld      bc, (_g_len_fdc)
+        ld      de, #0x8000
+        ld      hl, #0x7800
+        ld      a, b
+        or      c
+        jr      z, 00138$
+        ldir
+00138$:
+        pop     af
+        call    _bank_restore
+        pop     de
+    __endasm;
 
     *(volatile u8*)0xBE0A |= 0x80;
     return FDC_BANK_ENTRY(home_bank, (const DiskFileDesc*)file_d, bk, ad);

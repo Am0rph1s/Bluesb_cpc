@@ -81,7 +81,9 @@ u8  s_carry_drawn[2];
 static u8  s_carry_drawn_span[2];
 static u8  s_carry_drawn_rows[2];
 static u16 s_carry_dst[2];
-#define CRATE_BG_PAGE(p) ((u16)(0x7380 + ((u16)(p) << 6)))
+// Buffers de fons de caixes al Banc 7 dins del gap lliure (0x7DE0..0x7EFF):
+// 64 B per pagina (0x7E00 per p=0, 0x7E40 per p=1). No col·lideix amb els frames d'en Jake!
+#define CRATE_BG_PAGE(p) ((u16)(0x7E00 + ((u16)(p) << 6)))
 
 i8  s_ground_elevator = -1;
 u8  g_face;

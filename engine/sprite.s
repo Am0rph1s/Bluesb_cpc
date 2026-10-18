@@ -68,10 +68,10 @@ s_bloon_cur_x:      .db 0
 _s_player_bg_c0 = 0x7660
 _s_player_bg_80 = 0x7750
 
-;; Buffers de restauració de fons per a objectes portats (globus i paraigües) al Banc 7
-;; 10 bytes x 32 linies = 320 bytes per pagina (allibera 640 B de _DATA resident)
-_s_carry_bg_c0 = 0x7100
-_s_carry_bg_80 = 0x7240
+;; Buffers de restauració de fons per a objectes portats (globus i paraigües) a _DATA resident:
+;; 10 bytes x 32 linies = 320 bytes per pagina (total 640 B). Mai col·lideix amb frames de Jake!
+_s_carry_bg_c0::    .ds 320
+_s_carry_bg_80::    .ds 320
 
 
 
@@ -553,11 +553,6 @@ _sprite_restore_carry::
 2$:
     ld      (s_bg_read_ptr), hl
 
-    ld      a, (_g_bank)
-    push    af
-    ld      a, #0xC7
-    call    _bank_set
-
     dec     c
     jr      nz, umbr_rst_start
 
@@ -576,8 +571,6 @@ bloon_rst_line_loop:
     call    sprite_step_de
     pop     bc
     djnz    bloon_rst_line_loop
-    pop     af
-    call    _bank_restore
     ret
 
 umbr_rst_start:
@@ -594,8 +587,6 @@ umbr_rst_line_loop:
     call    sprite_step_de
     pop     bc
     djnz    umbr_rst_line_loop
-    pop     af
-    call    _bank_restore
     ret
 
 

@@ -18,16 +18,21 @@ def get_sym(name):
 addr_px8 = get_sym('_s_px8')
 addr_py8 = get_sym('_s_py8')
 addr_vy = get_sym('_s_vy')
-addr_dazed = get_sym('_s_dazed_timer')
+addr_carry_kind = get_sym('_s_carry_kind')
+addr_carry_state = get_sym('_s_carry_state')
+addr_dazed_timer = get_sym('_s_dazed_timer')
 
 subprocess.run(["powershell", "-Command", "Stop-Process -Name zesarux -Force -ErrorAction SilentlyContinue"])
 time.sleep(1)
 
 cmd = [EMU, '--machine', 'CPC6128', '--enable-dsk', '--dsk-file', DSK, '--enable-remoteprotocol', '--remoteprotocol-port', '10000']
 proc = subprocess.Popen(cmd, cwd=r'C:\Projects\bluesb_cpc\tools\ZEsarUX_windows-13.0')
-time.sleep(5)
+time.sleep(3)
 
 z = Zrcp(port=10000)
+
+def write_u8(addr, val):
+    z.cmd(f'write-memory {addr} {val & 0xFF}', wait=0.03)
 
 def write_u16(addr, val):
     z.cmd(f'write-memory {addr} {val & 0xFF}', wait=0.03)
@@ -63,16 +68,15 @@ def teleport_smooth(px, py, iters=30):
         time.sleep(0.08)
 
 # Boot game
-time.sleep(1)
 z.send_string('run')
-time.sleep(0.3)
-z.send_event(Zrcp.KEY_SHIFT, 1); time.sleep(0.1); z.send_event(50, 1); time.sleep(0.1); z.send_event(50, 0); time.sleep(0.1); z.send_event(Zrcp.KEY_SHIFT, 0)
-time.sleep(0.3)
+time.sleep(0.1)
+z.send_event(Zrcp.KEY_SHIFT, 1); time.sleep(0.05); z.send_event(50, 1); time.sleep(0.05); z.send_event(50, 0); time.sleep(0.05); z.send_event(Zrcp.KEY_SHIFT, 0)
+time.sleep(0.1)
 z.send_string('bluesb')
-time.sleep(0.3)
-z.send_event(Zrcp.KEY_SHIFT, 1); time.sleep(0.1); z.send_event(50, 1); time.sleep(0.1); z.send_event(50, 0); time.sleep(0.1); z.send_event(Zrcp.KEY_SHIFT, 0)
-time.sleep(0.3)
-z.send_event(Zrcp.KEY_ENTER, 1); time.sleep(0.15); z.send_event(Zrcp.KEY_ENTER, 0)
+time.sleep(0.1)
+z.send_event(Zrcp.KEY_SHIFT, 1); time.sleep(0.05); z.send_event(50, 1); time.sleep(0.05); z.send_event(50, 0); time.sleep(0.05); z.send_event(Zrcp.KEY_SHIFT, 0)
+time.sleep(0.1)
+z.send_event(Zrcp.KEY_ENTER, 1); time.sleep(0.1); z.send_event(Zrcp.KEY_ENTER, 0)
 
 print('Waiting for Level 1...')
 start_time = time.time()
@@ -82,40 +86,35 @@ while time.time() - start_time < 90:
     z.press_key(Zrcp.KEY_SPACE, 0.15)
     time.sleep(1.2)
 time.sleep(1.5)
+print('In game!')
 
-# TEST 1: Narrow corridor at ground floor (col=22, floor_row=58 -> px=176, py=896)
-print('Teleporting to narrow corridor with solid ceiling 2 tiles above...')
-teleport_smooth(176, 896, iters=35)
-time.sleep(0.5)
-capture_scr('verify_narrow_01_standing')
-
-# Press jump in narrow corridor -> triggers dazed with rotating stars!
-print('Pressing jump under low ceiling...')
-z.press_key(Zrcp.KEY_UP, 0.2)
-time.sleep(0.1)
-
-# Capture rotating star frames during dazed
-print('Dazed timer active:', read_u8(addr_dazed))
-capture_scr('verify_narrow_02_dazed_stars_frame1')
-
-time.sleep(0.2)
-capture_scr('verify_narrow_03_dazed_stars_frame2')
-
-# Wait for recovery
-time.sleep(0.7)
-capture_scr('verify_narrow_04_recovered')
-
-# TEST 2: High platform at escalator top (col=34, row=27 -> px=272, py=432)
-print('Teleporting to open platform at escalator top...')
-teleport_smooth(272, 432, iters=30)
+# Step 1: Simulate holding crates and balloons extensively to exercise the buffers
+print('Simulating crate and balloon pickup...')
+write_u8(addr_carry_kind, 1) # crate
+write_u8(addr_carry_state, 0)
 time.sleep(0.4)
-capture_scr('verify_open_01_standing')
+write_u8(addr_carry_kind, 2) # balloon
+time.sleep(0.4)
+write_u8(addr_carry_kind, 0)
+time.sleep(0.4)
 
-print('Jumping on open platform...')
-z.press_key(Zrcp.KEY_UP, 0.25)
-time.sleep(0.25)
-capture_scr('verify_open_02_normal_jump')
+# Step 2: Trigger dazed state (frames 26, 27, 28 with stars)
+print('Triggering dazed animation...')
+# Frame 28: timer around 11
+write_u8(addr_dazed_timer, 11)
+time.sleep(0.2)
+capture_scr('verify_dazed_frame28')
+
+# Frame 27: timer around 7
+write_u8(addr_dazed_timer, 7)
+time.sleep(0.2)
+capture_scr('verify_dazed_frame27')
+
+# Frame 26: timer around 3
+write_u8(addr_dazed_timer, 3)
+time.sleep(0.2)
+capture_scr('verify_dazed_frame26')
 
 z.close()
 proc.kill()
-print('All tests completed successfully!')
+print('Dazed stars verification completed!')

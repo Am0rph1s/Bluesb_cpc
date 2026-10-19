@@ -3,13 +3,13 @@
 #include "fdc.h"
 
 // Generat per tools/build.py. NO EDITAR.
-#define GAME_START 0x173E
-#define GAME_LEN 15333
-#define GAME_CRC 0x4641
+#define GAME_START 0x1740
+#define GAME_LEN 15367
+#define GAME_CRC 0x403C
 #define FDC_LEN 913
 #define CRC_FDC 0xE50B
 #define FRONT_LEN 2448
-#define CRC_FRONT 0x3B2C
+#define CRC_FRONT 0x60B7
 #define MUS_LEN 7315
 #define CRC_MUS 0xE76E
 // HOLD musica ISR (_g_mus_hold del GAME): el starter el neteja a
@@ -24,7 +24,7 @@ static const u8 g_game_chs[64] = {
     0x03,0xC6,0x03,0xC7,0x03,0xC8,0x03,0xC9,0x04,0xC1,0x04,0xC2,
     0x04,0xC3,0x04,0xC4,
 };
-static const DiskFileDesc g_file_game = { 15461, 32, g_game_chs };
+static const DiskFileDesc g_file_game = { 15495, 32, g_game_chs };
 static const u8 g_fdc_chs[4] = {
     0x04,0xC5,0x04,0xC6,
 };

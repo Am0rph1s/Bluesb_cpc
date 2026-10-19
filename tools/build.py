@@ -949,8 +949,16 @@ def build_music(force):
     rr_data = struct.pack("<H", len(room_restore)) + b"".join(
         struct.pack("<HB", o, t) for o, t in room_restore)
     pad_rr = bytes(0x1860 - (0x1800 + len(doors_data)))
+    # Parametres del nivell (geometria, tiles d'items, start, checkpoint...):
+    # van al paquet (C1:0x6900) i el resident els llegeix en carregar, de
+    # manera que al Bloc 0 no hi ha cap constant del nivell 1 compilada.
+    parm_src = os.path.join(PROJ, "assets", "bbdata", "LEVELPARM0.BIN")
+    parm_data = open(parm_src, "rb").read()
+    assert len(parm_data) == 52, len(parm_data)
+    pad_parm = bytes(0x1900 - (0x1860 + len(rr_data)))
     open(mainbin, "wb").write(mdata + pad_main + hud_raw + pad_rooms + rooms_data +
-                              pad_doors + doors_data + pad_rr + rr_data)
+                              pad_doors + doors_data + pad_rr + rr_data +
+                              pad_parm + parm_data)
     # EQU pel GAME (mus.s crida _akg_init/_akg_play en finestra C1).
     ext_s = os.path.join(obj, "mus_ext.s")
     need = {"_akg_init": plabels.get("PLY_AKG_Init"), "_akg_play": plabels.get("PLY_AKG_Play"),

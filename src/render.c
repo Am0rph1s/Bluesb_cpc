@@ -17,6 +17,7 @@ extern const u8 s_hud_strips[39][24];
 
 #define LEVEL_PKG_DEFS_ONLY
 #include "level_pkg.h"
+#include "level_params.h"
 
 #define TILESET    ((const u8*)0x4000)
 #define GMAP       ((const u8*)0x4000)
@@ -89,7 +90,7 @@ void hud_render(u8 page, u8 force) {
     // Slots col.leccionables: slot i gris (19+4i,20+4i), color si es el del
     // nivell i ja s'ha recollit (21+4i,22+4i).
     for (i = 0; i < 5; i++) {
-        u8 sb = (u8)(19 + (i << 2) + ((i == LEVEL_ID && g_has_instrument) ? 2 : 0));
+        u8 sb = (u8)(19 + (i << 2) + ((i == s_lv.level_id && g_has_instrument) ? 2 : 0));
         s_hud_layout[(u8)(24 + (i << 1))] = sb;
         s_hud_layout[(u8)(25 + (i << 1))] = (u8)(sb + 1);
     }

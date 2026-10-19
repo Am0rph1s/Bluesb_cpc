@@ -25,6 +25,7 @@
 
 #define LEVEL_PKG_DEFS_ONLY
 #include "level_pkg.h"
+#include "level_params.h"
 
 extern void video_init(void);
 extern void render_all(u16 cam_col, u16 cam_row);
@@ -126,6 +127,22 @@ void start(void) {
 }
 
 static const u16 s_row100[10] = { 0, 100, 200, 300, 400, 500, 600, 700, 800, 900 };
+
+// --- Parametres del NIVELL (runtime; venen del paquet) -------------------
+// El bloc sencer del paquet (C1:0x6900) es copia aqui i s'hi accedeix
+// amb les macros de level_params.h: cap constant del nivell 1 al Bloc 0
+// i cap cost de codi extra per llegir-los.
+LevelParams s_lv;
+
+void level_params_load(void) {
+    // El bloc de parametres del nivell es llegeix del paquet (Banc C1:0x6900)
+    // i es queda al resident: la part u8 (geometria, tiles, mides) es usa a
+    // cada frame; els valors de 16 bits (start, checkpoint, camera) es
+    // compilen mes avall per no gastar codi.
+    u8 prev = bank_set(0xC1);
+    cpct_memcpy(&s_lv, (const void*)0x6900, sizeof(LevelParams));
+    bank_restore(prev);
+}
 
 static u8 get_tile_at(u16 col, u16 row) {
     u8 prev, t;
@@ -299,20 +316,20 @@ static void check_room_bonus(u8 col, u8 feet_row) {
         u16 off = s_row100[r - 74] + col;
         prev = bank_set(0xC1);
         t = ((const u8*)0x6400)[off];
-        if (t == 208) {
+        if (t == s_lv.tile_vinyl) {
             if (g_vinyls_count < 99) g_vinyls_count++;
-        } else if (t == 159) {
-            g_has_instrument = LEVEL_ID + 1;
+        } else if (t == s_lv.tile_instr) {
+            g_has_instrument = s_lv.level_id + 1;
         } else {
             bank_restore(prev);
             continue;
         }
-        ((u8*)0x6400)[off] = 96;
+        ((u8*)0x6400)[off] = s_lv.tile_empty;
         bank_restore(prev);
         if (s_rep_n < 4) {
             s_rep_col[s_rep_n] = col;
             s_rep_row[s_rep_n] = r;
-            s_rep_tile[s_rep_n] = 96;
+            s_rep_tile[s_rep_n] = s_lv.tile_empty;
             s_rep_pages[s_rep_n] = 3;
             s_rep_n++;
         }
@@ -620,7 +637,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                     landed = 1;
                 }
                 {
-                    u16 max_r = s_in_room ? 84 : LEVEL_MAP_H;
+                    u16 max_r = s_in_room ? (u16)(s_lv.room_row0 + s_lv.room_rows) : LEVEL_MAP_H;
                     u16 target_row = (u16)(curr_feet >> 4);
                     if (!landed && target_row < max_r) {
                         i16 surf = (i16)(target_row << 4);
@@ -752,10 +769,13 @@ static void load_level_packages(void) {
             zx0_decompress((const void*)(pak + off_bank5), (void*)0x4000);
             bank_restore(prev);
 
-            // Sub-bloc 3: Musica + HUD + Rooms + Doors -> Banc C1:0x5000
+            // Sub-bloc 3: Musica + HUD + Rooms + Doors + Params -> Banc C1:0x5000
             prev = bank_set(0xC1);
             zx0_decompress((const void*)(pak + off_mus), (void*)0x5000);
             bank_restore(prev);
+            // Els parametres del nivell (geometria, tiles, start, checkpoint)
+            // surten del paquet: el Bloc 0 no en te cap constant compilada.
+            level_params_load();
 
             // Sub-bloc 4: GAMEOVER (0x6A00) + Frames Ascensor (0x7000) -> Banc C0
             prev = bank_set(0xC0);
@@ -1030,13 +1050,13 @@ void main(void) {
                 if (g_checkpoint) {
                     s_px8 = (i16)(LEVEL_CHK_PX * SUB);
                     s_py8 = (i16)(LEVEL_CHK_PY * SUB);
-                    g_cam_x4 = LEVEL_CHK_CAM_X4;
-                    g_cam_row = LEVEL_CHK_CAM_ROW;
+                    g_cam_x4 = (u16)LEVEL_CHK_CAM_X4;
+                    g_cam_row = (u16)LEVEL_CHK_CAM_ROW;
                 } else {
                     s_px8 = (i16)(LEVEL_START_PX * SUB);
                     s_py8 = (i16)(LEVEL_START_PY * SUB);
-                    g_cam_x4 = LEVEL_CAM0_X4;
-                    g_cam_row = LEVEL_CAM0_ROW;
+                    g_cam_x4 = (u16)LEVEL_CAM0_X4;
+                    g_cam_row = (u16)LEVEL_CAM0_ROW;
                 }
                 s_vx = 0; s_vy = 0;
                 s_on_ground = 1;

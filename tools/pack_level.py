@@ -331,6 +331,30 @@ def build_level_pkg(level_idx=0):
     print("  RESTORE%d.BIN: %d posicions restaurables (%d bytes)"
           % (level_idx, len(restore), len(blob)))
 
+    # --- Bloc de PARAMETRES DEL NIVELL per al paquet -----------------------
+    # Tot el que es del nivell (geometria del mapa, de les habitacions, tiles
+    # dels items, posicio inicial, checkpoint, parametres de camera) va aqui,
+    # al paquet, i el resident el llegeix en carregar: al Bloc 0 no hi ha de
+    # quedar cap constant del nivell 1.
+    prm = bytearray()
+    prm += bytes((0xB0, 1))                  # magic, version
+    prm += bytes((5, 20, 10))                 # habitacions, columnes, files
+    prm += bytes((74, 83, 100, 148))          # fila 0, fila del terra, total col, fila de camera
+    prm += bytes((208, 159, 96))              # tiles: vinil, instrument, buit
+    prm += bytes((5, level_idx))              # nombre d'ascensors, id del nivell
+    # Offsets de fila dins el mapa de les habitacions (el resident no ha de
+    # multiplicar: multiplicar 16 bits costa codi).
+    prm += b"".join(struct.pack("<H", r * 100) for r in range(10))
+    prm += struct.pack("<hhhhhhhh", start_px, start_py, cam0_x4, cam0_row,
+                       chk_px, chk_py, chk_cam_x4, chk_cam_row)
+    prm += struct.pack("<H", max(0, (map_h * 2) - 20))   # fila maxima de camera
+    assert len(prm) == 52, len(prm)
+    parm_path = os.path.join(PROJ, "assets", "bbdata", "LEVELPARM%d.BIN" % level_idx)
+    with open(parm_path, "wb") as f:
+        f.write(bytes(prm))
+    print("  LEVELPARM%d.BIN: %d bytes (parametres del nivell per al paquet)"
+          % (level_idx, len(prm)))
+
     build_hud_pkg(level_idx, sqv_frames)
 
 

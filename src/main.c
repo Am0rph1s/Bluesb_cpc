@@ -329,12 +329,15 @@ static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
         if (dx < -1) render_column(target_x4, target_row, 1);
     }
 
+    // La camera pot fer 2 files per frame (16 px, el ritme de la caiguda
+    // maxima) i el backbuffer nomes te 2 frames de retard: cal repintar
+    // fins a 4 files noves.
     if (dy > 0) {
-        if (dy > 1) render_row(target_x4, target_row, 18);
-        render_row(target_x4, target_row, 19);
+        u8 i;
+        for (i = 0; i < (u8)dy && i < 4; i++) render_row(target_x4, target_row, (u8)(19 - i));
     } else if (dy < 0) {
-        render_row(target_x4, target_row, 0);
-        if (dy < -1) render_row(target_x4, target_row, 1);
+        u8 i;
+        for (i = 0; i < (u8)(-dy) && i < 4; i++) render_row(target_x4, target_row, i);
     }
 }
 
@@ -811,24 +814,20 @@ static void restore_level_tiles(void) {
         prev = bank_set(0xC6);
     }
     bank_restore(prev);
-}
 
-// Les HABITACIONS (ROOMS0.BIN, Banc C1:0x6400) tenen els seus propis items
-// consumibles (els discs de les sales). Al DOS el paquet de nivell es
-// rellegeix a cada mort, aixi que a les sales tambe tornen a aparaitre.
-// La taula (C1:0x6860, generada a tools/build.py) diu quines posicions
-// dins ROOMS0.BIN tenen un disc i quin es el seu tile inicial.
-// L'instrument (tile 159) NO hi es: l'item secret persisteix (1:1 DOS).
-static void restore_room_tiles(void) {
-    u8 prev = bank_set(0xC1);
-    const u8* tbl = (const u8*)0x6860;
-    u16 n = (u16)(tbl[0] | (tbl[1] << 8));
-    u16 i;
+    // Les HABITACIONS (ROOMS0.BIN, Banc C1:0x6400) tenen els seus propis
+    // items consumibles (els discs de les sales). Al DOS el paquet de nivell
+    // es rellegeix a cada mort, aixi que a les sales tambe tornen a
+    // aparaitre. La taula (C1:0x6860, generada a tools/build.py) diu quines
+    // posicions dins ROOMS0.BIN tenen un disc i quin es el seu tile inicial.
+    // L'instrument (tile 159) NO hi es: l'item secret persisteix (1:1 DOS).
+    prev = bank_set(0xC1);
+    tbl = (const u8*)0x6860;
+    n = (u16)(tbl[0] | (tbl[1] << 8));
     for (i = 0; i < n; i++) {
         const u8* e = tbl + 2 + (u16)(i * 3);
         u16 off = (u16)(e[0] | (e[1] << 8));
-        u8 tile = e[2];
-        ((u8*)0x6400)[off] = tile;
+        ((u8*)0x6400)[off] = e[2];
     }
     bank_restore(prev);
 }
@@ -1025,8 +1024,7 @@ void main(void) {
                 // reapareixen) menys l'item secret, que persisteix.
                 g_hearts_count = 3;
                 g_vinyls_count = 0;
-                restore_level_tiles();     // tiles consumibles -> estat inicial
-                restore_room_tiles();      // discs de les habitacions -> estat inicial
+                restore_level_tiles();     // consumibles (mapa + habitacions) -> estat inicial
                 moving_respawn();          // objectes mobils a l'estat inicial
                 enemy_init();              // enemics a la seva posicio inicial
                 if (g_checkpoint) {
@@ -1092,9 +1090,27 @@ void main(void) {
                     g_cam_x4--;
                     move_x = -1;
                 }
-                if (sy > DEAD_B && g_cam_row < LEVEL_MAX_CAM_ROW) {
-                    g_cam_row++;
-                    move_y = 1;
+                // 1:1 DOS (level.c: do_level_update_scrolling2, scroll suau): el
+                // origen Y de la pantalla segueix EXACTAMENT la posicio del
+                // jugador (screen_tilemap_yorigin += dy, sense limit de
+                // velocitat). Abans la camera nomes baixava 1 fila (8 px) per
+                // frame, mes lent que la caiguda maxima (15 px/frame com al
+                // DOS: ymaxvelocity=15): el terra trigava a fer-se visible i
+                // Jake "aterritava" a les fos. Fins a 2 files per frame (16 px).
+                if (sy > DEAD_B) {
+                    // 1:1 DOS (level.c: do_level_update_scrolling2, scroll
+                    // suau): el origen Y de la pantalla segueix el jugador
+                    // SENSE limit de velocitat. Abans la camera nomes
+                    // baixava 1 fila (8 px) per frame, mes lent que la
+                    // caiguda maxima (15 px/frame com al DOS:
+                    // ymaxvelocity=15): el terra trigava a fer-se visible i
+                    // Jake "aterritava" a les fos. Ara la fila objectiu es
+                    // calcula exactament (fins a 2 files per frame = 16 px).
+                    u16 d = ((u16)(sy - DEAD_B) + 7) >> 3;
+                    if (d > 2) d = 2;
+                    if (g_cam_row + d > LEVEL_MAX_CAM_ROW) d = LEVEL_MAX_CAM_ROW - g_cam_row;
+                    g_cam_row += d;
+                    move_y = (i8)d;
                 } else if (sy < DEAD_T && g_cam_row > 0) {
                     g_cam_row--;
                     move_y = -1;

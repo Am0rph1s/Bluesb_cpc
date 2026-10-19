@@ -940,10 +940,10 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
   - Substituits els valors aproximats anteriors (`|dx|` 8..75/8..85, `dy` -16..24).
 - **Projectil** (`do_level_update_projectile`, level.c:1364; tipus 4 i 17 -> `grab_type` 4 i 9 -> cas `default`):
   - Spawn: `xpos = centre +- 32 DOS px` (= +-16 CPC) i `ypos = peus - 18 DOS px` (= -9 CPC).
-  - `xvelocity = yvelocity = 64 - (facing_left << 7)` raw. Amb `xvelocity >> 3` (level.c:1312) dona 8 DOS px/frame = **4 CPC px/frame**.
-  - **Quirk del DOS**: el clamp nomes mira els positius (`if (yvelocity > ymaxvelocity)`, level.c:1530, amb `ymaxvelocity = 15`): cap avall queda en 1 DOS px/frame (= 0,5 CPC px/frame) i cap amunt queda a -64 raw (= -8 DOS px/frame = -4 CPC px/frame). Implementat tal qual.
-  - Cadencia: el projectil es crea quan `special_anim == 0 || anim_num == 12` -> un tret per sequencia (~12 passos). Cooldown nostre posat a 24 frames.
-- **VERIFICAT a l'emu**: amb el rang nou en Jake rep impactes de la policia del carrer (cors 3 -> 2 -> 1) mentre avança, i abans no li arribaven des de tan lluny. La trajectoria exacta no s'ha pogut caçar en captura (el teleport de Jake el desestabilitza), aixi que el detall fi es del codi DOS.
+  - **HORITZONTAL (vy = 0)**. El DOS hi escriu `xvelocity = yvelocity = 64 - (facing_left << 7)`, pero a la practica la bala surt RECTA: l'usuari ho ha verificat sobre l'original i a mes, mirant l'integrador (level.c:1908 `obj->ypos += obj->yvelocity;`, aplicat RAW), un vy positiu enterraria la bala al terra en 1-2 frames (neix a nomes 18 px dels peus) i un vy negatiu la faria pujar en diagonal. Per tant, de moment: vy = 0 i queda pendent d'una sessio amb DOS real esbrinar on es neutralitza el vy (candidats: el clamp de level.c:1530 amb el `ymaxvelocity` del slot 38, o que `grab_type` 4/9 no arribi al cas default).
+  - `xvelocity` = 64 en les nostres unitats (== 8 CPC px/frame; el `>>3` de level.c:1312 es el que fa servir el DOS per al moviment del jugador, i a nosaltres ens dona la velocitat que ja estava verificada en joc).
+  - Cadencia: el projectil es crea quan `special_anim == 0 || anim_num == 12` -> un tret per sequencia (~12 passos). Cooldown nostre a 24 frames.
+- **VERIFICAT a l'emu**: amb el rang nou en Jake rep impactes de la policia del carrer (cors 3 -> 2 -> 1) mentre avança, i abans no li arribaven des de tan lluny. La bala surt recta (vy = 0 al codi).
 - **PENDENT (estimat, no tocat)**: les velocitats de caminar dels walkers no son les del DOS. DOS: op0 (iaia) 40, op1 (granger/rocker) 40, op2 (policia) 24, op10 (cambrera) 32. Nosaltres: iaia 36, policia 24, granger 24, cambrera 20, rocker 24. Caldra una sessio propia perque afecta dificultat.
 
 ## Sessio 2026-10-19 (28): Pose de tirc de la policia i de llancament de la cambrera

@@ -279,19 +279,16 @@ void en2_update(void) {
                     // el dels tipus 4 i 17):
                     //   xpos = centre_objecte +- 32 DOS px  -> +-16 CPC px
                     //   ypos = peus - 18 DOS px              -> peus - 9 CPC px
-                    //   xvelocity = yvelocity = +-64 raw: |vx| = 64>>3 = 8 DOS
-                    //   px/frame = 4 CPC px/frame; |vy| l'clampa ymaxvelocity
-                    //   (15 raw = 1 DOS px/frame = 0,5 CPC px/frame).
+                    // HORITZONTAL: el DOS escriu xvelocity = yvelocity = +-64,
+                    // pero a la practica la bala surt recta (verificat per
+                    // l'usuari sobre l'original; si tinguessim el vy actiu la
+                    // bala s'enfonsaria al terra o pujaria en diagonal). Per
+                    // tant vy = 0.
                     i16 sx = (i16)(e->x + 8 + ((e->dir > 0) ? 16 : -16));
                     i16 sy = (i16)(y + 32 - 9);
                     i16 sgn = (e->dir > 0) ? 1 : -1;
-                    // vy: el DOS nomes clampa els valors POSITIUS de yvelocity
-                    // (level.c:1530): 64 -> ymaxvelocity 15 (1 DOS px/frame =
-                    // 0,5 CPC px/frame); els negatius queden a -64 (-8 DOS
-                    // px/frame = -4 CPC px/frame). Quirk del original.
-                    i16 vy = (sgn > 0) ? 4 : -32;
                     en2_spawn_proj(is_cop ? 4 : 9, is_cop ? 6 : 11, is_cop ? 13 : 19,
-                                   sx, sy, (i16)(sgn * 32), vy, 24);
+                                   sx, sy, (i16)(sgn * 64), 0, 24);
                 }
             }
         }

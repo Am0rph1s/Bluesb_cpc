@@ -257,24 +257,41 @@ void en2_update(void) {
         y = (i16)(e->y8 >> 3);
 
         if (sp->kind == 4 || sp->kind == 17) {
-            i16 dy = jake_y - y;
-            if (dy >= -16 && dy <= 24) {
-                i16 dx_jake = jake_x - e->x;
-                i16 abs_dx = (dx_jake >= 0) ? dx_jake : -dx_jake;
-                u8 is_cop = (sp->kind == 4);
-                if (abs_dx > 8 && abs_dx < (is_cop ? 75 : 85)) {
-                    e->dir = (dx_jake >= 0) ? 1 : -1;
-                    // 1:1 DOS op2/op10: en rang de tir la policia/cambrera es
-                    // PARA (direction_lr = 0) i fa la pose d'accio.
-                    if (!e->shoot_timer) e->shoot_timer = AIM_FRAMES;
-                    if (!s_proj.kind && !s_proj.cooldown) {
-                        i16 sx = (e->dir > 0) ? (i16)(e->x + 14) : (i16)(e->x - 6);
-                        if (is_cop) {
-                            en2_spawn_proj(4, 6, 13, sx, (i16)(y + 8), (e->dir > 0) ? 64 : -64, 0, 50);
-                        } else {
-                            en2_spawn_proj(9, 11, 19, sx, (i16)(y + 3), (e->dir > 0) ? 40 : -40, 0, 50);
-                        }
-                    }
+            // 1:1 DOS object_func_op2 (policia) i op10 (cambrera). Distancies
+            // de DOS (level.c do_level_update_object_bounds):
+            //   player_xdist = centre_jugador - centre_objecte
+            //   player_ydist = peus_jugador - peus_objecte
+            //   policia:  player_ydist <= 20 && |player_xdist| < TILEMAP_SCREEN_W/4 = 80
+            //   cambrera: player_ydist <= 10 && |player_xdist| < TILEMAP_SCREEN_W/2 = 160
+            // (el DOS no posa limit inferior a ydist; direction_ud > -60 es
+            // sempre cert per a un walker de terra -> s'omet.)
+            i16 dy = jake_y - y;               // cap-cap = peus-peus (mateixa alcada)
+            i16 dx_jake = jake_x - e->x;
+            i16 abs_dx = (dx_jake >= 0) ? dx_jake : -dx_jake;
+            u8 is_cop = (sp->kind == 4);
+            if (dy <= (is_cop ? 20 : 10) && abs_dx < (is_cop ? 80 : 160)) {
+                e->dir = (dx_jake >= 0) ? 1 : -1;
+                // 1:1 DOS: en rang de tir es PARA (direction_lr = 0) i fa la
+                // pose d'accio; el projectil es crea a l'inici de la sequencia.
+                if (!e->shoot_timer) e->shoot_timer = AIM_FRAMES;
+                if (!s_proj.kind && !s_proj.cooldown) {
+                    // 1:1 DOS do_level_update_projectile (cas default, que es
+                    // el dels tipus 4 i 17):
+                    //   xpos = centre_objecte +- 32 DOS px  -> +-16 CPC px
+                    //   ypos = peus - 18 DOS px              -> peus - 9 CPC px
+                    //   xvelocity = yvelocity = +-64 raw: |vx| = 64>>3 = 8 DOS
+                    //   px/frame = 4 CPC px/frame; |vy| l'clampa ymaxvelocity
+                    //   (15 raw = 1 DOS px/frame = 0,5 CPC px/frame).
+                    i16 sx = (i16)(e->x + 8 + ((e->dir > 0) ? 16 : -16));
+                    i16 sy = (i16)(y + 32 - 9);
+                    i16 sgn = (e->dir > 0) ? 1 : -1;
+                    // vy: el DOS nomes clampa els valors POSITIUS de yvelocity
+                    // (level.c:1530): 64 -> ymaxvelocity 15 (1 DOS px/frame =
+                    // 0,5 CPC px/frame); els negatius queden a -64 (-8 DOS
+                    // px/frame = -4 CPC px/frame). Quirk del original.
+                    i16 vy = (sgn > 0) ? 4 : -32;
+                    en2_spawn_proj(is_cop ? 4 : 9, is_cop ? 6 : 11, is_cop ? 13 : 19,
+                                   sx, sy, (i16)(sgn * 32), vy, 24);
                 }
             }
         }

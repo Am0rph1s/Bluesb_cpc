@@ -927,6 +927,25 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - **Truc de teleport (CORRECCIO IMPORTANT)**: el protocol remot de ZEsarUX vol les adreces de **`write-memory`/`read-memory` en DECIMAL**. Escriure-les en hex fa que la escriptura no s'apliqui (semblava que el joc "resetejava" en Jake). `zrcp.py` ja fa servir decimal a `read_mem`.
 - **Altres pendents d'aquest fil (no tocats)**: (a) les 5 plataformes tenen les coordenades a ma a `tools/pack_level.py` (`y = dos_y`, sense el −32 oficial) -> surten 18 px baixes; (b) falta l'objecte DOS `op4` (tipus 16) a CPC (816,768), l'ascensor de debò; (c) el DOS anima tambe els tiles de les cintes (29-32) i les peixeres (76-78) — aixo SI que ho tenim — i n'hi ha d'altres (53/54/55/63) que no.
 
+## Sessio 2026-10-19 (29): Rangs de tir i projectil 1:1 dels DOS
+
+- **Correccio important de lectura**: el dispatch es `switch (obj->op - 1)` (`objects.c:450`), aixi que el valor de `level_objtypes` es la funcio +1:
+  - tipus 4 (policia) -> `0x03` -> **`object_func_op2`** ✓
+  - tipus 17 (cambrera) -> `0x0B` -> **`object_func_op10`** ✓
+  - tipus 7 (plataforma) -> `0x05` -> `object_func_op4` ✓ (abans ho tenia desplacat)
+- **Distancies** (`do_level_update_object_bounds`, level.c:1338): `player_xdist = centre_jugador - centre_objecte`, `player_ydist = peus_jugador - peus_objecte`.
+- **Rangs exactes**:
+  - Policia: `player_ydist <= 20 && |player_xdist| < TILEMAP_SCREEN_W/4 = 80`. Sense limit inferior (pot disparar a un Jake que estigui a sobre). `direction_ud > -60` es sempre cert per a un walker de terra -> omes.
+  - Cambrera: `player_ydist <= 10 && |player_xdist| < TILEMAP_SCREEN_W/2 = 160`.
+  - Substituits els valors aproximats anteriors (`|dx|` 8..75/8..85, `dy` -16..24).
+- **Projectil** (`do_level_update_projectile`, level.c:1364; tipus 4 i 17 -> `grab_type` 4 i 9 -> cas `default`):
+  - Spawn: `xpos = centre +- 32 DOS px` (= +-16 CPC) i `ypos = peus - 18 DOS px` (= -9 CPC).
+  - `xvelocity = yvelocity = 64 - (facing_left << 7)` raw. Amb `xvelocity >> 3` (level.c:1312) dona 8 DOS px/frame = **4 CPC px/frame**.
+  - **Quirk del DOS**: el clamp nomes mira els positius (`if (yvelocity > ymaxvelocity)`, level.c:1530, amb `ymaxvelocity = 15`): cap avall queda en 1 DOS px/frame (= 0,5 CPC px/frame) i cap amunt queda a -64 raw (= -8 DOS px/frame = -4 CPC px/frame). Implementat tal qual.
+  - Cadencia: el projectil es crea quan `special_anim == 0 || anim_num == 12` -> un tret per sequencia (~12 passos). Cooldown nostre posat a 24 frames.
+- **VERIFICAT a l'emu**: amb el rang nou en Jake rep impactes de la policia del carrer (cors 3 -> 2 -> 1) mentre avança, i abans no li arribaven des de tan lluny. La trajectoria exacta no s'ha pogut caçar en captura (el teleport de Jake el desestabilitza), aixi que el detall fi es del codi DOS.
+- **PENDENT (estimat, no tocat)**: les velocitats de caminar dels walkers no son les del DOS. DOS: op0 (iaia) 40, op1 (granger/rocker) 40, op2 (policia) 24, op10 (cambrera) 32. Nosaltres: iaia 36, policia 24, granger 24, cambrera 20, rocker 24. Caldra una sessio propia perque afecta dificultat.
+
 ## Sessio 2026-10-19 (28): Pose de tirc de la policia i de llancament de la cambrera
 
 - **Poses del DOS** (taules `animframes_059d` per tipus, `staticres.c`):

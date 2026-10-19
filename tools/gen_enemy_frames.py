@@ -28,6 +28,11 @@ CELLS = [
     (17, 33), (17, 32),   # 9, 10: Cambrera walk (33=neutral, 32=stride)
     (20, 41), (20, 43),   # 11, 12: Rocker walk (41=neutral, 43=stride)
 ]
+# Celes EXTRA (DESPRES de la cela 13 de projectils) -> 14 i 15:
+POSE_CELLS = [
+    (4, 11),              # 14: Policia POSE DE TIRC (DOS tipus 4 sa2 9->10->11, la final)
+    (17, 39),             # 15: Cambrera POSE DE LLANCAMENT (DOS tipus 17 sa2 37->38->39, la final)
+]
 # Cela 13: composite projectils (Ou r0..12, Bala r13..18, Plat r19..29)
 
 CELL_W, CELL_H = 16, 32
@@ -105,8 +110,12 @@ def main():
         w, h, px = frames[idx]
         assert w <= 32 and h <= 32, (idx, w, h)
         out += pack_cell(px, w, h)
-    out += pack_projectiles_cell(frames)
-    total_cells = len(CELLS) + 1
+    out += pack_projectiles_cell(frames)          # cela 13
+    for kind, idx in POSE_CELLS:                  # celes 14, 15
+        w, h, px = frames[idx]
+        assert w <= 32 and h <= 32, (idx, w, h)
+        out += pack_cell(px, w, h)
+    total_cells = len(CELLS) + 1 + len(POSE_CELLS)
     assert len(out) == total_cells * 512, len(out)
     open(OUT_BIN, "wb").write(out)
     print("escrit %s: %d bytes (%d celes 512 B)" % (OUT_BIN, len(out), total_cells))

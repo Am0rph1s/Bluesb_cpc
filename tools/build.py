@@ -550,7 +550,7 @@ def build_enemybank(force):
                 max_length=en_code_l)
     frames = open(ENEMY_FRAMES, "rb").read()
     code = open(code_path, "rb").read()
-    assert len(frames) == 14 * 512, len(frames)
+    assert len(frames) % 512 == 0 and len(frames) // 512 >= 14, len(frames)
 
     # --- Frames comprimits PER CELA (ZX0) + cache de 4 slots (veure enemy.c) ---
     # Layout dins C6 (imatge que es descomprimeix a 0x4000):

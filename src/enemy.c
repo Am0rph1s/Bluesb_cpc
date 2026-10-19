@@ -109,8 +109,11 @@ extern void zx0_decompress(const void* src, void* dst);
 // Cost: ~3,5 ms per cela descomprimida (ldir 21 T/byte a 4 MHz), pero
 // nomes en fallada de cache (comptador a 0x5818 per mesurar-ho a l'emu).
 // ============================================================
-#define ENEMY_CELLS        14
+#define ENEMY_CELLS        16
 #define ENEMY_CELL_SIZE    512
+#define POLICE_AIM_CELL    14   // pose de tirc de la policia (DOS tipus 4 sa2 final)
+#define WAITRESS_THROW_CELL 15  // pose de llancament de la cambrera (DOS tipus 17 sa2 final)
+#define AIM_FRAMES         12   // duracio de la pose (~0,5 s a 25 Hz; DOS la soste 6-10 passos)
 #define ENEMY_CELL_TABLE   ((const u8*)0x4000)
 #define ENEMY_CACHE_BASE   ((u8*)0x5000)
 #define ENEMY_CACHE_SLOTS  4
@@ -261,7 +264,9 @@ void en2_update(void) {
                 u8 is_cop = (sp->kind == 4);
                 if (abs_dx > 8 && abs_dx < (is_cop ? 75 : 85)) {
                     e->dir = (dx_jake >= 0) ? 1 : -1;
-                    e->shoot_timer = 2; // MantÃ© aturat mentre Jake estigui a distÃ ncia de tir
+                    // 1:1 DOS op2/op10: en rang de tir la policia/cambrera es
+                    // PARA (direction_lr = 0) i fa la pose d'accio.
+                    if (!e->shoot_timer) e->shoot_timer = AIM_FRAMES;
                     if (!s_proj.kind && !s_proj.cooldown) {
                         i16 sx = (e->dir > 0) ? (i16)(e->x + 14) : (i16)(e->x - 6);
                         if (is_cop) {
@@ -491,8 +496,12 @@ void en2_draw(void) {
 
         // SelecciÃ³ de cela i flip dinÃ mic amb cache de cela:
         {
-            u8 step = (e->dead || sp->kind == 8 || sp->vx == 0 || e->shoot_timer) ? 0 : (u8)((e->tick >> 2) & 1);
+            u8 step = (e->dead || sp->kind == 8 || sp->vx == 0) ? 0 : (u8)((e->tick >> 2) & 1);
             u8 cell = (u8)(sp->base_cell + step);
+            if (e->shoot_timer) {
+                if (sp->kind == 4) cell = POLICE_AIM_CELL;          // pose de tirc
+                else if (sp->kind == 17) cell = WAITRESS_THROW_CELL; // pose de llancament
+            }
             const u8* src = en2_cell(cell);
             if (e->dir < 0) {
                 if (s_flipped_cell != cell) {

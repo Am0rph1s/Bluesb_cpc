@@ -927,6 +927,19 @@ els assets en Mode 0 (160×200, 16 colors). Les eines C64 (`tools/d64.py`, `vice
 - **Truc de teleport (CORRECCIO IMPORTANT)**: el protocol remot de ZEsarUX vol les adreces de **`write-memory`/`read-memory` en DECIMAL**. Escriure-les en hex fa que la escriptura no s'apliqui (semblava que el joc "resetejava" en Jake). `zrcp.py` ja fa servir decimal a `read_mem`.
 - **Altres pendents d'aquest fil (no tocats)**: (a) les 5 plataformes tenen les coordenades a ma a `tools/pack_level.py` (`y = dos_y`, sense el −32 oficial) -> surten 18 px baixes; (b) falta l'objecte DOS `op4` (tipus 16) a CPC (816,768), l'ascensor de debò; (c) el DOS anima tambe els tiles de les cintes (29-32) i les peixeres (76-78) — aixo SI que ho tenim — i n'hi ha d'altres (53/54/55/63) que no.
 
+## Sessio 2026-10-19 (28): Pose de tirc de la policia i de llancament de la cambrera
+
+- **Poses del DOS** (taules `animframes_059d` per tipus, `staticres.c`):
+  - Policia (tipus 4, op2): la sequencia d'accio es `sa2 = [9,9,9,9,10,10,11,11,11,11,11,11]` (locals ENEMI1) i la inversa a `sa3`. **Pose final = local 11**.
+  - Cambrera (tipus 17, op 0x0b): `sa2 = [37,37,37,38,38,38,39,39,...]`. **Pose final = local 39**.
+  - En tots dos casos DOS PARA el personatge mentre dura l'accio (`if (special_anim != 0) direction_lr = 0`) i el projectil es crea al principi de la sequencia (`do_level_update_projectile`).
+- **Implementacio**: dues celes noves al packer, **DESPRES de la cela 13 de projectils** (`CELLS` + `POSE_CELLS` a `tools/gen_enemy_frames.py`, `main()` canvia l'ordre: cells, projectils, poses):
+  - cela **14** = `(4, 11)` policia; cela **15** = `(17, 39)` cambrera. Total 16 celes = 8.192 B en cru -> **2.662 B ZX0** (16 blocs).
+  - `src/enemy.c`: `POLICE_AIM_CELL 14`, `WAITRESS_THROW_CELL 15`, `AIM_FRAMES 12` (~0,5 s a 25 Hz; DOS sosté la pose 6-10 passos). El `draw` tria la cela de pose si `shoot_timer`; l'`update` posa `shoot_timer = AIM_FRAMES` en entrar en rang de tir (abans 2 frames fixos).
+- **VERIFICAT**: les 16 celes surten correctes al preview del packer (`tools/enemi1_walkers_preview.png`); a l'emu la policia del carrer, amb Jake a 68 px, es PARA i mostra la pose (comptador de cache estable, 3 fallades). La cambrera es veu dibuixada correctament a la zona del restaurant. No s'ha pogut escenificar el llancament exacte de la cambrera per teleport (la seva alçada de terra no es pot assolir escrivint `s_py8`).
+- **Cache**: amb 16 celes i 4 slots el comptador queda igual de baix (3-4 fallades en proves curtes). Si mai es noten estirades, pujar a 6 slots (hi ha lloc fins a `0x5000`-`0x57FF` + 875 B a dalt).
+- **PENDENT (fidelitat)**: els rangs de tir nostres son aproximats (policia `|dx|` 8..75, cambrera 8..85, `dy` -16..24). El DOS: policia `player_ydist <= 20 && |player_xdist| < 320/4 = 80`; cambrera (op10) `<= 10 && |xdist| < 320/2 = 160`.
+
 ## Sessio 2026-10-19 (27): Frames d'enemics COMPRIMITS amb ZX0 + cache (allibera ~2,6 KB de C6)
 
 - **Motiu**: el banc C6 estava ple (14 celes crues = 7.168 B) i no hi cabien ni la pose de tirc de la policia ni res mes.

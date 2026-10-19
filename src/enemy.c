@@ -277,15 +277,19 @@ void en2_update(void) {
                 if (!s_proj.kind && !s_proj.cooldown) {
                     // 1:1 DOS do_level_update_projectile (cas default, que es
                     // el dels tipus 4 i 17):
-                    //   xpos = centre_objecte +- 32 DOS px  -> +-16 CPC px
-                    //   ypos = peus - 18 DOS px              -> peus - 9 CPC px
-                    // HORITZONTAL: el DOS escriu xvelocity = yvelocity = +-64,
-                    // pero a la practica la bala surt recta (verificat per
-                    // l'usuari sobre l'original; si tinguessim el vy actiu la
-                    // bala s'enfonsaria al terra o pujaria en diagonal). Per
-                    // tant vy = 0.
+                    //   xpos = centre_objecte +- 32 DOS px -> +-16 CPC px
+                    //   ypos = obj_ypos - 18   (ATENCIO: al DOS ypos es la
+                    //     BASE de la caixa, no el cap). La caixa del projectil
+                    //     es [ypos-10, ypos] = [peus-28, peus-18].
+                    // Escalat: l'ample DOS->CPC es 2:1 pero l'ALCADA es 1:1.
+                    // La nostra bala fa 6 px i aqui `s_proj.y8>>3` es el CAP,
+                    // aixi que per deixar la BASE a peus-18: cap+6 = y+32-18
+                    //  ->  sy = y + 8.
+                    // Amb aixo: caixa [y+8, y+14]; el Jake AJUPIT (top py+18)
+                    // la veu passar de llarg (14 <= 18) i el Jake dret (top
+                    // py+4) la rep.
                     i16 sx = (i16)(e->x + 8 + ((e->dir > 0) ? 16 : -16));
-                    i16 sy = (i16)(y + 32 - 9);
+                    i16 sy = (i16)(y + 8);
                     i16 sgn = (e->dir > 0) ? 1 : -1;
                     en2_spawn_proj(is_cop ? 4 : 9, is_cop ? 6 : 11, is_cop ? 13 : 19,
                                    sx, sy, (i16)(sgn * 64), 0, 24);

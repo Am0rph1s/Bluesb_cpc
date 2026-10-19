@@ -876,6 +876,33 @@ els assets en Mode 0 (160Ã—200, 16 colors). Les eines C64 (`tools/d64.py`, `v
 - **Comandos**: `py -3 -u tools/build.py` (~12min, FATAL si Bloc 0/C6 envaeixen); emu: `zesarux --noconfigfile --machine CPC6128 --vo null --ao null --aofile NUL --enable-remoteprotocol bluesb.dsk`; tecles ZRCP: 128 espai, 142 esq, 143 dreta, 145 amunt; `read_mem 0x378C 2` = ticks (Compte: COMPTA ENRERE!), `0x3B19` = cam_x4 (u16le), view_x = cam_x4*4, view_y = cam_row*8.
 - **PENDENT usuari**: validar posicions DOS reals (s26@top144? s27@112 o @528?).
 
+## Sessio 2026-10-19 (33): Scroll vertical 1:1 DOS (la camera segueix el jugador) + _DATA a 0x3900
+
+- **Report de l'usuari**: en caiguda lliure des de posicio alta, Jake "actua" com si ja toques terra **encara que l'scroll no ensenyes el terra**; amb paraigues no passava (la caiguda es lenta i l'scroll va a ritme). En caiguda vertical exacta a la bandera, Jake es posava a ballar molt abans que la bandera i el terra es veguessin. Sospitava (encertada) que el scroll es mes lent que la caiguda.
+- **Arrel, MESURADA a l'emu**: la camera nomes baixava **1 fila (8 px) per frame**, mentre la caiguda maxima es de **15 px/frame** (com al DOS: `ymaxvelocity=15`, `yacc=2`). La camera anava curta i acumulava **46-78 px de retard**: la fisica estava per davant del que es veia. Desfasament final mesurat: **+46 px** (el terra 46 px per sota del final de pantalla).
+- **1:1 DOS** (`level.c: do_level_update_scrolling2`, mode de scroll suau): l'origen Y de la pantalla segueix **exactament** la posicio del jugador, sense limit de velocitat:
+  ```c
+  const int y1 = 64;  const int y2 = 144;
+  if (obj->screen_ypos > y2) screen_tilemap_yorigin += obj->screen_ypos - y2;
+  else if (obj->screen_ypos < y1) screen_tilemap_yorigin += obj->screen_ypos - y1;
+  ```
+  -> `src/main.c`: la fila objectiu es calcula a partir de l'exces (`sy - DEAD_B`), amb un maxim de **2 files per frame** (16 px >= 15 px de caiguda). `sync_backbuffer` ha de poder repintar **fins a 4 files** (la camera pot fer 2 files/frame i el backbuffer te 2 frames de retard).
+- **Marge del Bloc 0**: el resident estava ple (18 B). Amb l'aprovacio de l'usuari, `--data-loc` passa de **0x3880 a 0x3900**: el codi guanya 128 B (marge **146 B**) i **la pila no canvia** (el canari es a 0x3D00 i el _DATA acaba a 0x3CDB, per sota).
+- **VERIFICAT** (`scratch/test_cam_fix.py`): caiguda de 596 px a la part dreta -> desfasament final **-2 px** (abans **+46 px**). Captura `scratch/camfix_final.png`: el terra es visible i Jake apareix damunt.
+- **Altres canvis del mateix commit**: `restore_level_tiles()` fusiona la restauracio del mapa i la de les habitacions (mateixa funcio, menys codi al resident).
+
+### Inventari del Bloc 0 resident (fet a peticio de l'usuari): comu vs. del nivell
+
+L'usuari ha demanat que **al resident nomes hi hagi el comu** i que l'exclusiu de cada nivell vagi al paquet del nivell. Repartiment actual:
+
+| classe | contingut | on hauria de viure |
+|---|---|---|
+| **comu (motor)** | `cpc_hardware.s` (teclat, bancs, video), `zx0_decompress.s`, `video.s`, `isr.s`, `sprite.s` (Jake/globus/paraigues), `tile_blit.s`, `sprite_hflip.s`, `mus.s`, `render.c` (HUD + render del mon), `main.c` (jugador, input, fisica, camera, mort/respawn, carrega de paquets, FDC) | **resident** |
+| **del nivell 1** | codi dels **ascensors** (`moving_draw`/`moving_restore` + `moving_blit.s`, ~1,2 KB), dades dels 5 ascensors (`g_mag_elevators`), fase de les **cintes**, vars de les **reixes** (`g_grate_*`), geometria + tiles de les **habitacions** (208/159/96), adreces del paquet (mapa 0x4000, triggers 0x6400, habitacions 0x6400, portes 0x6800, taules de restauracio 0x4B00/0x6860), constants `LEVEL_*` compilades | **paquet del nivell** (C5/C1/C7) |
+| **context DOS** | al DOS el codi dels tipus d'objecte (ascensors inclosos) es del *motor* (`objects.c`) i el que es del nivell son les *dades* (posicions). Al CPC, per tant, el que ha de sortir del resident es sobretot **data**, no codi. | — |
+
+**Espai als bancs** (per que el refactor es delicat): C5 te 394 B lliures de codi, C6 604 B, C7 esta **ple** (frames 13.920 B + buffers + H-flip + EXTRA) i **C1 (musica+HUD+habitacions) ocupa 3.520 B de 16.384 -> ~12 KB lliures**. Intent descartat: **compactar la taula de triggers** (256 entrades del DOS -> 196 usades pel nivell 1) **no aporta espai** perque el codi del banc ha de començar despres.
+
 ## Sessio 2026-10-19 (32): Restauracio dels discs de les HABITACIONS al morir
 
 - **Report de l'usuari**: el mapa general es restaura correctament (caixes, enemics, interrogants i discs ✓), pero **les habitacions no**: en agafar tots els discs de la botiga de la planta baixa i tornar a entrar-hi després de morir, la sala era buida.

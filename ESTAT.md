@@ -876,6 +876,20 @@ els assets en Mode 0 (160Ã—200, 16 colors). Les eines C64 (`tools/d64.py`, `v
 - **Comandos**: `py -3 -u tools/build.py` (~12min, FATAL si Bloc 0/C6 envaeixen); emu: `zesarux --noconfigfile --machine CPC6128 --vo null --ao null --aofile NUL --enable-remoteprotocol bluesb.dsk`; tecles ZRCP: 128 espai, 142 esq, 143 dreta, 145 amunt; `read_mem 0x378C 2` = ticks (Compte: COMPTA ENRERE!), `0x3B19` = cam_x4 (u16le), view_x = cam_x4*4, view_y = cam_row*8.
 - **PENDENT usuari**: validar posicions DOS reals (s26@top144? s27@112 o @528?).
 
+## Sessio 2026-10-19 (35): Intent de moure els ascensors al Banc C1 (REVERTIT, el joc no arrencava)
+
+- **Objectiu**: traure del Bloc 0 el codi dels **ascensors** (un objecte del nivell: el DOS nomes els te al nivell 1) per alliberar ~900 B del resident i poder completar la conversio data-driven (la geometria de les habitacions, les mides del mapa i el start/checkpoint).
+- **Què es va fer** (i per que el Banc 1):
+  - El **Banc 1** (C1: musica + HUD + habitacions + portes) ocupa 3.520 B de 16.384 -> **~12 KB lliures**: es l'unica banc amb espai de veritat. El C5 te 394 B de codi lliures, el C6 604 B i el C7 esta ple (frames 13.920 B + buffers + H-flip + EXTRA).
+  - Va quedar un modul nou `src/elevators.c` (el draw/restore dels ascensors) enllacat al Banc 1 amb `engine/bank1_table.s` (taula de salts, com el Banc 5), els **frames** i els **buffers de fons** al mateix Banc 1 (un codi bancat no pot commutar de banc: el seu propi codi a 0x4000-0x7FFF desapareix) i l'estat (`g_mag_elevators`) a la _DATA resident (visible des del Banc 5 i el Banc 1).
+  - El resident es quedava amb uns wrappers (`call_banked(0xC1, ...)`) → **el marge del Bloc 0 passava de 48 B a 962 B**.
+- **RESULTAT: NO ARRANCAVA** ✗. El DSK es construia sense errors i el build passava, pero el joc no arribava ni a la pantalla d'splash (pantalla BASIC = el Z80 hauria crashejat i el firmware hauria tornat a BASIC). Diagnosticat amb `scratch/boot_diag.py` (el PC i les captures al boot).
+- **Decisio**: **revertit** (el codi del resident, el build i el DSK tornen a l'estat validat de la sessio 34). El canvi era gran i delicat (un banc nou dins el paquet + frames + buffers + estat compartit) i la sessio ja era molt llarga; el diagnostic de la crida encara no esta fet.
+- **Com reaprofundir-ho (per a la propera sessio)**:
+  1. Aillar la crida: el joc no arriba al splash, doncs falla a la **carrega** (no al bucle). Primer provar el Banc 1 amb el codi dels ascensors **buit** (un `ret` a cada slot): si el joc arrenca, el problema és dins el codi nou; si no, és de com s'ensambla el Banc 1 dins el paquet (offsets del PAK, mida de la part, el `zx0_decompress` del C1 a 0x5000).
+  2. Revisar que la **part del Banc 1** (ara ~9 KB) no depassi la finestra 0x4000-0x7FFF del banc (hauria d'anar fins a 0x7340 ✓) i que el `MUSMAIN.BIN` (que el build genera) i el `BANK1.BIN` quedin ben concatenats dins la part del paquet.
+  3. Després, moure els frames/buffers i fer que el Banc 5 i el Banc 1 comparteixin l'estat sense cridar-s'hi entre bancs.
+
 ## Sessio 2026-10-19 (34): Els parametres del nivell surten del paquet (res de nivell 1 al Bloc 0)
 
 - **Peticio de l'usuari**: al resident només hi ha de quedar el **comú**; tot el que és propi d'un nivell ha de viure al paquet del nivell.

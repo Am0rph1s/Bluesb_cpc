@@ -876,6 +876,18 @@ els assets en Mode 0 (160Ã—200, 16 colors). Les eines C64 (`tools/d64.py`, `v
 - **Comandos**: `py -3 -u tools/build.py` (~12min, FATAL si Bloc 0/C6 envaeixen); emu: `zesarux --noconfigfile --machine CPC6128 --vo null --ao null --aofile NUL --enable-remoteprotocol bluesb.dsk`; tecles ZRCP: 128 espai, 142 esq, 143 dreta, 145 amunt; `read_mem 0x378C 2` = ticks (Compte: COMPTA ENRERE!), `0x3B19` = cam_x4 (u16le), view_x = cam_x4*4, view_y = cam_row*8.
 - **PENDENT usuari**: validar posicions DOS reals (s26@top144? s27@112 o @528?).
 
+## Sessio 2026-10-19 (32): Restauracio dels discs de les HABITACIONS al morir
+
+- **Report de l'usuari**: el mapa general es restaura correctament (caixes, enemics, interrogants i discs ✓), pero **les habitacions no**: en agafar tots els discs de la botiga de la planta baixa i tornar a entrar-hi després de morir, la sala era buida.
+- **Arrel**: els items de les habitacions **no viuen al mapa**, sinó a `ROOMS0.BIN` (Banc C1:0x6400, 1000 B = 5 sales x 20 columnes x 10 files), i `check_room_bonus()` (`main.c`) hi escriu el tile buit **96** en agafar-los (208 = disc, 159 = instrument). La taula `RESTORE0.BIN` (sessio 30) només cobreix el mapa (C5:0x4000) → les sales quedaven buides per sempre.
+- **Solucio (1:1 DOS)**: al DOS el paquet de nivell es rellegeix del disc a cada mort (`game.c:344`), de manera que les sales tambe recuperen els seus discs.
+  - `tools/build.py` genera una **taula de restauracio de les habitacions** en llegir `ROOMS0.BIN`: `[n u16]` + `n x (offset u16 dins ROOMS0.BIN, tile inicial u8)` amb els **18 discs** (tile 208) → 56 B, incrustada al **Banc C1:0x6860** (despres de la taula de portes a 0x6800).
+  - `src/main.c` nova **`restore_room_tiles()`**: recorre la taula i reescriu el tile inicial a C1:0x6400. S'escriu al bloc de mort, al costat de `restore_level_tiles()`.
+  - **L'instrument (tile 159) NO hi es a la taula**: l'item secret ha de persistir entre morts (com al DOS) ✓.
+- **Mides**: Bloc 0 `_CODE` 14084 B (marge ~124 B), MUSMAIN 1492 B (el PAK), sense canvis als bancs C5/C6.
+- **VERIFICAT a l'emu** (`scratch/test_room_restore.py`): entrar a l'habitacio 2 (portal del mapa a col 75 fila 70 → x = 592, top 1098; el mapa te **8 px per columna**, escala 2:1), agafar 2 discs (vinils 0 -> 2), sortir per la porta interior (col 53 fila 82), morir al carrer (cors a 1, policies/cotxes → cors 0, vides 3 -> 2, vinils a 0) i tornar a entrar: **els discs hi son de nou i es tornen a poder recollir (0 -> 2)** ✓.
+- **Nota de coordinades per als tests**: el mapa te 128 columnes de 8 px (1024 px) i les files de 16 px; `j_col = ((s_px8>>3)+8)>>3` (centre del sprite) i `j_row = ((s_py8>>3)+29)>>4` (peus). Amb 16 px per columna els teleports anaven a lloc erroni i el motor reposicionava el jugador.
+
 ## Sessio 2026-10-19 (31): AceDL com a eina d'inspeccio (input descartat) + que queda
 
 - **Acord amb l'usuari**: deixem el tema AceDL aparcat; si cal debug de bancs, ho fem els dos a l'hora. ZEsarUX segueix sent l'eina d'input (tecles) i AceDL queda com a eina d'inspeccio.

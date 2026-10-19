@@ -931,7 +931,21 @@ def build_music(force):
     doors_data = bytes([b for d in doors_list for b in d])
     assert len(doors_data) == 92
     pad_doors = bytes(0x1800 - (0x1400 + len(rooms_data)))
-    open(mainbin, "wb").write(mdata + pad_main + hud_raw + pad_rooms + rooms_data + pad_doors + doors_data)
+    # Taula de restauracio de les HABITACIONS (C1:0x6860): els discs que
+    # hi ha dins les sales son consumibles com els del mapa (al DOS es
+    # rellegeix el paquet de nivell a cada mort). Format: [n u16] +
+    # n x (offset u16 dins ROOMS0.BIN, tile inicial u8).
+    # IMPORTANT: el tile 159 (instrument / item secret) NO s'hi inclou:
+    # l'item secret ha de persistir després de morir (1:1 DOS).
+    room_restore = []
+    for off, tile in enumerate(rooms_data):
+        if tile == 208:
+            room_restore.append((off, tile))
+    rr_data = struct.pack("<H", len(room_restore)) + b"".join(
+        struct.pack("<HB", o, t) for o, t in room_restore)
+    pad_rr = bytes(0x1860 - (0x1800 + len(doors_data)))
+    open(mainbin, "wb").write(mdata + pad_main + hud_raw + pad_rooms + rooms_data +
+                              pad_doors + doors_data + pad_rr + rr_data)
     # EQU pel GAME (mus.s crida _akg_init/_akg_play en finestra C1).
     ext_s = os.path.join(obj, "mus_ext.s")
     need = {"_akg_init": plabels.get("PLY_AKG_Init"), "_akg_play": plabels.get("PLY_AKG_Play"),

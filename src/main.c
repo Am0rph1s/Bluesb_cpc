@@ -813,6 +813,26 @@ static void restore_level_tiles(void) {
     bank_restore(prev);
 }
 
+// Les HABITACIONS (ROOMS0.BIN, Banc C1:0x6400) tenen els seus propis items
+// consumibles (els discs de les sales). Al DOS el paquet de nivell es
+// rellegeix a cada mort, aixi que a les sales tambe tornen a aparaitre.
+// La taula (C1:0x6860, generada a tools/build.py) diu quines posicions
+// dins ROOMS0.BIN tenen un disc i quin es el seu tile inicial.
+// L'instrument (tile 159) NO hi es: l'item secret persisteix (1:1 DOS).
+static void restore_room_tiles(void) {
+    u8 prev = bank_set(0xC1);
+    const u8* tbl = (const u8*)0x6860;
+    u16 n = (u16)(tbl[0] | (tbl[1] << 8));
+    u16 i;
+    for (i = 0; i < n; i++) {
+        const u8* e = tbl + 2 + (u16)(i * 3);
+        u16 off = (u16)(e[0] | (e[1] << 8));
+        u8 tile = e[2];
+        ((u8*)0x6400)[off] = tile;
+    }
+    bank_restore(prev);
+}
+
 static void draw_gameover_banner(u8 page) {
     u16 vram_base = (page == 0) ? 0xC000 : 0x8000;
     const u8* src = GAMEOVER_PTR;
@@ -1006,6 +1026,7 @@ void main(void) {
                 g_hearts_count = 3;
                 g_vinyls_count = 0;
                 restore_level_tiles();     // tiles consumibles -> estat inicial
+                restore_room_tiles();      // discs de les habitacions -> estat inicial
                 moving_respawn();          // objectes mobils a l'estat inicial
                 enemy_init();              // enemics a la seva posicio inicial
                 if (g_checkpoint) {

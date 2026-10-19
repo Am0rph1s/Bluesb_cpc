@@ -2,6 +2,8 @@
 #define HUD_PKG_H
 
 // Generat automàticament per tools/pack_level.py. NO EDITAR MANUALMENT.
+// NON-static a proposit: viu al banc C2 (src/hud_strips.c) via EQU;
+// render.c hi accedeix amb bank_set(0xC2) (dieta Bloc 0, 10/26).
 // 39 tires de columna CRTC (4x12 px Mode 0 = 24 bytes cadascuna):
 //   0: barra, 1..2: extrems, 3..4: Jake, 5..6: vinil, 7..8: cor,
 //   9..18: dígits 0..9, 19..38: slots col.leccionables (slot i:

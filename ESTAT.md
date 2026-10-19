@@ -876,6 +876,27 @@ els assets en Mode 0 (160Ã—200, 16 colors). Les eines C64 (`tools/d64.py`, `v
 - **Comandos**: `py -3 -u tools/build.py` (~12min, FATAL si Bloc 0/C6 envaeixen); emu: `zesarux --noconfigfile --machine CPC6128 --vo null --ao null --aofile NUL --enable-remoteprotocol bluesb.dsk`; tecles ZRCP: 128 espai, 142 esq, 143 dreta, 145 amunt; `read_mem 0x378C 2` = ticks (Compte: COMPTA ENRERE!), `0x3B19` = cam_x4 (u16le), view_x = cam_x4*4, view_y = cam_row*8.
 - **PENDENT usuari**: validar posicions DOS reals (s26@top144? s27@112 o @528?).
 
+## Sessio 2026-10-19 (31): AceDL com a eina d'inspeccio (input descartat) + que queda
+
+- **Acord amb l'usuari**: deixem el tema AceDL aparcat; si cal debug de bancs, ho fem els dos a l'hora. ZEsarUX segueix sent l'eina d'input (tecles) i AceDL queda com a eina d'inspeccio.
+- **Resultats de la investigacio AceDL** (`C:\cpc\AceDL\AceDL.exe`, client `scratch/acedl.py`):
+  - Protocol: **TCP JSON, 1 comanda per connexio, JSON pla + `\n`** (sense framing HTTP). El framing HTTP tambe respon (`POST /` -> `200 OK` + JSON) pero el path s'ignora: no hi ha `/api/keyboard` ni `/api/input` reals.
+  - Comandes que SI funcionen: `getStatus` (registres/CRTC/FDC/PPI/AY), `readMemory`/`writeMemory` **amb `bank` 0..7** (acces bancat: es pot llegir el mapa de C5 i els enemics de C6 directament), `getScreen` (PNG base64), `getMemBanks`, `sendIO`, `loadFile`, `get/setEmulatorSetting` (ex. `PlasticCover=0`), `continue`, step, resets, breakpoints.
+  - **`sendKey` NO existeix**: retorna `{"error":"Unknown command"}` i la cadena no es al binari. AceDL implementa un subconjunt del protocol SugarBox sense teclat. Variants (`key`, `setKey`, `keyboard`) tambe desconegudes.
+  - Autotype (fitxer `.txt` posicional + `-delay`): provats espais, enters i `SPACE` amb `-delay 30` (joc ja carregat). Cap funciona; sintaxi no documentada i log del parser no visible.
+  - Sondes 2026-10-19 (peticio usuari): `keyboard` (down/press/text), `keyboard/text`, `keyboard/matrix`, `input`, `sendKey`, `KEY_EVENT` -> tots `Unknown command`; `POST /api/keyboard/text`, `/api/keyboard/matrix` i `GET /ws`, `/debugger` (upgrade websocket) -> `200 OK` + `Need a json blocks starting with "cmd"` (el path s'ignora, sense `101 Switching Protocols`). **No hi ha input per API.**
+  - Mesura util: **el joc carrega en ~12 s** (codi present a `0x0100` del banc 0). Cal sempre `-ram 128`; sense aixo no arrenca.
+- **Que queda (pendent ordenat)**:
+  1. **Verificacio del checkpoint per l'usuari**: recollir disco/cor/ulleres/interrogant, morir, comprovar que reapareix (sessio 30 implementada, `RESTORE0.BIN` 305 posicions / 917 B a C6:0x4B00).
+  2. **Velocitats de walkers 1:1**: DOS op0 iaia 40, op1 granger/rocker 40, op2 policia 24, op10 cambrera 32; nostres iaia 36, policia 24, granger 24, cambrera 20, rocker 24. Cal acumulador fraccionari (1/8 px).
+  3. **Reixes de primer pla** (`g_grate_enable`, TRIG byte 9 `avt_num` 12..17): s'assignen pero no es dibuixen; calen sprites `avt` d'`AVTMAG.SQV`. Explica que el peix es vegi "massa al davant".
+  4. **Plataformes**: `y` a ma a `pack_level.py` (sense -32) -> 18 px massa avall; falta l'`op4` DOS (tipus 16) a CPC (816,768).
+  5. Tiles animats L1 no implementats: seqs 53/54/55/63 (29-32 i 76-78 si).
+  6. Walkers nomes en pla (sense pendents DOS 2/3/14/15 ni `yoffset`); falta atac proper d'`op1` (`special_anim=2`).
+  7. Neteja: `engine/enemy_flip_lut.s` orfe; colors sprite ascensor (pen 11 -> negre, taula `MAP.PALHW`; l'edita l'usuari).
+  8. `vy` del projectil al DOS: s'escriu 64 pero surt recte; pendent de trobar on es neutralitza (cal DOS real).
+- **Marges (recordatori)**: Bloc 0 `_CODE` 14063 B (**145 B** lliures); Banc 5 code 4086 B (394 B); C6: blocs 2662 B + taula 917 B a `0x4B00` + cache `0x5000` + dades `0x5820` + codi `0x5C00`. Commits locals `4092c1a`..`ff85c22` **no pujats**.
+
 ## Sessio 2026-10-18 (23): Spawns d'enemics a la formula oficial + sondes a la columna del centre
 
 - **Arrel trobada (regla 1, lectura del codi DOS)**: la taula `s_spawn[20]` de `src/enemy.c` estava desfasada **+8 en x i +16 en y** de la formula oficial (`dos_x/2-8`, `dos_y-32`) a 13 de 20 entrades. La hipotesi inicial (que el +16 compensava una mecanica de terra absent) **era FALSA**: al L1 tots els tiles tenen `unk16` (TRIG byte 7) = 0, aixi que `level_call_trigger_func` (`tiles.c:607`) sempre resol `case 25: break` (no-op); el terra del carrer es el **clamp del mapa** de `do_level_fixup_object_ypos16` (`ypos > tilemap_h -> tilemap_h-16` = 1136 = top 1104), que el motor ja reprodueix via `is_floor_solid` (`row >= MAP_H-1`). L'unica excepcio real son els esglaons `op=14` (files 70, cols 77-81).
@@ -942,7 +963,7 @@ els assets en Mode 0 (160Ã—200, 16 colors). Les eines C64 (`tools/d64.py`, `v
 - **VERIFICAT a l'emu**: cicle de mort complet (cors 3->2->1->0, mort, reinici amb cors=3, vides 3->2, Jake al spawn) sense penjades ni corrupcio del mapa (captura `scratch/mort_respawn.png` neta). Els bancs es commuten ~610 cops al restauracio (~10-20 ms, nomes al morir).
 - **PENDENT de provar per l'usuari**: recollir un disco/cor/ulleres, morir i comprovar que reapareix.
 
-
+## Sessio 2026-10-19 (29): Rangs de tir i projectil 1:1 DOS (policia op2, cambrera op10)
 
 - **Correccio important de lectura**: el dispatch es `switch (obj->op - 1)` (`objects.c:450`), aixi que el valor de `level_objtypes` es la funcio +1:
   - tipus 4 (policia) -> `0x03` -> **`object_func_op2`** âœ“

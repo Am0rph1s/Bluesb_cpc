@@ -3,7 +3,7 @@
 
 // ============================================================================
 // level_pkg.h - Paquet de dades del Nivell 1 (MAGASIN) per al Banc 5
-// Generat automÃ ticament per tools/pack_level.py des de MAP0.BIN + TRIG0.BIN
+// Generat automàticament per tools/pack_level.py des de MAP0.BIN + TRIG0.BIN
 // i tools/blues_dos/bb/staticres.c. NO EDITAR MANUALMENT.
 // ============================================================================
 
@@ -72,15 +72,15 @@ static const LevelAnimSpan s_level_anim_spans[LEVEL_ANIM_SPAN_COUNT] = {
     { 45,  89,  89, 1 }, // row 45, cols 89..89 (DOS b4=30)
 };
 
-// Taula de triggers d'Ã­tems / bonus / malus (DOS level_triggersdata_2030)
+// Taula de triggers d'ítems / bonus / malus (DOS level_triggersdata_2030)
 typedef struct {
     u8 kind;         // 11 = directe, 12 = amb popup emergent
-    u8 bg_tile;      // tile de fons net que substitueix l'Ã­tem al mapa
+    u8 bg_tile;      // tile de fons net que substitueix l'ítem al mapa
     u8 add_vinyls;   // vinils a sumar (+1, +50)
     u8 sub_vinyls;   // vinils a restar (-10, -20, -30, -40, -50)
-    u8 add_heart;    // +1 cor d'energia (mÃ x 5)
+    u8 add_heart;    // +1 cor d'energia (màx 5)
     u8 special_anim; // 21 = ballar
-    u8 instrument;   // >0 = objecte colÂ·leccionable obligatori del nivell
+    u8 instrument;   // >0 = objecte col·leccionable obligatori del nivell
     u8 exit_flag;    // 1 = meta final de nivell (requereix instrument)
     u8 popup_or_chk; // kind==12: grab_type (16..22); kind==11: checkpoint
     u8 add_life;     // +1 vida (ulleres i barret)
@@ -100,7 +100,7 @@ static const LevelTriggerEntry s_level_trig3[LEVEL_TRIG3_COUNT] = {
     { 11,  21,  0,  0, 0,  0, 0, 0,   1, 0 }, // DOS b6=50
 };
 
-// LUT rÃ pida: byte 6 de TRIG.BIN (0..63) -> Ã­ndex a s_level_trig3 (0xFF = cap)
+// LUT ràpida: byte 6 de TRIG.BIN (0..63) -> índex a s_level_trig3 (0xFF = cap)
 static const u8 s_b6_to_trig3[64] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,    0,    1,
        2,    3,    4,    5,    6,    7,    8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,

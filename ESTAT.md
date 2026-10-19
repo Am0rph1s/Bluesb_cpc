@@ -876,6 +876,17 @@ els assets en Mode 0 (160Ã—200, 16 colors). Les eines C64 (`tools/d64.py`, `v
 - **Comandos**: `py -3 -u tools/build.py` (~12min, FATAL si Bloc 0/C6 envaeixen); emu: `zesarux --noconfigfile --machine CPC6128 --vo null --ao null --aofile NUL --enable-remoteprotocol bluesb.dsk`; tecles ZRCP: 128 espai, 142 esq, 143 dreta, 145 amunt; `read_mem 0x378C 2` = ticks (Compte: COMPTA ENRERE!), `0x3B19` = cam_x4 (u16le), view_x = cam_x4*4, view_y = cam_row*8.
 - **PENDENT usuari**: validar posicions DOS reals (s26@top144? s27@112 o @528?).
 
+## Sessio 2026-10-19 (34): Els parametres del nivell surten del paquet (res de nivell 1 al Bloc 0)
+
+- **Peticio de l'usuari**: al resident només hi ha de quedar el **comú**; tot el que és propi d'un nivell ha de viure al paquet del nivell.
+- **Fet ara**: el packer (`tools/pack_level.py`) emet un **bloc de parametres del nivell** de 52 B dins del paquet (Banc C1:0x6900) i el resident el llegeix en carregar amb un `memcpy` (`level_params_load()`, `src/level_params.h`). De moment hi van els valors **u8** més identificadors del nivell:
+  - els **tiles dels items de les habitacions** (208 vinil, 159 instrument, 96 buit) — abans eren constants compilades al Bloc 0;
+  - l'**id del nivell** (el HUD de l'instrument).
+- **Per què no tot d'un cop**: el resident està ple (marge de 48 B) i la conversió data-driven **costa ~230 B de codi** (mesurat: 35 substitucions × ~11 B, perquè SDCC és car amb aritmètica de 16 bits). Per tant la resta (geometria de les habitacions 74/83/84/100/20/10/148, mides del mapa, start/checkpoint/càmera) **queda pendent** de l'espai.
+- **El pas que obriria la porta**: moure el **codi dels ascensors** (`moving_draw`/`moving_restore` + `moving_blit.s`, ~1,2 KB) al **Banc C1**, que és l'únic banc amb espai de veritat (~12 KB lliures: la música + el HUD + les habitacions ocupen 3.520 B de 16.384). Alliberaria ~1,2 KB del Bloc 0 i permetria la conversió completa. Restricció del projecte: un codi bancat no pot commutar de banc (el seu propi codi desapareix) → el codi dels ascensors ha d'anar al banc on puguiLlegir els seus frames i buffers (C0/C7) o bé aquests hi han de moure-s'hi.
+- **Caiguda en l'aplicació**: en treure `map_w/map_h` de l'estructura del resident però no del bloc del paquet, els camps quedaven desfasats una posició i el tile del vinil llegia 100 en lloc de 208 (els discs no es recollien). Detectat amb un diagnostic en memòria (`scratch/diag_params.py`) i corregit alineant la disposició del bloc amb la de l'estructura.
+- **VERIFICAT a l'emu**: `scratch/test_room_restore.py` → els discs de les habitacions es recullen (0 → 2) i **reapareixen després de morir** (0 → 2 de nou ✓); `scratch/test_cam_fix.py` → el scroll vertical 1:1 DOS es manté (desfasament −2 px ✓).
+
 ## Sessio 2026-10-19 (33): Scroll vertical 1:1 DOS (la camera segueix el jugador) + _DATA a 0x3900
 
 - **Report de l'usuari**: en caiguda lliure des de posicio alta, Jake "actua" com si ja toques terra **encara que l'scroll no ensenyes el terra**; amb paraigues no passava (la caiguda es lenta i l'scroll va a ritme). En caiguda vertical exacta a la bandera, Jake es posava a ballar molt abans que la bandera i el terra es veguessin. Sospitava (encertada) que el scroll es mes lent que la caiguda.

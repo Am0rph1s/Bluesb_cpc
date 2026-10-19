@@ -82,6 +82,7 @@ extern i16 bc_r;
 #define BC_PUSH   ((void*)0x6E09)
 #define BC_FIND   ((void*)0x6E0C)
 #define BC_INIT   ((void*)0x6E0F)
+#define BC_RESPAWN ((void*)0x6E15) // slot 7: reinici de mon (init_level del DOS)
 
 extern u16 g_moving_dst;
 extern u16 g_moving_background;
@@ -95,6 +96,7 @@ extern u8* ring_address(u8 page, i16 x, i16 y);
 
 void moving_init(void);
 void moving_update(void);
+void moving_respawn(void);
 void moving_restore(u8 page, u8 force);
 void moving_draw(u8 page, u16 cam_x4, u16 cam_row);
 i8 moving_find_landing(void);

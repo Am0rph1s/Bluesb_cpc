@@ -586,13 +586,25 @@ def build_enemybank(force):
     im = bytearray(raw_len)
     im[0:len(table)] = table
     im[EN_BLOCKS - 0x4000:EN_BLOCKS - 0x4000 + len(blocks)] = blocks
+    # Taula de restauracio de tiles (pack_level.py): [n u16][n x (col,row,tile)]
+    rt_path = os.path.join(PROJ, "assets", "bbdata", "RESTORE0.BIN")
+    rt = open(rt_path, "rb").read()
+    EN_RESTORE = 0x4B00
+    if EN_BLOCKS + len(blocks) > EN_RESTORE:
+        print("\n[FATAL] Blocs ZX0 d'enemics (fins 0x%04X) xoquen amb la taula de restauracio (0x%04X)!"
+              % (EN_BLOCKS + len(blocks), EN_RESTORE))
+        sys.exit(1)
+    if EN_RESTORE + len(rt) > EN_CACHE:
+        print("\n[FATAL] Taula de restauracio (%d B a 0x%04X) envaeix la cache (0x%04X)!"
+              % (len(rt), EN_RESTORE, EN_CACHE))
+        sys.exit(1)
+    im[EN_RESTORE - 0x4000:EN_RESTORE - 0x4000 + len(rt)] = rt
     im = bytes(im) + code
     total = len(im)
     print("ENEMY cells: %d B ZX0 (de %d B en cru) en %d blocs; cache %d x 512 B a 0x%04X"
           % (len(blocks), len(frames), ncell, EN_CACHE_SLOTS, EN_CACHE))
-    if 0x4000 + total > 0x8000:
-        print("\n[FATAL] Imatge C3: %d bytes > finestra 0x4000!" % total)
-        sys.exit(1)
+    print("ENEMY restore: %d B a 0x%04X (%d posicions)"
+          % (len(rt), EN_RESTORE, rt[0] | (rt[1] << 8)))
     out_path = os.path.join(obj, "ENEMI.BIN")
     if not os.path.exists(out_path) or open(out_path, "rb").read() != im:
         open(out_path, "wb").write(im)

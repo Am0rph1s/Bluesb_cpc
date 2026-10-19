@@ -10,6 +10,7 @@
     .globl _moving_bank_find
     .globl _moving_bank_init
     .globl _moving_bank_conveyor
+    .globl _moving_bank_respawn
     .globl _b5_trig_ptr
     .globl _b5_tile_type
     .globl _b5_set_tile
@@ -50,6 +51,8 @@ _bc_init::
     jp      _moving_bank_init           ;; slot 5 -> 0x6E0F
 _bc_conveyor::
     jp      _moving_bank_conveyor       ;; slot 6 -> 0x6E12
+_bc_respawn::
+    jp      _moving_bank_respawn        ;; slot 7 -> 0x6E15 (reinici de nivell)
 
 ;; ============================================================
 ;; const u8* b5_trig_ptr(u8 col, u8 row)

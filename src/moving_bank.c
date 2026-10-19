@@ -42,21 +42,13 @@ u8  s_popup_drawn[2];
 u16 s_popup_dst[2];
 u8  s_popup_bg[2][28];
 
-void moving_bank_init(void) {
+// 1:1 DOS init_level(): la part que reinicia el MON (no els comptadors).
+// El DOS re-inicialitza TOTS els objectes a cada reinici de nivell; aqui
+// això son les plataformes/ascensors, els popups, les fases de les cintes i
+// el tile de l'instrument. Els comptadors (vides/cors/discos/checkpoint)
+// els porta main.c, que es qui sap si es un arrencada o un reinici per mort.
+void moving_bank_respawn(void) {
     u8 i;
-
-    g_cam_x4 = LEVEL_CAM0_X4;
-    g_cam_row = LEVEL_CAM0_ROW;
-    s_px8 = (i16)(LEVEL_START_PX * SUB);
-    s_py8 = (i16)(LEVEL_START_PY * SUB);
-
-    g_vinyls_count = 0;
-    g_hearts_count = 3;
-    g_lives_count = 3;
-    g_has_instrument = 0;
-    g_level_complete = 0;
-    g_checkpoint = 0;
-    s_dance_timer = 0;
 
     s_popup_timer = 0;
     s_popup_drawn[0] = s_popup_drawn[1] = 0;
@@ -82,6 +74,23 @@ void moving_bank_init(void) {
         e->frame = 0;
         e->drawn[0] = e->drawn[1] = 0;
     }
+}
+
+void moving_bank_init(void) {
+    g_cam_x4 = LEVEL_CAM0_X4;
+    g_cam_row = LEVEL_CAM0_ROW;
+    s_px8 = (i16)(LEVEL_START_PX * SUB);
+    s_py8 = (i16)(LEVEL_START_PY * SUB);
+
+    g_vinyls_count = 0;
+    g_hearts_count = 3;
+    g_lives_count = 3;
+    g_has_instrument = 0;
+    g_level_complete = 0;
+    g_checkpoint = 0;
+    s_dance_timer = 0;
+
+    moving_bank_respawn();
 }
 
 void moving_bank_find(void) {

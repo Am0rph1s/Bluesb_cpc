@@ -1,17 +1,18 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 pack_level.py - Empaquetador de dades de nivell per a Blues Brothers CPC (Banc 5)
 =================================================================================
-Extreu automàticament de les dades originals de DOS (tools/blues_dos/bb/staticres.c,
-MAP0.BIN, TRIG0.BIN) les particularitats del nivell (dimensions, posició d'inici,
-ascensors/entitats i spans de tiles animats com cintes i superfície d'aigua)
-i genera src/level_pkg.h per ser compilat dins del mòdul de nivell al Banc 5.
+Extreu automÃ ticament de les dades originals de DOS (tools/blues_dos/bb/staticres.c,
+MAP0.BIN, TRIG0.BIN) les particularitats del nivell (dimensions, posiciÃ³ d'inici,
+ascensors/entitats i spans de tiles animats com cintes i superfÃ­cie d'aigua)
+i genera src/level_pkg.h per ser compilat dins del mÃ²dul de nivell al Banc 5.
 
-Ús:
+Ãšs:
     py -3 tools/pack_level.py [level_num]
 """
 import os
 import re
+import struct
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -19,14 +20,14 @@ PROJ = os.path.dirname(HERE)
 
 LEVEL_NAMES = ["magasin", "ent", "prison", "egou", "ville", "concert"]
 
-# Seqüències d'animació de tiles de DOS (level_tilesdata_1e8c a staticres.c)
+# SeqÃ¼Ã¨ncies d'animaciÃ³ de tiles de DOS (level_tilesdata_1e8c a staticres.c)
 # indexades pel byte 4 de TRIG.BIN (op_table2):
 DOS_ANIM_SEQS = {
-    29: [253, 252, 251],  # level_tiledata_1d1c: corró cinta dreta
-    30: [240, 241, 242],  # level_tiledata_1d21: corró cinta esquerra
+    29: [253, 252, 251],  # level_tiledata_1d1c: corrÃ³ cinta dreta
+    30: [240, 241, 242],  # level_tiledata_1d21: corrÃ³ cinta esquerra
     31: [248, 249, 250],  # level_tiledata_1d26: cos cinta dreta
     32: [239, 238, 237],  # level_tiledata_1d2b: cos cinta esquerra
-    76: [131, 199],       # level_tiledata_1e48: superfície d'aigua (peixeres)
+    76: [131, 199],       # level_tiledata_1e48: superfÃ­cie d'aigua (peixeres)
     77: [149, 217],       # level_tiledata_1e4c: vora dreta peixera
     78: [170, 247],       # level_tiledata_1e50: vora esquerra peixera
 }
@@ -57,7 +58,7 @@ def build_level_pkg(level_idx=0):
     ypos_arr = arrays[f"level_ypos_{lname}"]
     level_data = arrays["level_data"][level_idx * 41 : (level_idx + 1) * 41]
 
-    # Objectes tipus 7 = Ascensors magnètics (convertits a coordenades Mode 0: X / 2)
+    # Objectes tipus 7 = Ascensors magnÃ¨tics (convertits a coordenades Mode 0: X / 2)
     elevators = []
     for slot, obj_kind in enumerate(level_data):
         if obj_kind == 7:
@@ -118,7 +119,7 @@ def build_level_pkg(level_idx=0):
             else:
                 c += 1
 
-    # Extreure les taules de triggers d'ítems/bonus/malus (byte 6 de TRIG.BIN -> level_triggersdata_2030)
+    # Extreure les taules de triggers d'Ã­tems/bonus/malus (byte 6 de TRIG.BIN -> level_triggersdata_2030)
     txt = open(staticres_path, "r", encoding="utf-8", errors="replace").read()
     m6 = re.search(r"level_triggersdata_2030\[\]\s*=\s*\{([^}]*)\}", txt, re.S)
     names6 = [x.strip() for x in m6.group(1).split(",") if x.strip()]
@@ -144,8 +145,8 @@ def build_level_pkg(level_idx=0):
         else:
             trig_entries.append((p[1], p[2], p[3], p[4], p[5], 0, 0, 0, 0, 0, b6))
 
-    # L'instrument col·leccionable obligatori viu exclusivament a la sala secreta (ROOMS0.BIN).
-    # Al mapa principal no hi ha d'aparèixer duplicat.
+    # L'instrument colÂ·leccionable obligatori viu exclusivament a la sala secreta (ROOMS0.BIN).
+    # Al mapa principal no hi ha d'aparÃ¨ixer duplicat.
     inst_col, inst_row, inst_tile = (0, 0, 0)
 
     lines = [
@@ -154,7 +155,7 @@ def build_level_pkg(level_idx=0):
         "",
         "// ============================================================================",
         f"// level_pkg.h - Paquet de dades del Nivell {level_idx + 1} ({lname.upper()}) per al Banc 5",
-        "// Generat automàticament per tools/pack_level.py des de MAP0.BIN + TRIG0.BIN",
+        "// Generat automÃ ticament per tools/pack_level.py des de MAP0.BIN + TRIG0.BIN",
         "// i tools/blues_dos/bb/staticres.c. NO EDITAR MANUALMENT.",
         "// ============================================================================",
         "",
@@ -217,15 +218,15 @@ def build_level_pkg(level_idx=0):
         )
     lines.append("};")
     lines.append("")
-    lines.append("// Taula de triggers d'ítems / bonus / malus (DOS level_triggersdata_2030)")
+    lines.append("// Taula de triggers d'Ã­tems / bonus / malus (DOS level_triggersdata_2030)")
     lines.append("typedef struct {")
     lines.append("    u8 kind;         // 11 = directe, 12 = amb popup emergent")
-    lines.append("    u8 bg_tile;      // tile de fons net que substitueix l'ítem al mapa")
+    lines.append("    u8 bg_tile;      // tile de fons net que substitueix l'Ã­tem al mapa")
     lines.append("    u8 add_vinyls;   // vinils a sumar (+1, +50)")
     lines.append("    u8 sub_vinyls;   // vinils a restar (-10, -20, -30, -40, -50)")
-    lines.append("    u8 add_heart;    // +1 cor d'energia (màx 5)")
+    lines.append("    u8 add_heart;    // +1 cor d'energia (mÃ x 5)")
     lines.append("    u8 special_anim; // 21 = ballar")
-    lines.append("    u8 instrument;   // >0 = objecte col·leccionable obligatori del nivell")
+    lines.append("    u8 instrument;   // >0 = objecte colÂ·leccionable obligatori del nivell")
     lines.append("    u8 exit_flag;    // 1 = meta final de nivell (requereix instrument)")
     lines.append("    u8 popup_or_chk; // kind==12: grab_type (16..22); kind==11: checkpoint")
     lines.append("    u8 add_life;     // +1 vida (ulleres i barret)")
@@ -247,7 +248,7 @@ def build_level_pkg(level_idx=0):
         )
     lines.append("};")
     lines.append("")
-    lines.append("// LUT ràpida: byte 6 de TRIG.BIN (0..63) -> índex a s_level_trig3 (0xFF = cap)")
+    lines.append("// LUT rÃ pida: byte 6 de TRIG.BIN (0..63) -> Ã­ndex a s_level_trig3 (0xFF = cap)")
     lines.append("static const u8 s_b6_to_trig3[64] = {")
     for i in range(0, 64, 16):
         chunk = ", ".join(f"0x{v:02X}" if v == 0xFF else f"{v:4d}" for v in b6_lut[i : i + 16])
@@ -255,7 +256,7 @@ def build_level_pkg(level_idx=0):
     lines.append("};")
     lines.append("")
 
-    # Extreure només els sprites emergents de DOS usats pel nivell (SPRITE.SQV frames 128..134 -> grab_type 16..22)
+    # Extreure nomÃ©s els sprites emergents de DOS usats pel nivell (SPRITE.SQV frames 128..134 -> grab_type 16..22)
     # 16x7 px DOS -> 8x7 px Mode 0 = 4 bytes/fila * 2 [inv_mask, img] * 7 files = 56 bytes/popup
     sys.path.insert(0, os.path.join(HERE, "bbdata"))
     from sprites import load_sqv_frames  # noqa: E402
@@ -294,6 +295,42 @@ def build_level_pkg(level_idx=0):
         f"Generat {out_path}: nivell {level_idx + 1} ({lname}), "
         f"{len(elev_x)} ascensors, {len(spans)} spans animats, {len(trig_entries)} triggers bonus/malus."
     )
+
+    # ==========================================================================
+    # Taula de RESTAURACIO en reinici per mort.
+    # 1:1 DOS: al morir, game.c torna a cridar load_level_data() i el mapa es
+    # re-llegeix del disc -> discos, cors, ulleres i interrogants reapareixen.
+    # Aqui NO recarreguem res: guardem les posicions que es poden modificar i el
+    # seu TILE INICIAL (el de MAP0.BIN). Els comptadors de tile son sempre els
+    # mateixos en carregar, aixi que n'hi ha prou de tornar-los a escriure.
+    #  - kind 11/12 (portes/checkpoints/bonus): el tile es consumeix.
+    #  - types 5/8/9 (caixa/globus/paraigua): el tile s'esborra en agafar-los.
+    # L'item secret NO s'hi posa: el seu estat persisteix (DOS).
+    # Format: [n u16 LE] + n * (col, row, tile)
+    # ==========================================================================
+    restore = []
+    for r in range(map_h):
+        for c in range(map_w):
+            t = map_bin[(r << 7) + c]
+            if t == 0xFF:
+                continue
+            canviable = trig_bin[t * 10 + 0] in (5, 8, 9)
+            if not canviable:
+                b6 = trig_bin[t * 10 + 6]
+                if b6 < 64:
+                    i = b6_lut[b6]
+                    if i != 0xFF and trig_entries[i][0] in (11, 12):
+                        canviable = True
+            if canviable and not (c == inst_col and r == inst_row):
+                restore.append((c, r, t))
+    blob = struct.pack("<H", len(restore))
+    blob += b"".join(bytes((c, r, t)) for c, r, t in restore)
+    restore_path = os.path.join(PROJ, "assets", "bbdata", "RESTORE%d.BIN" % level_idx)
+    with open(restore_path, "wb") as f:
+        f.write(blob)
+    print("  RESTORE%d.BIN: %d posicions restaurables (%d bytes)"
+          % (level_idx, len(restore), len(blob)))
+
     build_hud_pkg(level_idx, sqv_frames)
 
 
@@ -304,7 +341,7 @@ def encode_m0_byte(p0, p1):
 
 
 def grid_to_strip24(grid12x4):
-    """Converteix una columna de 12 files x 4 píxels Mode 0 en 24 bytes:
+    """Converteix una columna de 12 files x 4 pÃ­xels Mode 0 en 24 bytes:
     bytes 0..11 = sy=20 (ra=2..7), bytes 12..23 = sy=21 (ra=0..5)."""
     out = []
     for y in range(12):
@@ -464,12 +501,12 @@ def build_hud_pkg(level_idx, sqv_frames):
         "#ifndef HUD_PKG_H",
         "#define HUD_PKG_H",
         "",
-        "// Generat automàticament per tools/pack_level.py. NO EDITAR MANUALMENT.",
+        "// Generat automÃ ticament per tools/pack_level.py. NO EDITAR MANUALMENT.",
         "// NON-static a proposit: viu al banc C2 (src/hud_strips.c) via EQU;",
         "// render.c hi accedeix amb bank_set(0xC2) (dieta Bloc 0, 10/26).",
         "// 39 tires de columna CRTC (4x12 px Mode 0 = 24 bytes cadascuna):",
         "//   0: barra, 1..2: extrems, 3..4: Jake, 5..6: vinil, 7..8: cor,",
-        "//   9..18: dígits 0..9, 19..38: slots col.leccionables (slot i:",
+        "//   9..18: dÃ­gits 0..9, 19..38: slots col.leccionables (slot i:",
         "//   gris 19+4i,20+4i; color 21+4i,22+4i).",
         "const u8 s_hud_strips[39][24] = {",
     ]

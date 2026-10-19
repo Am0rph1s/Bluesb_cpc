@@ -42,6 +42,10 @@ void moving_init(void) { call_banked(0xC5, BC_INIT); }
 
 void moving_update(void) { call_banked(0xC5, BC_UPDATE); }
 
+// 1:1 DOS init_level(): reinicia el MON (plataformes, fases, instrument)
+// sense tocar els comptadors. Es crida al reinici per mort.
+void moving_respawn(void) { call_banked(0xC5, BC_RESPAWN); }
+
 void moving_popup_restore(u8 page) { bc_a = page; call_banked(0xC5, BC_RESTORE); }
 
 // Frames d'ascensor al Banc C0 (ELEV.BIN a 0x7000, 1x224 B; criteri Amiga:

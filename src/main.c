@@ -694,53 +694,16 @@ u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
 
 #define GAMEOVER_PTR ((const u8*)0x6A00)
 
-static void draw_gameover_banner(u8 page) {
-    u16 vram_base = (page == 0) ? 0xC000 : 0x8000;
-    const u8* src = GAMEOVER_PTR;
-    u8 y;
-    u8 prev_b = bank_set(0xC0);
-    for (y = 0; y < 34; y++) {
-        u8 r_char = (u8)(10 + (y >> 3));
-        u16 r_line_hi = (u16)((y & 7) << 11);
-        u16 ma_row = (u16)((g_vram_start + (u16)r_char * 40) & 0x03FF);
-        u16 ma_start = (u16)((ma_row + 10) & 0x03FF);
-        if (ma_start <= 1004) {
-            u8* dst = (u8*)(vram_base | r_line_hi | (ma_start << 1));
-            cpct_memcpy(dst, src, 40);
-        } else {
-            u16 chars1 = 1024 - ma_start;
-            u16 bytes1 = chars1 << 1;
-            u8* dst1 = (u8*)(vram_base | r_line_hi | (ma_start << 1));
-            u8* dst2 = (u8*)(vram_base | r_line_hi);
-            cpct_memcpy(dst1, src, bytes1);
-            cpct_memcpy(dst2, src + bytes1, (u16)(40 - bytes1));
-        }
-        src += 40;
-    }
-    bank_restore(prev_b);
-}
-
-void main(void) {
-    cpct_memset((void*)CRT_DATA_START, 0, CRT_DATA_LEN);
-    cpct_memcpy((void*)CRT_IDATA_DST, (void*)CRT_IDATA_SRC, CRT_IDATA_LEN);
-    stack_canary_init();
-    cpc_install_isr();
-
-    fdc_motor_off();
-    fdc_load_file(0xC0, 0, 0, 0);
-
-    while (1) {
-        g_map_level = 0;
-        {
-            u8 prev = bank_set(0xC4);
-            ((void(*)(void))FRONT_RUN)();
-            bank_restore(prev);
-        }
-
-    mus_stop();
-    g_mus_hold = 1;
-
-    // Carrega rapida i seqüencial dels paquets de dades a 0x8320 (2a pagina oculta)
+// ============================================================
+// Carrega del nivell des del disc + reset de video.
+// 1:1 DOS: el bucle principal de game.c crida load_level_data(g_vars.level)
+// a CADA iteracio del bucle de nivell (game.c:344), o sigui tambe despres
+// de morir. Aixo es el que fa que discos, cors, ulleres i interrogants
+// tornin a apareixer: el MAPA es re-llegeix del disc.
+// Reutilitzada a l'arrencada i al reinici per mort.
+// ============================================================
+static void load_level_packages(void) {
+    // Carrega rapida i sequencial dels paquets de dades a 0x8320 (2a pagina oculta)
     // El motor FDC es mante ences durant la sequencia per evitar aturades/engegades.
     fdc_set_stay_on(1);
 
@@ -761,7 +724,7 @@ void main(void) {
         }
     }
 
-    // 2. Món Nivell 1: L1WORLD.PAK -> 4 sub-blocs descomprimits als seus respectius bancs
+    // 2. Mon Nivell 1: L1WORLD.PAK -> 4 sub-blocs descomprimits als seus respectius bancs
     {
         u8 ok = 0, t;
         for (t = 0; t < 3 && !ok; t++) {
@@ -813,13 +776,8 @@ void main(void) {
         }
     }
 
-    // Aturar motor FDC un cop acabada la càrrega de tots els paquets
+    // Aturar motor FDC un cop acabada la carrega de tots els paquets
     fdc_motor_off();
-
-    // MUSICA nivell 1: MUSMAIN ja es a l'slot C1:0x5000: obrir so i
-    // (re)iniciar el tema.
-    g_mus_hold = 0;
-    mus_init();
 
     video_init();
 
@@ -828,11 +786,94 @@ void main(void) {
         sprite_hflip_init_lut((u8*)0x7F00);
         bank_restore(prev);
     }
+}
 
+// 1:1 DOS (game.c:344 -> load_level_data a cada reinici): al morir, el mapa
+// torna a l'estat inicial i discos, cors, ulleres i interrogants reapareixen.
+// El DOS ho fa rellegint el mapa del disc; aqui n'hi ha prou de tornar a
+// escriure els tiles que poden canviar (taula generada per tools/pack_level.py
+// i incrustada a la imatge del banc C6). L'item secret NO es restaura: el seu
+// estat persisteix entre morts (com al DOS).
+static void restore_level_tiles(void) {
+    u8 prev = bank_set(0xC6);
+    const u8* tbl = ENEMY_RESTORE_TABLE;
+    u16 n = (u16)(tbl[0] | (tbl[1] << 8));
+    u16 i;
+    for (i = 0; i < n; i++) {
+        const u8* e = tbl + 2 + (u16)(i * 3);
+        u8 col = e[0];
+        u8 row = e[1];
+        u8 tile = e[2];
+        bank_restore(prev);
+        prev = bank_set(0xC5);
+        ((u8*)0x4000)[((u16)row << 7) + col] = tile;
+        bank_restore(prev);
+        prev = bank_set(0xC6);
+    }
+    bank_restore(prev);
+}
+
+static void draw_gameover_banner(u8 page) {
+    u16 vram_base = (page == 0) ? 0xC000 : 0x8000;
+    const u8* src = GAMEOVER_PTR;
+    u8 y;
+    u8 prev_b = bank_set(0xC0);
+    for (y = 0; y < 34; y++) {
+        u8 r_char = (u8)(10 + (y >> 3));
+        u16 r_line_hi = (u16)((y & 7) << 11);
+        u16 ma_row = (u16)((g_vram_start + (u16)r_char * 40) & 0x03FF);
+        u16 ma_start = (u16)((ma_row + 10) & 0x03FF);
+        if (ma_start <= 1004) {
+            u8* dst = (u8*)(vram_base | r_line_hi | (ma_start << 1));
+            cpct_memcpy(dst, src, 40);
+        } else {
+            u16 chars1 = 1024 - ma_start;
+            u16 bytes1 = chars1 << 1;
+            u8* dst1 = (u8*)(vram_base | r_line_hi | (ma_start << 1));
+            u8* dst2 = (u8*)(vram_base | r_line_hi);
+            cpct_memcpy(dst1, src, bytes1);
+            cpct_memcpy(dst2, src + bytes1, (u16)(40 - bytes1));
+        }
+        src += 40;
+    }
+    bank_restore(prev_b);
+}
+
+void main(void) {
+    cpct_memset((void*)CRT_DATA_START, 0, CRT_DATA_LEN);
+    cpct_memcpy((void*)CRT_IDATA_DST, (void*)CRT_IDATA_SRC, CRT_IDATA_LEN);
+    stack_canary_init();
+    cpc_install_isr();
+
+    fdc_motor_off();
+    fdc_load_file(0xC0, 0, 0, 0);
+
+    while (1) {
+        g_map_level = 0;
+        {
+            u8 prev = bank_set(0xC4);
+            ((void(*)(void))FRONT_RUN)();
+            bank_restore(prev);
+        }
+
+    mus_stop();
+    g_mus_hold = 1;
+
+    load_level_packages();
+
+    // MUSICA nivell 1: MUSMAIN ja es a l'slot C1:0x5000: obrir so i
+    // (re)iniciar el tema.
+    g_mus_hold = 0;
+    mus_init();
+
+    // Neteja de les dues pagines de video (nomes a l'arrencada: al reinici
+    // per mort ja ho fa repaint_both_buffers() i aqui no volem tocar la
+    // pagina 2, on viu la imatge del motor FDC).
     cpct_memset((void*)0xC000, 0xFF, 0x4000);
     cpct_memset((void*)0x8000, 0xFF, 0x4000);
-    // (El blindatge HOLD=0 d'aqui era mort: 561 sempre l'ha netejat abans i
-    // cap codi entremig l'escriu. Fora, 14/10/26: Bloc0 just.)
+
+    // (video_init + LUT d'hflip + neteja de les dues pagines ja els fa
+    //  load_level_packages(), que tambe s'usa al reinici per mort.)
 
     // Inicialitza posició d'inici, càmera i entitats des del paquet de nivell (Banc 5)
     moving_init();
@@ -959,7 +1000,14 @@ void main(void) {
                     break;
                 }
                 g_lives_count--;
+                // 1:1 DOS init_level() (restart_level_flag != 0): cors = 3,
+                // discos = 0. I el mapa torna a l'estat inicial (els items
+                // reapareixen) menys l'item secret, que persisteix.
                 g_hearts_count = 3;
+                g_vinyls_count = 0;
+                restore_level_tiles();     // tiles consumibles -> estat inicial
+                moving_respawn();          // objectes mobils a l'estat inicial
+                enemy_init();              // enemics a la seva posicio inicial
                 if (g_checkpoint) {
                     s_px8 = (i16)(LEVEL_CHK_PX * SUB);
                     s_py8 = (i16)(LEVEL_CHK_PY * SUB);

@@ -105,7 +105,7 @@ Bancs utilitzables de manera segura al 6128 en aquest projecte (vegeu
 
 | Banc | Contingut | Pitjor cas conegut |
 |---|---|---|
-| C4 | tileset del nivell | 16.384 (nivell 1, ple) — **cal mesurar els 6** |
+| C4 | tileset del nivell | 16.384 **per construcció** (256 tiles × 64 B) |
 | C5 | mapa + sales compactes + TRIG | 14.920 (ville) ✓ 1.464 lliures |
 | C6 | enemics (frames + codi) | 15.012 (nivell 1) |
 | C7 | frames del jugador | 15.872 |
@@ -169,16 +169,25 @@ a `MUS_SONG_SLOT = 0x5000`):
 **Conseqüència dura:** amb Theme2 la cançó arriba a `0x623E`, **per sobre del HUD
 actual (`0x6000`)** → el HUD no pot viure a `0x6000` en el sistema universal.
 
+**També mesurat (2026-10-20):**
+
+- **TRIG (nivell 1):** `TRIG0.BIN` = 2.560 B, **les 256 entrades tenen dades**,
+  tile màxim usat = **251** (196 tiles diferents). ⇒ Truncar a `max_tile+1`
+  només estalvia **40 B** → **no val la pena compactar**. (Un remapatge de tiles
+  al build —reordenar tileset + mapa + TRIG— estalviaria ~600 B, però no cal.)
+- **Tilesets (C4):** `TILESET0.BIN` = **16.384 B = 256 tiles × 64 B** → C4 és
+  **sempre un banc sencer**, per construcció; no hi ha risc de desbordament.
+
 **Encara pendent:**
-1. **Triggers vius per nivell.** El nivell 1 en fa servir 196 de 256; els altres
-   5 no s'han comptat mai. Decideix si la compactació de TRIG és viable.
-2. **Mida real dels PAK dels nivells 2-6.** Només es pot saber convertint-los.
+1. **Mida real dels PAK dels nivells 2-6.** Només es pot saber convertint-los.
    Límit dur ja conegut: l'scratch `0x8320-0xBBFF` = **14.560 B**; `L1WORLD` ja
    en fa 13.483 → **cal un assert i, probablement, càrrega en 2 passades**.
-3. **Nombre d'objectes `op` 4 (ascensors) per nivell.** L'inventari diu
+2. **Nombre d'objectes `op` 4 (ascensors) per nivell.** L'inventari diu
    5,0,0,0,0,0 → 5 és el màxim; si un altre nivell en tingués més, caldria
    revisar `MAG_ELEVATOR_COUNT`.
-4. **Mida dels tilesets dels 6 nivells** (C4). El nivell 1 ja ocupa 16.384.
+3. **Nombre de sales i portes dels nivells 2-6** (l'inventari ja el dona:
+   sales 0/6/3/1/0) i la seva col·locació exacta (`pos` per nivell).
+
 
 
 ---

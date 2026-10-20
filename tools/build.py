@@ -25,11 +25,10 @@ SDASZ80 = r"C:\Program Files\SDCC\bin\sdasz80.exe"
 
 CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "15000",
              "--disable-warning", "110"]
-# El _DATA comen?a a 0x3900 (abans 0x3880). El Bloc 0 esta ple i el fix 1:1
-# del scroll vertical de la camera (la camera ha de seguir el jugador
-# exactament, com al DOS) necessitava mes codi. La PILA no canvia: el canari
-# (0x3D00) i el limit de la pila (SP=0x3FFE) son els mateixos; el _DATA acaba
-# a 0x3CDB, per sota del canari.
+# El _DATA comença a 0x3880. El Bloc 0 esta ple; amb el codi dels ascensors
+# fora del resident (Banc 1) el marge de codi es de 836 B.
+# La PILA no canvia: el canari (0x3D00) i el limit de la pila (SP=0x3FFE) son
+# els mateixos; el _DATA acaba per sota del canari.
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
              "--code-loc", "0x0100", "--data-loc", "0x3880", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
@@ -1683,6 +1682,18 @@ def main():
         print("\n[FATAL] 8 iteracions sense convergir: el DSK quedaria incoherent (starter ranci).")
         sys.exit(1)
     verify_starter_jump()
+    # Fase 0.6 (PLA_NIVELLS_UNIVERSAL): verificacio del DSK. `--check` fa la
+    # comprovacio rapida (catàleg + CRC de tots els fitxers, ~2 s);
+    # `--check-boot` afegeix l'arrencada real a ZEsarUX (~1-2 min).
+    if "--check" in sys.argv or "--check-boot" in sys.argv:
+        smoke = os.path.join(HERE, "smoke_test.py")
+        args = [sys.executable, smoke]
+        if "--check-boot" not in sys.argv:
+            args.append("--dsk-only")
+        print("\n[CHECK] %s" % " ".join(args[1:]))
+        if subprocess.call(args) != 0:
+            print("\n[FATAL] El DSK no passa la verificacio (%s)." % smoke)
+            sys.exit(1)
     print()
 
 

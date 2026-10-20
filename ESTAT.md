@@ -1,7 +1,43 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-20 — Sessió 36: Resolució de les pampallugues i errors gràfics dels ascensors (ús correcte de la configuració Gate Array 0xC0 en lloc de 0xC1, ja que 0xC1 mapeja la RAM 7 d'expansió a 0xC000..0xFFFF ocultant la VRAM de la pàgina 0 del doble buffer). Resolució del crash després del mapa (GAMEOVER a 0x5800).
+Última actualització: 2026-10-20 — Sessió 37: **Regressió del build.py resolta** (el joc no arrencava per un empaquetat del Banc 1 reescrit), **smoke test d'arrencada + verificació del DSK** afegits i integrats al build (`--check`), i **revisió del pla universal amb les mides REALS dels mapes** (habitacions incloses).
 Idioma de treball amb l'usuari: **català**.
+
+## Sessió 37 — Estabilització + mides reals dels 6 nivells (20/10/2026)
+
+- **Causa de la "no-arrencada"**: el `tools/build.py` de l'arbre de treball havia
+  substituït l'empaquetat del Banc 1 de la sessió 36 per un de simplificat
+  (música + codi, **sense els frames de l'ascensor a `0x6E20`** ni el GAMEOVER
+  col·locat on `main.c` l'espera). `main.c`/`moving.c` (committed) seguien
+  esperant-los. **Solució: `git checkout -- tools/build.py`.**
+  Build net: `_CODE 0x0100..0x353C` (13.372 B, **marge 836 B**),
+  `_DATA 0x3880..0x3C73` (1.001 B), pila 907 B.
+- **Smoke test (Fase 0.6 del pla)**: `tools/smoke_test.py`
+  - DSK: catàleg + CRC de cada fitxer llegit amb la seva taula CHS i la mida
+    declarada (l'últim sector porta farciment `0xE5` → cal truncar).
+  - BOOT: espera el prompt de BASIC amb `get-ocr`, fa `RUN "BLUESB"`, prem
+    SPACE i valida `s_lv.magic == 0xB0` + `s_px8`/`s_py8` ≠ 0; captura a
+    `scratch/smoke_level.png`.
+  - Integrat al build: `tools/build.py --check` (DSK) i `--check-boot`
+    (+ arrencada). El build falla si no passa.
+  - **Resultat: DSK OK (6 fitxers) i arrencada OK** (`magic=0xB0`, `px8=256`,
+    `py8=8848`, `bank=0xC0`).
+- **Pla `docs/PLA_NIVELLS_UNIVERSAL.md` revisat amb dades verificades**:
+  - Les habitacions són **files del mateix tilemap** al DOS
+    (`level.c:1135 pos[]`, `resource.c:381`), però **el port les guarda
+    compactes** perquè hi càpiguen (decisió D1).
+  - **Mides reals**: 10.216 / 9.216 / 10.416 / 8.408 / **12.360** / 6.272
+    (mapa + sales compactes). Amb TRIG, el pitjor és ville = **14.920** de
+    16.384 ✓.
+  - **El que no hi cap és el codi del món** (`moving_bank`, 4.548 B) → va a la
+    RAM 1 (15.881 B amb la cançó actual, 503 B lliures; **depèn de la mida de
+    `Theme1`/`Theme2`, encara no convertides**).
+  - `tools/inventory_levels.py` ara calcula les dues mides (compacta i DOS) i
+    les sales reals per blocs de 20 columnes; `docs/INVENTARI_NIVELLS.md`
+    regenerat.
+- **Pendent**: mesurar `Theme1`/`Theme2` (marge RAM 1), Fase 1 (especificació
+  del paquet de nivell) i Fase 2/3 (build universal + resident genèric).
+
 
 ## Estat vigent — Codi de Nivell al Banc C1 i Resolució del Boot/Crash (20/10/2026)
 

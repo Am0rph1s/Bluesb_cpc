@@ -1,4 +1,30 @@
-# Diagnòstic: el joc no arrenca després del canvi "ascensors al Banc C1" [RESOLT]
+# Diagnòstic: el joc no arrenca després del canvi "ascensors al Banc C1"
+
+> ## ✅ RESOLT (2026-10-20)
+>
+> **Causa**: el `tools/build.py` de l'arbre de treball era una **regressió de
+> l'empaquetat de la sessió 36**. Aquella versió (la de `HEAD`) posa dins del
+> bloc del Banc 1: música → codi a `0x6934` → **frames de l'ascensor a `0x6E20`**
+> → i deixa el GAMEOVER en un bloc a part que `main.c` descomprimeix a `0x5800`.
+> La meva reescriptura **va treure els frames del bloc** (i el GAMEOVER va quedar
+> descol·locat), però `main.c`/`moving.c` (committed) seguien esperant-los allà.
+>
+> **Solució**: `git checkout -- tools/build.py` (tornar a la versió de `HEAD`).
+> Build net i arrencada verificada:
+> `_CODE 0x0100..0x353C` (13.372 B, **marge 836 B**), `_DATA 0x3880..0x3C73`,
+> `magic=0xB0`, `px8=256`, `py8=8848`, `bank=0xC0`.
+>
+> **Protecció**: `tools/smoke_test.py` + `tools/build.py --check`
+> (`--check-boot` per incloure l'arrencada). Tots dos verds.
+>
+> **Nota sobre el boot del disc**: el sector d'arrencada del DSK (0x80-0xFF de
+> la pista 0/sector 1) el genera `tools/dskutil.py`, que **no l'escriu** (hi
+> conviuen les entrades del catàleg). El firmware cau a BASIC i el joc
+> s'engega amb `RUN "BLUESB"` (és el que fa el smoke test). És anterior a
+> aquest canvi i no afecta el joc.
+>
+> El text de sota es conserva com a registre del procés de diagnòstic.
+ [RESOLT]
 
 > Estat a 20/10/2026. Document de continuació: resolt i tancat.
 > Relacionat: `ESTAT.md` (sessions 31-36), `AGENTS.md` (regles del projecte).

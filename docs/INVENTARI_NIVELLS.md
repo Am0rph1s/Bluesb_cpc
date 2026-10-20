@@ -1,13 +1,22 @@
 # Inventari dels 6 nivells (generat per tools/inventory_levels.py)
 
-| Nivell | Nom | Ample | Alt | Mapa (B) | Objectes | Ascensors | Portes | Portes amb sala | Musica |
-|---|---|---|---|---|---|---|---|---|---|
-| 1 | magasin | 128 | 72 | 9.216 | 30 | 5 | 23 | 23 | 1 |
-| 2 | ent | 128 | 72 | 9.216 | 19 | 0 | 0 | 0 | 2 |
-| 3 | prison | 128 | 72 | 9.216 | 28 | 0 | 24 | 24 | 3 |
-| 4 | egou | 128 | 61 | 7.808 | 31 | 0 | 20 | 10 | 1 |
-| 5 | ville | 128 | 95 | 12.160 | 33 | 0 | 2 | 2 | 2 |
-| 6 | concert | 128 | 49 | 6.272 | 11 | 0 | 6 | 0 | 3 |
+> Mides **reals** del tilemap: a DOS les habitacions son files del mateix
+> array de 128 columnes (`level.c:1135 pos[]`, `resource.c:381 y*128+x`),
+> per sobre de l'alcada visible. Per tant `Mapa = ample x max(alcada, pos+10)`.
+> `TRIG` = 2.560 B (256 entrades x 10 B). Un banc CPC = 16.384 B.
+
+| Nivell | Nom | Ample | Alt visible | pos sala | Files reals | Mapa (B) | +TRIG (B) | Cap a C5? | Objectes | Ascensors | Portes | Portes amb sala | Cançó (#) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | magasin | 128 | 72 | 74 | 84 | 10.752 | 13.312 | SI | 30 | 5 | 23 | 23 | 1 |
+| 2 | ent | 128 | 72 | - | 72 | 9.216 | 11.776 | SI | 19 | 0 | 0 | 0 | 2 |
+| 3 | prison | 128 | 72 | 77 | 87 | 11.136 | 13.696 | SI | 28 | 0 | 24 | 24 | 3 |
+| 4 | egou | 128 | 61 | 66 | 76 | 9.728 | 12.288 | SI | 31 | 0 | 20 | 10 | 1 |
+| 5 | ville | 128 | 95 | 102 | 112 | 14.336 | 16.896 | NO (-512) | 33 | 0 | 2 | 2 | 2 |
+| 6 | concert | 128 | 49 | - | 49 | 6.272 | 8.832 | SI | 11 | 0 | 6 | 0 | 3 |
+
+> `Cap a C5?` compara **mapa + TRIG** amb els 16.384 B del banc, **sense**
+> comptar-hi el codi del mon (`moving_bank`, 4.548 B avui). Amb el codi, cap
+> nivell hi cap (nivell 1: 17.860 B).
 
 ## Fitxers DOS al disc (bytes, comprimits tal com son a assets/bbdata)
 

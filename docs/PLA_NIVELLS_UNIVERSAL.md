@@ -392,8 +392,10 @@ Objectiu: que cap regressió torni a passar desapercebuda hores.
 
 ## Fase 1 — Especificació (només document)
 
-- [ ] **1.1** `docs/LEVEL_PACKAGE.md`: format del manifest (capçalera, seccions,
-      CRC, id de disc), mapa de bancs, adreces, pressupost per banc i per nivell.
+- [x] **1.1** `docs/LEVEL_PACKAGE.md` redactat (**esborrany**, pendent
+      d'aprovació): manifest (capçalera 16 B + descriptors de 8 B), seccions per
+      paquet, layout per nivell calculat pel build, `LevelParams` v2, carregador
+      genèric i asserts.
 - [ ] **1.2** **Decisió (revisada 2026-10-20 amb les cançons mesurades):**
       - `C5 = mapa + sales compactes + TRIG` (ville: 14.920 ✓).
       - `codi del món (4.548 B)` a la **RAM 1**, amb **layout per nivell**

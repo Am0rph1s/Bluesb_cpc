@@ -1,9 +1,24 @@
-﻿# ESTAT DEL PROJECTE â€” The Blues Brothers (CPC, catalÃ )
+# ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Ãšltima actualitzaciÃ³: 2026-10-18 â€” Cicle complet de Game Over, animaciÃ³ de ball de mort (1:1 DOS), resoluciÃ³ del crash en recarregar l'Splash (preservaciÃ³ de registres al FDC i protecciÃ³ de la ISR musical), retorn net a FRONT_RUN i reinici de partida verificats en ZEsarUX.
-Idioma de treball amb l'usuari: **catalÃ **.
+Última actualització: 2026-10-20 — Sessió 36: Resolució definitiva del crash a PC=0x0000 en entrar a Nivell 1, codi dels ascensors allotjat al Banc 1 (0xC1) alliberant el Bloc 0 resident (motor genèric), resolució del solapament de GAMEOVER a 0x7600, boot net Splash -> Select -> Map -> Nivell 1 verificat en ZEsarUX.
+Idioma de treball amb l'usuari: **català**.
 
-## Estat vigent â€” Cicle de Mort, Game Over 1:1 DOS i Retorn Net a l'Splash
+## Estat vigent — Codi de Nivell al Banc C1 i Resolució del Boot/Crash (20/10/2026)
+
+- **1) Extracció del Codi d'Ascensors del Bloc 0 Resident cap al Banc 1 (`0xC1`)**:
+  - **Objectiu arquitectònic**: El Bloc 0 resident ha de ser estrictament el **motor comú** de joc (sprites, scroll, cicle de vida, FDC, gestor d'entitats), sense codi específic de cap nivell concret.
+  - **Implementació**: Creat `src/level_code.c` i la taula de salts bancada `engine/bank1_table.s` compilada a `0x6934` del Banc 1.
+  - Les rutines `moving_draw` i `moving_restore` a `src/moving.c` es converteixen en simples trampolins cap a `call_banked(0xC1, LC1_DRAW)` i `call_banked(0xC1, LC1_RESTORE)`.
+  - Els frames (`0x6E20`) i buffers de fons dels ascensors (`0x7000`) s'empaqueten directament al sub-bloc musical/nivell de `L1WORLD.PAK`.
+
+- **2) Diagnòstic i Resolució del Crash a `PC=0000H` (Boot Failure)**:
+  - **Causa Arrel**: A l'Amstrad CPC 6128, les configuracions del Gate Array `0xC0` i `0xC1` comparteixen la mateixa RAM física al Slot 1 (`0x4000..0x7FFF`). A `src/main.c`, la descompressió del banner de Game Over (`off_elev`) es feia a `0x6A00` sota `0xC0`. Com que `LEVELCODE.BIN` (el codi bancat dels ascensors) ocupava `0x6934..0x6CF7`, la descompressió de 1.360 B de dades gràfiques sobreescrivia 760 bytes del codi d'execució amb patrons `03 03 03... CF` (`INC BC` seguit de `RST 8`), saltant al vector `0x0008` i acabant en un reset immediat a `PC=0000H`.
+  - **Solució**: Reubicat `GAMEOVER_PTR` a `0x7600` (on hi ha espai lliure fins a `0x8000`), aïllat `e_data` perquè contingui només `go_data`, i afegit un assert a `tools/build.py` per protegir la frontera.
+  - Documentació completa del procés a [`docs/BOOT_FAILURE_2026-10.md`](file:///C:/Projects/bluesb_cpc/docs/BOOT_FAILURE_2026-10.md).
+
+- **3) Verificació en ZEsarUX**:
+  - Boot complet provat amb `scratch/verify_l1_boot.py`: Splash $\to$ Select $\to$ Map $\to$ Nivell 1 sense cap crash.
+  - El bucle principal de joc corre a 50 Hz i en Jake respon als controls de moviment correctament (`nat_l1_04_gameplay.png` i `nat_l1_05_moved.png`).
 
 - **1) Cicle de Vides i AnimaciÃ³ de Ball de Mort (1:1 DOS)**:
   - **MecÃ nica fidel a DOS (`level.c:1583-1658`)**: En perdre l'Ãºltim cor (`g_hearts_count == 0`), en Jake s'immobilitza completament (`move = jump = grab = crouch = 0`, velocitats a zero) i executa l'animaciÃ³ de ball de mort durant ~1,3 segons (`s_dying_timer = 64` a 50 Hz). L'input de l'usuari queda bloquejat com a l'animaciÃ³ de noqueig (`s_dazed_timer`).

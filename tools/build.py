@@ -31,7 +31,7 @@ CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "15000",
 # (0x3D00) i el limit de la pila (SP=0x3FFE) son els mateixos; el _DATA acaba
 # a 0x3CDB, per sota del canari.
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0x3900", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0x3880", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 
@@ -69,7 +69,7 @@ C_HEADERS = {
     "src/moving.c": ["engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h", "engine/fdc.h", "src/level_pkg.h"],
     "src/main.c": ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h", "engine/mus.h", "src/disk_tables.h",
                    "src/sprite.h", "src/moving.h", "src/player_frames.h",
-                   "engine/stack_canary.h", "src/crt_addrs.h", "src/level_pkg.h"],
+                   "engine/stack_canary.h", "src/crt_addrs.h", "src/level_pkg.h", "src/level_params.h"],
 }
 
 PROGNAME = "bluesb"
@@ -93,6 +93,18 @@ ENEMY_C_HEADERS = {
 # --- Banc 5 (CP-2.2): lògica moving.* a 0x6E00; slots fixos 0x6E00+3k
 # (han de coincidir amb engine/bank5_table.s; build_bank() ho verifica).
 BANK5_BASE = 0x6E00
+# Banc 1 (C1): el codi del NIVELL (ascensors) dins el mateix paquet que la
+# musica, el HUD i les habitacions. Layout dins la part del Banc 1 (es
+# descomprimeix a 0x5000):
+#   0x5000 musica | 0x6000 HUD | 0x6400 habitacions | 0x6800 portes
+#   0x6860 taula de restauracio | 0x6900 parametres | 0x6934 codi
+#   0x6E20 frame de l'ascensor | 0x7000 buffers de fons | 0x7500 dades
+LC1_CODE_BASE    = 0x6934
+LC1_FRAMES_BASE  = 0x6E20
+LC1_BG_BASE      = 0x7000
+LC1_DATA_BASE    = 0x7500
+LC1_ELEV_BG_SIZE = 1120   # 2 pagines x 5 ascensors x 112 B
+LC1_GAMEOVER_BASE = 0x7600
 BANK5_MAXLEN = 0x1200   # finestra: CODE + pad zeros fins fi _DATA (0x7E07);
                         # el banc físic dona fins 0x7FFF, de sobres.
 BANK_C_SOURCES = ["src/moving_bank.c"]
@@ -358,7 +370,7 @@ def report_and_assert_memory_budget(map_path):
         for line in f:
             parts = line.split()
             if len(parts) >= 2:
-                for k in ("s__CODE", "l__CODE", "s__DATA", "l__DATA"):
+                for k in ("s__CODE", "l__CODE", "s__DATA", "l__DATA", "s__INITIALIZER", "l__INITIALIZER"):
                     if parts[1] == k:
                         try:
                             syms[k] = int(parts[0], 16)
@@ -370,7 +382,9 @@ def report_and_assert_memory_budget(map_path):
     l_data = syms.get("l__DATA", 0)
 
     code_end = s_code + l_code
-    data_end = s_data + l_data
+    s_init = syms.get("s__INITIALIZER", s_data + l_data)
+    l_init = syms.get("l__INITIALIZER", 0)
+    data_end = max(s_data + l_data, s_init + l_init)
     code_margin = s_data - code_end
     stack_top = 0x3FFE
     stack_margin = stack_top - data_end
@@ -499,6 +513,61 @@ def build_bank(force):
     print("BANC5: 0x%04X (%d bytes, code=%d B, marge_code=%d B)" %
           (BANK5_BASE, size, b5_code_l, (b5_data_s or 0x7F80) - (BANK5_BASE + b5_code_l)))
     return bin_path
+
+
+def build_levelcode(force):
+    """Compila el codi del NIVELL (ascensors) per al Banc 1 (C1).
+
+    El codi del nivell no ha de viure al Bloc 0 resident (que ha de ser el
+    motor generic). Aquest modul s'enlla?a dins el Banc 1, al mateix paquet
+    que la musica, el HUD i les habitacions, i on hi viuen tambe els frames
+    de l'ascensor i els seus buffers de fons.
+    Retorna obj/LEVELCODE.BIN (el codi + les dades)."""
+    obj = os.path.join(PROJ, "obj")
+    resident_map = os.path.join(obj, "bluesb.map")
+    equ_s = build_bank_equ(resident_map)
+    equ_rel = os.path.join(obj, "bank_equ.rel")
+    if force or is_stale(equ_rel, [equ_s]):
+        run([SDASZ80, "-plosgff", equ_rel, equ_s])
+        mark_fresh(equ_rel, [equ_s])
+    rels = []
+    asm_src = os.path.join(PROJ, "engine", "bank1_table.s")
+    asm_rel = os.path.join(obj, "bank1_table.rel")
+    if force or is_stale(asm_rel, [asm_src]):
+        run([SDASZ80, "-plosgff", asm_rel, asm_src])
+        mark_fresh(asm_rel, [asm_src])
+    rels.append(asm_rel)
+    c_src = os.path.join(PROJ, "src", "level_code.c")
+    c_rel = os.path.join(obj, "level_code.rel")
+    headers = [os.path.join(PROJ, n) for n in
+               ("engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h",
+                "src/level_params.h")]
+    if force or is_stale(c_rel, [c_src] + headers):
+        run([SDCC] + INCLUDES + CFLAGS + ["-c", c_src, "-o", c_rel])
+        mark_fresh(c_rel, [c_src] + headers)
+    rels.append(c_rel)
+    rels.append(equ_rel)
+    ihx = os.path.join(obj, "levelcode.ihx")
+    run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % LC1_CODE_BASE,
+         "--data-loc", "0x%04X" % LC1_DATA_BASE] + rels + ["-o", ihx])
+    map_path = os.path.join(obj, "levelcode.map")
+    code_s, code_l = map_area(map_path, "CODE")
+    data_s, data_l = map_area(map_path, "DATA")
+    if code_s is not None and (code_s + code_l) > LC1_FRAMES_BASE:
+        print("\n[FATAL] El codi del nivell (Banc 1) arriba als frames!")
+        sys.exit(1)
+    if data_s is not None and (data_s + data_l) > LC1_GAMEOVER_BASE:
+        print("\n[FATAL] Les dades del codi del nivell (Banc 1) no hi caben!")
+        sys.exit(1)
+    # El codi i les dades van en dos fitxers perqu? al paquet el codi va
+    # abans dels frames i dels buffers de fons (que son dades, no codi).
+    code_path = os.path.join(obj, "LEVELCODE.BIN")
+    convert_ihx(ihx, code_path, start_addr=LC1_CODE_BASE, max_length=code_l)
+    data_path = os.path.join(obj, "LEVELDATA.BIN")
+    convert_ihx(ihx, data_path, start_addr=LC1_DATA_BASE, max_length=data_l)
+    print("BANC1: codi del nivell a 0x%04X (%d B de codi, %d B de dades)"
+          % (LC1_CODE_BASE, code_l, data_l))
+    return code_path
 
 
 def build_enemybank(force):
@@ -1369,12 +1438,15 @@ def build_level_bundles(force=False):
     trig_src = os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN")
     bank5_src = os.path.join(obj, "BANK5.BIN")
     mus_src = os.path.join(obj, "MUSMAIN.BIN")
+    levelcode_src = os.path.join(obj, "LEVELCODE.BIN")
+    levelcode_data_src = os.path.join(obj, "LEVELDATA.BIN")
     elev_src = os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")
     gameover_src = os.path.join(PROJ, "assets", "bbdata", "GAMEOVER.BIN")
     if not os.path.exists(gameover_src):
         import gen_gameover
         gen_gameover.generate_gameover()
-    l1w_sources = [tiles_src, map_src, trig_src, bank5_src, mus_src, elev_src, gameover_src]
+    l1w_sources = [tiles_src, map_src, trig_src, bank5_src, mus_src, elev_src,
+                   gameover_src, levelcode_src, levelcode_data_src]
 
     if force or is_stale(l1w_dst, l1w_sources):
         t_data = open(tiles_src, "rb").read()
@@ -1384,14 +1456,23 @@ def build_level_bundles(force=False):
         assert len(b5_raw) == 9216 + 2560 + os.path.getsize(bank5_src)
         b5_zx, _ = zx0_compress(bytes(b5_raw), classic=True, quick=ZX0_QUICK)
 
+        # Banc 1: musica + HUD + habitacions + portes + parametres + el CODI
+        # DEL NIVELL (ascensors) + els seus frames i buffers de fons. El codi
+        # del nivell no pot viure al Bloc 0 resident (que ha de ser el motor
+        # generic), i aqui hi ha lloc de sobra.
         m_data = open(mus_src, "rb").read()
+        m_data += bytes(LC1_CODE_BASE - 0x5000 - len(m_data))
+        m_data += open(levelcode_src, "rb").read()
+        assert len(m_data) <= (LC1_FRAMES_BASE - 0x5000), len(m_data)
+        m_data += bytes(LC1_FRAMES_BASE - 0x5000 - len(m_data))
+        m_data += open(elev_src, "rb").read()
         m_zx, _ = zx0_compress(bytes(m_data), classic=True, quick=ZX0_QUICK)
 
+        # Banc 0: nom?s el banner del GAME OVER (els frames de l'ascensor
+        # s'han mogut al Banc 1, amb el codi que els dibuixa).
         go_data = open(gameover_src, "rb").read()
         assert len(go_data) == 1360
-        elev_raw = open(elev_src, "rb").read()
-        e_data = go_data + bytes(0x600 - len(go_data)) + elev_raw
-        e_zx, _ = zx0_compress(bytes(e_data), classic=True, quick=ZX0_QUICK)
+        e_zx, _ = zx0_compress(bytes(go_data), classic=True, quick=ZX0_QUICK)
 
         # Header (6 bytes): off_bank5, off_mus, off_elev
         off_bank5 = 6 + len(t_zx)
@@ -1565,6 +1646,7 @@ def main():
         build_music(force)  # MUSICA primer (obj/mus_ext.s pel GAME)
         game_path, game_start, game_size = compile_and_link(force)
         build_bank(force)  # Banc 5 (necessita el mapa resident per l'equ)
+        build_levelcode(force)  # Banc 1: codi del nivell (ascensors)
         build_enemybank(force)  # Banc C3 (walkers; reutilitza bank_equ.rel)
         build_level_bundles(force)  # Paquets de joc (JAKE, ELWOOD, L1WORLD, L1ENEMI)
         build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)
@@ -1576,31 +1658,24 @@ def main():
         crt_text = crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map"))
         stab_text = gen_starter_tables(gentry, game_start, game_len, game_crc, chs_map["FDC"], chs_map["FRONT"], chs_map["MUSBANK"])
         changed = False
-        # Escriure NOMES si el contingut canvia (si no, el mtime nou
-        # invalidaria hash/mtime i recompilaria dependents debades, i
-        # amagaria la no-convergencia entre iteracions).
-        for cur, old, path, label in ((text, prev, hdr_path, "disk_tables.h"),
-                                      (fhdr_text, prev_fhdr, fhdr_path, "front_tables.h"),
-                                      (crt_text, prev_crt, crt_path, "crt_addrs.h"),
-                                      (stab_text, prev_stab, stab_path, "starter_tables.h")):
-            if cur != old:
-                try:
-                    disk = open(path).read()
-                except OSError:
-                    disk = None
-                if disk != cur:
-                    open(path, "w").write(cur)
-                    print("  -> %s actualitzat (iteracio %d)" % (label, it + 1))
-                    changed = True
-                if label == "disk_tables.h":
-                    prev = cur
-                elif label == "front_tables.h":
-                    prev_fhdr = cur
-                elif label == "crt_addrs.h":
-                    prev_crt = cur
-                else:
-                    prev_stab = cur
-                    prev_stab = cur
+        # Els headers nous (CHS, CRC, adreces) es calculen ARA, pero no
+        # s'escriuen encara: s'escriuen a l'inici de la iteracio
+        # seguent, ABANS de compilar el resident. Si s'escriuen aqui, el
+        # resident es queda amb el CRC vell i el DSK no arrenca (border
+        # vermell): el CRC del PAK depen del layout del DSK, que depen de la
+        # mida del resident, que depen del CRC... es circular, i perixo el
+        # bucle: primer s'escriuen els headers, despres es compila el
+        # resident, despres es construeix el DSK i es calcula el CRC nou.
+        pending = ((text, hdr_path, "disk_tables.h", "prev"),
+                   (fhdr_text, fhdr_path, "front_tables.h", "prev_fhdr"),
+                   (crt_text, crt_path, "crt_addrs.h", "prev_crt"),
+                   (stab_text, stab_path, "starter_tables.h", "prev_stab"))
+        for cur, path, label, which in pending:
+            disk = open(path).read() if os.path.exists(path) else None
+            if disk != cur:
+                open(path, "w").write(cur)
+                print("  -> %s actualitzat (iteracio %d)" % (label, it + 1))
+                changed = True
         if not changed:
             break
     else:

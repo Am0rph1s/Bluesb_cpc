@@ -712,7 +712,7 @@ volatile u8 g_map_level; // 0..5 (el GAME l'escriu abans del mapa; el FRONT
 u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
                     // primer mus_init: evita Play sobre C1 buit (reboot).
 
-#define GAMEOVER_PTR ((const u8*)0x6A00)
+#define GAMEOVER_PTR ((const u8*)0x7600)
 
 // ============================================================
 // Carrega del nivell des del disc + reset de video.
@@ -777,9 +777,9 @@ static void load_level_packages(void) {
             // surten del paquet: el Bloc 0 no en te cap constant compilada.
             level_params_load();
 
-            // Sub-bloc 4: GAMEOVER (0x6A00) + Frames Ascensor (0x7000) -> Banc C0
-            prev = bank_set(0xC0);
-            zx0_decompress((const void*)(pak + off_elev), (void*)0x6A00);
+            // Sub-bloc 4: GAMEOVER (0x7600) -> Banc C1 / C0
+            prev = bank_set(0xC1);
+            zx0_decompress((const void*)(pak + off_elev), (void*)0x7600);
             bank_restore(prev);
         }
     }
@@ -880,6 +880,7 @@ static void draw_gameover_banner(u8 page) {
 
 void main(void) {
     cpct_memset((void*)CRT_DATA_START, 0, CRT_DATA_LEN);
+    g_bank = 0xC0;
     cpct_memcpy((void*)CRT_IDATA_DST, (void*)CRT_IDATA_SRC, CRT_IDATA_LEN);
     stack_canary_init();
     cpc_install_isr();

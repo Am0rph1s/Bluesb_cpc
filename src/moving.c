@@ -1,11 +1,10 @@
-﻿// ============================================================
-// moving.c - Part RESIDENT del mÃ²dul d'objectes mÃ²bils (CP-2.2)
+// ============================================================
+// moving.c - Part RESIDENT del mòdul d'objectes mòbils (CP-2.2)
 // ------------------------------------------------------------
-// La lÃ²gica (init/update/conveyor/push/find + efectes de tiles
-// i fÃ­sica de nivell) viu al Banc 5 (src/moving_bank.c, 0x6E00)
-// i s'hi crida via call_banked() amb el bloc de parÃ metres bc_*.
-// AquÃ­ queden Ãºnicament les dades residents, ring_address i el
-// restore/draw d'ascensors que accedeixen al Banc 7 (0xC7).
+// La lògica (init/update/conveyor/push/find + efectes de tiles
+// i física de nivell) viu al Banc 5 (src/moving_bank.c, 0x6E00)
+// i s'hi crida via call_banked() amb el bloc de paràmetres bc_*.
+// Els ascensors (draw/restore) viuen al Banc 1 (src/level_code.c, 0x6934).
 // ============================================================
 #include "cpctelera.h"
 #include "bank.h"
@@ -19,9 +18,8 @@
 // Slots fixos de la taula de salts del Banc 5: a moving.h (font unica).
 
 MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
-static u16 s_elev_dst[2][MAG_ELEVATOR_COUNT];
 
-// Bloc de parÃ metres resident per crides bankades (CP-2.2).
+// Bloc de paràmetres resident per crides bankades (CP-2.2).
 u16 bc_a, bc_b, bc_c, bc_d, bc_e;
 i16 bc_r;
 
@@ -48,85 +46,21 @@ void moving_respawn(void) { call_banked(0xC5, BC_RESPAWN); }
 
 void moving_popup_restore(u8 page) { bc_a = page; call_banked(0xC5, BC_RESTORE); }
 
-// Frames d'ascensor al Banc C0 (ELEV.BIN a 0x7000, 1x224 B; criteri Amiga:
-// un sol frame, sense l'animacio de motor del DOS).
-#define ELEVATOR_FRAMES_BASE ((const u8*)0x7000)
-#define ELEVATOR_FRAME_SIZE  224
+// Slots fixos del codi del nivell al Banc 1 (engine/bank1_table.s @0x6934+3k).
+#define LC1_DRAW    ((void*)0x6934)
+#define LC1_RESTORE ((void*)0x6937)
 
-// CP-2.2b: restore/draw SÃ“N residents (el codi bancat no pot niuar de banc:
-// en commutar, el propi codi a 0x4000-0x7FFF desapareix). Els bank_set(C1)
-// aquÃ­ sÃ³n segurs (codi central, sempre mapejat).
 void moving_restore(u8 page, u8 force) {
-    u8 prev_bank;
-    u8 i;
-    if (page > 1) return;
     (void)force;
-
-    prev_bank = bank_set(0xC0);
-    // LIFO com els enemics: ordre invers al draw (solapaments nets).
-    for (i = MAG_ELEVATOR_COUNT; i > 0; i--) {
-        u8 idx = (u8)(i - 1);
-        MovingElevator* e = &g_mag_elevators[idx];
-        if (!e->drawn[page]) continue;
-
-        g_moving_dst = s_elev_dst[page][idx];
-        g_moving_background = (u16)elevator_bg_ptr(idx, page);
-        g_moving_span = e->drawn_byte_count[page];
-        g_moving_rows = e->drawn_row_count[page];
-        moving_restore_box();
-        e->drawn[page] = 0;
-    }
-    bank_restore(prev_bank);
+    bc_a = page;
+    call_banked(0xC1, LC1_RESTORE);
 }
 
 void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
-    u8 prev_bank;
-    u8 i;
-    i16 view_x = (i16)(cam_x4 << 2);
-    i16 view_y = (i16)(cam_row << 3);
-    if (page > 1) return;
-
-    prev_bank = bank_set(0xC0);
-    for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
-        MovingElevator* e = &g_mag_elevators[i];
-        i16 world_x;
-        i16 world_y;
-        i16 clip_x0, clip_x1, clip_y0, clip_y1;
-        u8 start_byte, byte_count, start_row, row_count;
-        const u8* frame;
-
-        if (e->drawn[page]) continue;
-        world_x = (i16)(e->center_x - ELEVATOR_SPR_HALF_W);
-        world_y = (i16)(e->y - ELEVATOR_OBJECT_H);
-        clip_x0 = world_x > view_x ? world_x : view_x;
-        clip_x1 = world_x + ELEVATOR_SPR_WIDTH_PX < view_x + 160 ?
-                  (i16)(world_x + ELEVATOR_SPR_WIDTH_PX) : (i16)(view_x + 160);
-        clip_y0 = world_y > view_y ? world_y : view_y;
-        clip_y1 = world_y + ELEVATOR_H < view_y + 160 ?
-                  (i16)(world_y + ELEVATOR_H) : (i16)(view_y + 160);
-        if (clip_x0 >= clip_x1 || clip_y0 >= clip_y1) continue;
-
-        start_byte = (u8)((clip_x0 - world_x) >> 1);
-        byte_count = (u8)((clip_x1 - clip_x0) >> 1);
-        start_row = (u8)(clip_y0 - world_y);
-        row_count = (u8)(clip_y1 - clip_y0);
-        if (!byte_count || !row_count) continue;
-        frame = ELEVATOR_FRAMES_BASE;   // 1 sol frame (criteri Amiga)
-
-        g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
-        s_elev_dst[page][i] = g_moving_dst;
-        g_moving_background = (u16)elevator_bg_ptr(i, page);
-        g_moving_sprite = (u16)(frame + ((u16)start_row << 4) + (start_byte << 1));
-        g_moving_span = byte_count;
-        g_moving_rows = row_count;
-        g_moving_spr_skip = (u8)(16 - (byte_count << 1));
-        moving_blit_box();
-
-        e->drawn_byte_count[page] = byte_count;
-        e->drawn_row_count[page] = row_count;
-        e->drawn[page] = 1;
-    }
-    bank_restore(prev_bank);
+    bc_a = page;
+    bc_b = cam_x4;
+    bc_c = cam_row;
+    call_banked(0xC1, LC1_DRAW);
 }
 
 void moving_draw_conveyor_tiles(void) { call_banked(0xC5, (void*)0x6E12); }

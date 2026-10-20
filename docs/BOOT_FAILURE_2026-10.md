@@ -298,20 +298,20 @@ La causa arrel real i determinista que provocava el crash en entrar al Nivell 1 
 4. Com que `0x6A00` a `0xC0` apunta exactament a la mateixa RAM que a `0xC1`, la descompressió del banner de Game Over (1.360 bytes de gràfics) **sobreescrivia 760 bytes del codi d'execució dels ascensors** (`0x6934..0x6CF7`) amb patrons de bytes `03 03 03 03 03 CF...`.
 5. Quan `moving_draw` cridava `call_banked(0xC1, LC1_DRAW)` (`0x6934`), l'execució saltava al mig del patró corromput a `0x6A21`, executant `03` (`INC BC`) fins a arribar a `CF` (`RST 8`). L'opcode `RST 8` saltava al vector de firmware `0x0008` (`JP 0xB98A`), que en trobar la memòria alterada acabava saltant a `PC=0000H` (`RST 0`), provocant el reinici/crash de la màquina.
 
-### 10.2 Solució Aplicada
-1. **Reubicació de GAMEOVER a zona lliure segura (`0x7600`)**:
-   - S'ha mogut `GAMEOVER_PTR` a `(void*)0x7600` tant a [`src/main.c`](file:///C:/Projects/bluesb_cpc/src/main.c) com a [`tools/build.py`](file:///C:/Projects/bluesb_cpc/tools/build.py) (`LC1_GAMEOVER_BASE = 0x7600`).
-   - L'espai entre el final dels buffers d'ascensors (`s_elev_dst` a `0x7514`) i `0x7600` queda net, i `0x7600..0x7B50` (1.360 B) deixa encara ~1,2 KB lliures fins a `0x8000`.
-   - Afegit assert a `tools/build.py` per garantir que el codi i dades del Banc 1 mai no puguin sobrepassar `LC1_GAMEOVER_BASE`.
-2. **Neteja del sub-bloc 4 de `L1WORLD.PAK`**:
-   - El paquet `e_data` comprimit conté exclusivament el banner de `GAMEOVER.BIN`, ja que els frames de l'ascensor van al bloc de nivell a `0x6E20`.
+### 10.2 Solució Aplicada i Correcció Definitiva (Ubicació 0x5800)
+1. **Doble Col·lisió de Memòria Identificada**:
+   - En una primera instància es va intentar reubicar `GAMEOVER.BIN` a `0x7600`. Tanmateix, `GAMEOVER.BIN` ocupa 1.360 B (`0x7600..0x7B50`), entrant en conflicte directe amb la **còpia mestra del driver FDC resident a `C0:0x7800`** (on viu `FDC.BIN` per ser restaurat a `0x8000` abans de cada lectura de disc). Això feia que just en acabar de descomprimir el món i anar a carregar els enemics (`L1ENEMI.ZX0`), `fdc_load_file` restaurava gràfics corruptes sobre el driver de disc i s'estavellava en saltar del mapa al joc.
+2. **Ubicació Definitiva a `0x5800`**:
+   - Al Banc 1 / Banc 0 hi ha un forat de 2.477 bytes completament lliure entre el final de la cançó del nivell (`MUSMAIN.BIN` a `0x5000..0x5653`) i les tires del HUD (`0x6000`).
+   - S'ha reubicat `GAMEOVER_PTR` a `(void*)0x5800` a [`src/main.c`](file:///C:/Projects/bluesb_cpc/src/main.c) i `LC1_GAMEOVER_BASE = 0x5800` a [`tools/build.py`](file:///C:/Projects/bluesb_cpc/tools/build.py).
+   - De `0x5800` a `0x5D50` hi ha 1.360 bytes, deixant 429 B de marge amb la música i 688 B de marge amb el HUD.
+   - La còpia mestra del FDC a `0x7800` queda 100% protegida i intacta.
 3. **Manteniment del Bloc 0 resident genèric**:
    - El Bloc 0 només conté el trampolí `call_banked(0xC1, LC1_DRAW)` i `call_banked(0xC1, LC1_RESTORE)` a [`src/moving.c`](file:///C:/Projects/bluesb_cpc/src/moving.c). Tota la implementació resident específica del Nivell 1 ha estat eliminada del Bloc 0.
 
 ### 10.3 Verificació
-- Validat amb el test ZEsarUX `scratch/verify_l1_boot.py`:
-  - Boot net: Splash $\to$ Selecció $\to$ Mapa $\to$ Nivell 1.
-  - Breakpoint a `PC=0000H` **no es dispara mai**.
-  - El bucle principal de joc s'executa correctament a 50 Hz.
-  - Moviment del personatge comprovat en temps real (`nat_l1_04_gameplay.png` i `nat_l1_05_moved.png`).
-- Estat: **TANCAT I RESOLT**.
+- Validat amb el test ZEsarUX `scratch/test_user_flow.py` provant tant Jake com Elwood:
+  - Splash $\to$ Select (triat Elwood) $\to$ Map $\to$ Joc Nivell 1.
+  - Carregats tots els paquets (`JAKE`/`ELWOOD`, `L1WORLD`, `L1ENEMI`) sense cap corrupció ni timeout del FDC.
+  - El joc entra al Nivell 1 amb Elwood en pantalla, 3 cors, enemics en moviment i ascensors operatius (`after_map_fixed.png`).
+- Estat: **TANCAT I RESOLT DEFINITIVAMENT**.

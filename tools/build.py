@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 build.py - Build de Blues Brothers CPC amb SDCC 4.5 (natiu Windows).
 Compila, enllaça, empaqueta el DSK (afegint els fitxers de dades PRIMER per
@@ -104,7 +104,7 @@ LC1_FRAMES_BASE  = 0x6E20
 LC1_BG_BASE      = 0x7000
 LC1_DATA_BASE    = 0x7500
 LC1_ELEV_BG_SIZE = 1120   # 2 pagines x 5 ascensors x 112 B
-LC1_GAMEOVER_BASE = 0x7600
+LC1_GAMEOVER_BASE = 0x5800
 BANK5_MAXLEN = 0x1200   # finestra: CODE + pad zeros fins fi _DATA (0x7E07);
                         # el banc físic dona fins 0x7FFF, de sobres.
 BANK_C_SOURCES = ["src/moving_bank.c"]
@@ -556,7 +556,7 @@ def build_levelcode(force):
     if code_s is not None and (code_s + code_l) > LC1_FRAMES_BASE:
         print("\n[FATAL] El codi del nivell (Banc 1) arriba als frames!")
         sys.exit(1)
-    if data_s is not None and (data_s + data_l) > LC1_GAMEOVER_BASE:
+    if data_s is not None and (data_s + data_l) > 0x7800:
         print("\n[FATAL] Les dades del codi del nivell (Banc 1) no hi caben!")
         sys.exit(1)
     # El codi i les dades van en dos fitxers perqu? al paquet el codi va
@@ -976,7 +976,8 @@ def build_music(force):
     # MUSMAIN = tema sol + tires del HUD a offset 0x1000 (C1:0x6000).
     mainbin = os.path.join(obj, "MUSMAIN.BIN")
     mdata = open(songs["main"][0], "rb").read()
-    assert len(mdata) <= 0x1000, "Tema main massa gran per deixar slot 0x1000"
+    assert len(mdata) <= (LC1_GAMEOVER_BASE - 0x5000), "Tema main massa gran"
+    assert LC1_GAMEOVER_BASE + 1360 <= 0x6000, "GAMEOVER envaeix HUD"
     hud_h = os.path.join(PROJ, "src", "hud_pkg.h")
     hud_src = open(hud_h, "r").read()
     m_hud = re.search(r"const u8 s_hud_strips\[39\]\[24\] = \{(.*?)\};", hud_src, re.DOTALL)

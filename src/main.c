@@ -712,7 +712,7 @@ volatile u8 g_map_level; // 0..5 (el GAME l'escriu abans del mapa; el FRONT
 u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
                     // primer mus_init: evita Play sobre C1 buit (reboot).
 
-#define GAMEOVER_PTR ((const u8*)0x7600)
+#define GAMEOVER_PTR ((const u8*)0x5800)
 
 // ============================================================
 // Carrega del nivell des del disc + reset de video.
@@ -779,7 +779,7 @@ static void load_level_packages(void) {
 
             // Sub-bloc 4: GAMEOVER (0x7600) -> Banc C1 / C0
             prev = bank_set(0xC1);
-            zx0_decompress((const void*)(pak + off_elev), (void*)0x7600);
+            zx0_decompress((const void*)(pak + off_elev), (void*)0x5800);
             bank_restore(prev);
         }
     }

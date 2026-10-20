@@ -1,6 +1,6 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-20 — Sessió 36: Resolució definitiva del crash a PC=0x0000 en entrar a Nivell 1, codi dels ascensors allotjat al Banc 1 (0xC1) alliberant el Bloc 0 resident (motor genèric), resolució del solapament de GAMEOVER a 0x7600, boot net Splash -> Select -> Map -> Nivell 1 verificat en ZEsarUX.
+Última actualització: 2026-10-20 — Sessió 36: Resolució definitiva del crash després del mapa (col·lisió de GAMEOVER amb el driver FDC a 0x7800 resolta reubicant GAMEOVER a 0x5800), codi dels ascensors allotjat al Banc 1 (0xC1) alliberant el Bloc 0 resident (motor genèric), boot net Splash -> Select -> Map -> Joc Nivell 1 verificat en ZEsarUX (Jake i Elwood).
 Idioma de treball amb l'usuari: **català**.
 
 ## Estat vigent — Codi de Nivell al Banc C1 i Resolució del Boot/Crash (20/10/2026)
@@ -11,14 +11,15 @@ Idioma de treball amb l'usuari: **català**.
   - Les rutines `moving_draw` i `moving_restore` a `src/moving.c` es converteixen en simples trampolins cap a `call_banked(0xC1, LC1_DRAW)` i `call_banked(0xC1, LC1_RESTORE)`.
   - Els frames (`0x6E20`) i buffers de fons dels ascensors (`0x7000`) s'empaqueten directament al sub-bloc musical/nivell de `L1WORLD.PAK`.
 
-- **2) Diagnòstic i Resolució del Crash a `PC=0000H` (Boot Failure)**:
-  - **Causa Arrel**: A l'Amstrad CPC 6128, les configuracions del Gate Array `0xC0` i `0xC1` comparteixen la mateixa RAM física al Slot 1 (`0x4000..0x7FFF`). A `src/main.c`, la descompressió del banner de Game Over (`off_elev`) es feia a `0x6A00` sota `0xC0`. Com que `LEVELCODE.BIN` (el codi bancat dels ascensors) ocupava `0x6934..0x6CF7`, la descompressió de 1.360 B de dades gràfiques sobreescrivia 760 bytes del codi d'execució amb patrons `03 03 03... CF` (`INC BC` seguit de `RST 8`), saltant al vector `0x0008` i acabant en un reset immediat a `PC=0000H`.
-  - **Solució**: Reubicat `GAMEOVER_PTR` a `0x7600` (on hi ha espai lliure fins a `0x8000`), aïllat `e_data` perquè contingui només `go_data`, i afegit un assert a `tools/build.py` per protegir la frontera.
+- **2) Diagnòstic i Resolució del Crash després del Mapa (Doble Solapament de Memòria)**:
+  - **Causa Arrel 1**: `LEVELCODE.BIN` (a `0x6934..0x6CF7`) era sobreescrit per `GAMEOVER.BIN` a `0x6A00`.
+  - **Causa Arrel 2**: En reubicar inicialment `GAMEOVER.BIN` a `0x7600`, com que ocupa 1.360 bytes (`0x7600..0x7B50`), sobreescrivia la **còpia mestra del driver FDC a `C0:0x7800`**. Quan el bucle de càrrega intentava llegir els enemics (`L1ENEMI.ZX0`), `fdc_load_file` restaurava gràfics sobre `0x8000` i saltava a executar-los, penjant-se just en saltar del mapa al joc.
+  - **Solució Definitiva**: Reubicat `GAMEOVER_PTR` a `(void*)0x5800` (dins del buit net de 2.477 B entre `MUSMAIN.BIN` a `0x5653` i el HUD a `0x6000`). La còpia mestra de FDC a `0x7800` i el codi d'ascensors a `0x6934` queden completament protegits.
   - Documentació completa del procés a [`docs/BOOT_FAILURE_2026-10.md`](file:///C:/Projects/bluesb_cpc/docs/BOOT_FAILURE_2026-10.md).
 
 - **3) Verificació en ZEsarUX**:
-  - Boot complet provat amb `scratch/verify_l1_boot.py`: Splash $\to$ Select $\to$ Map $\to$ Nivell 1 sense cap crash.
-  - El bucle principal de joc corre a 50 Hz i en Jake respon als controls de moviment correctament (`nat_l1_04_gameplay.png` i `nat_l1_05_moved.png`).
+  - Provats tant Jake com Elwood des de l'Splash fins al Nivell 1 (`scratch/test_user_flow.py`).
+  - Carregats tots els paquets correctament (`JAKE`/`ELWOOD`, `L1WORLD`, `L1ENEMI`), entrant fluidament al bucle de joc a 50 Hz (`after_map_fixed.png`).
 
 - **1) Cicle de Vides i AnimaciÃ³ de Ball de Mort (1:1 DOS)**:
   - **MecÃ nica fidel a DOS (`level.c:1583-1658`)**: En perdre l'Ãºltim cor (`g_hearts_count == 0`), en Jake s'immobilitza completament (`move = jump = grab = crouch = 0`, velocitats a zero) i executa l'animaciÃ³ de ball de mort durant ~1,3 segons (`s_dying_timer = 64` a 50 Hz). L'input de l'usuari queda bloquejat com a l'animaciÃ³ de noqueig (`s_dazed_timer`).

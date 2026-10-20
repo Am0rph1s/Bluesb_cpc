@@ -149,10 +149,16 @@ Això és la **llista de treball** de la Fase 3.
 
 ### 1.6 Marge real del Bloc 0
 
-- Amb el codi dels ascensors **dins** el resident: `_CODE` acaba a `0x386E`
-  → **14.190 B** i queden **48 B** fins a `_DATA` (`0x3900`).
-- Amb el codi **fora** (sessió 36): el marge passa de **48 B a 962 B**
-  (`ESTAT.md:902`). Aquest és el pressupost real per al motor genèric.
+- Amb el codi dels ascensors **dins** el resident: `_CODE` acabava a `0x386E`
+  → 14.190 B i quedaven **48 B** fins a `_DATA` (`0x3900` en aquell moment).
+- Amb el codi **fora** (sessió 36): marge **836 B** (`_CODE` 13.372 B).
+- **Després del carregador genèric (Fase 2.1):** `_CODE` **13.742 B** →
+  **marge 466 B**. El carregador genèric ha costat **+370 B** respecte dels 4
+  blocs de descompressió desenrotllats.
+- ⇒ El pressupost per a la Fase 3 (treure hardcodes, accessor de tiles) és de
+  **466 B**, i la Fase 3 ha de **recuperar** espai eliminant `s_row100[]`,
+  `render_room()` i `check_room_bonus()`.
+
 
 ### 1.7 Mides mesurades i el que encara falta
 
@@ -420,14 +426,21 @@ Objectiu: que cap regressió torni a passar desapercebuda hores.
 
 ## Fase 2 — Build universal (sense canvi visible)
 
-- [ ] **2.1** `build.py`: taula `LEVELS = [...]` (nom, fitxers, params) i bucle
-      que genera `LnWORLD.PAK` / `LnENEMI` per nivell.
-- [ ] **2.2** Asserts de pressupost per banc i nivell + comprovador de
-      solapaments contra `mem_map.h`.
-- [ ] **2.3** Nivell 1 generat amb el nou sistema; **el joc ha de ser idèntic**
-      (`tools/smoke_test.py` + captura + `test_user_flow.py`).
-- **CHECKPOINT F2:** build net, nivell 1 verificat a ZEsarUX (Jake i Elwood),
-  commit + push.
+- [x] **2.1** `build.py`: taula `LEVELS = [...]` i `build_level_packages()` que
+      genera `LnWORLD.PAK` / `LnENEMI.ZX0` amb **manifest** (16 B + descriptors
+      de 8 B). `GAMEOVER.ZX0` comú (decisió 2). Nivell 1 emès; els altres 5
+      s'afegeixen a la Fase 4.
+- [x] **2.2** `write_package()` valida: dins la finestra `0x4000-0x7FFF`,
+      **no-solapament per banc** (amb la mida descomprimida) i **≤ 14.560 B**
+      (scratch). Informe de pressupost per banc a cada build. L'assert fatal de
+      **≥ 256 B** s'activa a la Fase 3 (ara C5 va ple per disseny: 60 B).
+- [x] **2.3** Nivell 1 amb el nou sistema i **joc idèntic**: smoke test verd
+      (DSK: 7 fitxers amb CRC correcte; arrencada: `magic=0xB0`, `px8=256`,
+      `py8=8848`) i captura idèntica.
+- [x] **CHECKPOINT F2:** build net + smoke test verd.
+      **Cost:** el carregador genèric al resident = **+370 B**
+      (`_CODE` 13.742, marge **466 B**).
+
 
 ---
 

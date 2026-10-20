@@ -3,6 +3,28 @@
 Última actualització: 2026-10-20 — Sessió 37: **Regressió del build.py resolta** (el joc no arrencava per un empaquetat del Banc 1 reescrit), **smoke test d'arrencada + verificació del DSK** afegits i integrats al build (`--check`), i **revisió del pla universal amb les mides REALS dels mapes** (habitacions incloses).
 Idioma de treball amb l'usuari: **català**.
 
+## Sessió 38 — Fase 2.1: manifest de paquet + carregador genèric (20/10/2026)
+
+- **Format nou (aprovat)**: `LnWORLD.PAK` / `LnENEMI.ZX0` amb manifest
+  (`docs/LEVEL_PACKAGE.md`): capçalera de 16 B (magic `0x42`, versió, level_id,
+  flags, total_len, n_sections, disc_id, hdr_crc) + descriptors de 8 B
+  (`bank`, `flags` bit0=ZX0, `dest`, `src_off`, `src_len`).
+- **Build**: `LEVELS[]` + `build_level_packages()` / `write_package()`.
+  Asserts: finestra `0x4000-0x7FFF`, no-solapament per banc amb la mida
+  descomprimida, i paquet ≤ 14.560 B (scratch). Informe de pressupost per banc.
+- **GAMEOVER comú**: `GAMEOVER.ZX0` (643 B) carregat com una secció a `C1:0x5800`
+  (decisió 2). Surt del paquet del nivell → `L1WORLD` baixa de 13.483 a
+  **12.898 B**.
+- **Resident**: `load_package()` genèric (substitueix els 4 blocs de
+  descompressió de `load_level_packages()`). **Cost: +370 B** de codi
+  (`_CODE` 13.742 B, **marge 466 B**).
+- **Verificació**: smoke test complet verd (7 fitxers amb CRC correcte,
+  `magic=0xB0`, `px8=256`, `py8=8848`) i captura idèntica a abans.
+- **Pendent (Fase 3)**: sales a C5, HUD després de la cançó, offsets al
+  manifest (`LevelParams` v2), accessor únic de tiles, fora hardcodes
+  (`0x6400`, `0x6860`, `0x6934`, `0x5800`). Marge disponible: 466 B (caldrà
+  recuperar espai eliminant `s_row100[]`/`render_room()`/`check_room_bonus()`).
+
 ## Sessió 37 — Estabilització + mides reals dels 6 nivells (20/10/2026)
 
 - **Causa de la "no-arrencada"**: el `tools/build.py` de l'arbre de treball havia

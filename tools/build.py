@@ -155,9 +155,10 @@ DATA_FILES = [
     # 3. Personatges (permanents al Banc C7)
     ("JAKE",    "ZX0", os.path.join(PROJ, "obj", "JAKE.ZX0")),
     ("ELWOOD",  "ZX0", os.path.join(PROJ, "obj", "ELWOOD.ZX0")),
-    # 4. Paquets Nivell 1
+    # 4. Paquets Nivell 1 + GAMEOVER comu
     ("L1WORLD", "PAK", os.path.join(PROJ, "obj", "L1WORLD.PAK")),
     ("L1ENEMI", "ZX0", os.path.join(PROJ, "obj", "L1ENEMI.ZX0")),
+    ("GAMEOVER", "ZX0", os.path.join(PROJ, "obj", "GAMEOVER.ZX0")),
 ]
 
 
@@ -1385,11 +1386,10 @@ def zx0_pack_all():
 
 
 def build_level_bundles(force=False):
-    """Genera els paquets de dades pel gameplay:
-    - obj/JAKE.ZX0    : PFRAMES.BIN (13920 B) + 960 B zeros + EXTRA.BIN (992 B) -> Banc C7
-    - obj/ELWOOD.ZX0  : ELWOOD.BIN (13920 B) + 960 B zeros + EXTRA.BIN (992 B) -> Banc C7
-    - obj/L1ENEMI.ZX0 : ENEMI.BIN (13387 B) -> Banc C6
-    - obj/L1WORLD.PAK : Header (6 B) + TILES.ZX0 + BANK5_FULL.ZX0 + MUSMAIN.ZX0 + ELEV.ZX0
+    """Genera les dades del jugador (permanents al Banc C7):
+    - obj/JAKE.ZX0   : PFRAMES.BIN + 960 B zeros + EXTRA.BIN
+    - obj/ELWOOD.ZX0 : ELWOOD.BIN  + 960 B zeros + EXTRA.BIN
+    Els paquets de nivell els genera build_level_packages().
     """
     obj = os.path.join(PROJ, "obj")
     from zx0pkg.zx0 import zx0_compress
@@ -1421,69 +1421,148 @@ def build_level_bundles(force=False):
         mark_fresh(elwood_dst, [el_src, ex_src])
         print("ZX0: ELWOOD %d -> %d B" % (len(raw), len(out)))
 
-    # 3. L1ENEMI.ZX0
-    en_dst = os.path.join(obj, "L1ENEMI.ZX0")
-    en_src = os.path.join(obj, "ENEMI.BIN")
-    if force or is_stale(en_dst, [en_src]):
-        en_data = open(en_src, "rb").read()
-        out, _ = zx0_compress(bytes(en_data), classic=True, quick=ZX0_QUICK)
-        open(en_dst, "wb").write(bytes(out))
-        mark_fresh(en_dst, [en_src])
-        print("ZX0: L1ENEMI %d -> %d B" % (len(en_data), len(out)))
 
-    # 4. L1WORLD.PAK
-    l1w_dst = os.path.join(obj, "L1WORLD.PAK")
-    tiles_src = os.path.join(PROJ, "assets", "bbdata", "TILESET0.BIN")
-    map_src = os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN")
-    trig_src = os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN")
-    bank5_src = os.path.join(obj, "BANK5.BIN")
-    mus_src = os.path.join(obj, "MUSMAIN.BIN")
-    levelcode_src = os.path.join(obj, "LEVELCODE.BIN")
-    levelcode_data_src = os.path.join(obj, "LEVELDATA.BIN")
-    elev_src = os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")
-    gameover_src = os.path.join(PROJ, "assets", "bbdata", "GAMEOVER.BIN")
-    if not os.path.exists(gameover_src):
+# ---------------------------------------------------------------------------
+# Paquets de nivell — format definit a docs/LEVEL_PACKAGE.md (aprovat 20/10/26)
+#   capcalera 16 B: magic,version,level_id,flags,total_len,n_sections,disc_id,
+#                   hdr_crc, reserved
+#   descriptor 8 B: bank, flags(bit0=ZX0), dest, src_off, src_len
+# ---------------------------------------------------------------------------
+PAK_MAGIC       = 0x42
+PAK_VERSION     = 1
+PAK_HDR         = 16
+PAK_DESC        = 8
+PAK_SCRATCH_MAX = 0xBC00 - 0x8320      # 14.560 B: limit del carregador FDC
+
+# Fase 2.1: nomes el nivell 1. Els altres 5 s'hi afegeixen a la Fase 4.
+LEVELS = [
+    dict(id=0, tag="L1", song="main", doors=23, has_code=True, has_elev=True,
+         has_rooms=True),
+]
+
+
+def write_package(path, level_id, flags, sections):
+    """Escriu un paquet amb manifest.
+
+    sections = [(bank, zx0, dest, payload, dest_len)] on `dest_len` és la mida
+    DESCOMPRIMIDA (la que ocupa al banc). Comprova solapaments, límits de
+    finestra i que el fitxer càpiga a l'scratch del carregador (0x8320-0xBBFF).
+    """
+    n = len(sections)
+    off = PAK_HDR + PAK_DESC * n
+    desc = b""
+    for bank, zx0, dest, payload, dest_len in sections:
+        desc += struct.pack("<BBHHH", bank, 1 if zx0 else 0, dest, off, len(payload))
+        off += len(payload)
+    total = off
+
+    # Per banc: dins la finestra 0x4000-0x7FFF i sense solapaments.
+    by_bank = {}
+    for bank, zx0, dest, payload, dest_len in sections:
+        assert 0x4000 <= dest and dest + dest_len <= 0x8000, \
+            "secció fora de la finestra (banc 0x%02X, 0x%04X+%d)" % (bank, dest, dest_len)
+        by_bank.setdefault(bank, []).append((dest, dest + dest_len))
+    for bank, rngs in by_bank.items():
+        rngs.sort()
+        for a, b in zip(rngs, rngs[1:]):
+            assert a[1] <= b[0], "solapament al banc 0x%02X: 0x%04X..0x%04X i 0x%04X" % (
+                bank, a[0], a[1], b[0])
+    assert total <= PAK_SCRATCH_MAX, \
+        "paquet de %d B > scratch %d B (cal carrega en 2 passades)" % (total, PAK_SCRATCH_MAX)
+
+    head = struct.pack("<BBBBHHH", PAK_MAGIC, PAK_VERSION, level_id, flags,
+                       total & 0xFFFF, n, 0)
+    assert len(head) == 10
+    hdr = head + struct.pack("<H", crc16_ccitt(head)) + b"\x00\x00\x00\x00"
+    assert len(hdr) == PAK_HDR
+    open(path, "wb").write(hdr + desc + b"".join(s[3] for s in sections))
+
+    # Informe de pressupost per banc (asserts fatals a partir de la Fase 3,
+    # quan el layout ja no és el llegat: ara C5 va ple per disseny).
+    for bank in sorted(by_bank):
+        used = sum(b - a for a, b in by_bank[bank])
+        print("    banc 0x%02X: %5d B usats, %5d lliures%s" % (
+            bank, used, 16384 - used, "" if 16384 - used >= 256 else "  [JUST]"))
+
+
+def build_level_packages(force=False):
+    """Genera LnWORLD.PAK + LnENEMI.ZX0 (manifest) i GAMEOVER.ZX0 (comu).
+
+    Fase 2.1: els destins son els MATEIXOS que al format antic, perque el joc
+    quedi identic; la Fase 3 els reorganitza (sales a C5, HUD despres de la
+    canco...)."""
+    obj = os.path.join(PROJ, "obj")
+    from zx0pkg.zx0 import zx0_compress
+
+    # GAMEOVER comu (decisio 2): un sol fitxer, seccio -> C1:0x5800.
+    go_src = os.path.join(PROJ, "assets", "bbdata", "GAMEOVER.BIN")
+    if not os.path.exists(go_src):
         import gen_gameover
         gen_gameover.generate_gameover()
-    l1w_sources = [tiles_src, map_src, trig_src, bank5_src, mus_src, elev_src,
-                   gameover_src, levelcode_src, levelcode_data_src]
+    go_dst = os.path.join(obj, "GAMEOVER.ZX0")
+    go_raw = open(go_src, "rb").read()
+    assert len(go_raw) == 1360, len(go_raw)
+    if force or is_stale(go_dst, [go_src]):
+        z, _ = zx0_compress(bytes(go_raw), classic=True, quick=ZX0_QUICK)
+        write_package(go_dst, 0xFF, 0, [(0xC1, True, 0x5800, bytes(z), len(go_raw))])
+        mark_fresh(go_dst, [go_src])
+        print("PAK: GAMEOVER %d B" % os.path.getsize(go_dst))
 
-    if force or is_stale(l1w_dst, l1w_sources):
-        t_data = open(tiles_src, "rb").read()
-        t_zx, _ = zx0_compress(bytes(t_data), classic=True, quick=ZX0_QUICK)
+    for lv in LEVELS:
+        tag = lv["tag"]
+        tiles_src = os.path.join(PROJ, "assets", "bbdata", "TILESET0.BIN")
+        map_src = os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN")
+        trig_src = os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN")
+        bank5_src = os.path.join(obj, "BANK5.BIN")
+        mus_src = os.path.join(obj, "MUSMAIN.BIN")
+        code_src = os.path.join(obj, "LEVELCODE.BIN")
+        code_data_src = os.path.join(obj, "LEVELDATA.BIN")
+        elev_src = os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")
+        en_src = os.path.join(obj, "ENEMI.BIN")
 
-        b5_raw = open(map_src, "rb").read() + open(trig_src, "rb").read() + open(bank5_src, "rb").read()
-        assert len(b5_raw) == 9216 + 2560 + os.path.getsize(bank5_src)
-        b5_zx, _ = zx0_compress(bytes(b5_raw), classic=True, quick=ZX0_QUICK)
+        world_dst = os.path.join(obj, tag + "WORLD.PAK")
+        en_dst = os.path.join(obj, tag + "ENEMI.ZX0")
+        srcs = [tiles_src, map_src, trig_src, bank5_src, mus_src, elev_src,
+                code_src, code_data_src, en_src, go_src, os.path.join(PROJ, "assets",
+                "bbdata", "LEVELPARM0.BIN"), os.path.join(PROJ, "assets", "bbdata",
+                "ROOMS0.BIN")]
 
-        # Banc 1: musica + HUD + habitacions + portes + parametres + el CODI
-        # DEL NIVELL (ascensors) + els seus frames i buffers de fons. El codi
-        # del nivell no pot viure al Bloc 0 resident (que ha de ser el motor
-        # generic), i aqui hi ha lloc de sobra.
-        m_data = open(mus_src, "rb").read()
-        m_data += bytes(LC1_CODE_BASE - 0x5000 - len(m_data))
-        m_data += open(levelcode_src, "rb").read()
-        assert len(m_data) <= (LC1_FRAMES_BASE - 0x5000), len(m_data)
-        m_data += bytes(LC1_FRAMES_BASE - 0x5000 - len(m_data))
-        m_data += open(elev_src, "rb").read()
-        m_zx, _ = zx0_compress(bytes(m_data), classic=True, quick=ZX0_QUICK)
+        if force or is_stale(world_dst, srcs):
+            t_raw = open(tiles_src, "rb").read()
+            t_zx, _ = zx0_compress(bytes(t_raw), classic=True, quick=ZX0_QUICK)
 
-        # Banc 0: nom?s el banner del GAME OVER (els frames de l'ascensor
-        # s'han mogut al Banc 1, amb el codi que els dibuixa).
-        go_data = open(gameover_src, "rb").read()
-        assert len(go_data) == 1360
-        e_zx, _ = zx0_compress(bytes(go_data), classic=True, quick=ZX0_QUICK)
+            b5_raw = open(map_src, "rb").read() + open(trig_src, "rb").read() + open(bank5_src, "rb").read()
+            assert len(b5_raw) == 9216 + 2560 + os.path.getsize(bank5_src), len(b5_raw)
+            b5_zx, _ = zx0_compress(bytes(b5_raw), classic=True, quick=ZX0_QUICK)
 
-        # Header (6 bytes): off_bank5, off_mus, off_elev
-        off_bank5 = 6 + len(t_zx)
-        off_mus = off_bank5 + len(b5_zx)
-        off_elev = off_mus + len(m_zx)
-        hdr = struct.pack("<HHH", off_bank5, off_mus, off_elev)
-        pak = hdr + bytes(t_zx) + bytes(b5_zx) + bytes(m_zx) + bytes(e_zx)
-        open(l1w_dst, "wb").write(pak)
-        mark_fresh(l1w_dst, l1w_sources)
-        print("PAK: L1WORLD %d B (tiles=%d b5=%d mus=%d elev=%d)" %
-              (len(pak), len(t_zx), len(b5_zx), len(m_zx), len(e_zx)))
+            # Imatge del Banc 1 (identica al format antic, Fase 2.1):
+            #   MUSMAIN.BIN + pad a 0x6934 + codi + pad a 0x6E20 + frames
+            m_data = open(mus_src, "rb").read()
+            m_data += bytes(LC1_CODE_BASE - 0x5000 - len(m_data))
+            m_data += open(code_src, "rb").read()
+            assert len(m_data) <= (LC1_FRAMES_BASE - 0x5000), len(m_data)
+            m_data += bytes(LC1_FRAMES_BASE - 0x5000 - len(m_data))
+            m_data += open(elev_src, "rb").read()
+            m_zx, _ = zx0_compress(bytes(m_data), classic=True, quick=ZX0_QUICK)
+
+            flags = ((1 if lv["has_code"] else 0) | (2 if lv["has_elev"] else 0) |
+                     (4 if lv["has_rooms"] else 0) | 8)
+            write_package(world_dst, lv["id"], flags, [
+                (0xC4, True, 0x4000, bytes(t_zx), len(t_raw)),
+                (0xC5, True, 0x4000, bytes(b5_zx), len(b5_raw)),
+                (0xC1, True, 0x5000, bytes(m_zx), len(m_data)),
+            ])
+            mark_fresh(world_dst, srcs)
+            print("PAK: %sWORLD %d B (tiles=%d b5=%d c1=%d)" %
+                  (tag, os.path.getsize(world_dst), len(t_zx), len(b5_zx), len(m_zx)))
+
+        if force or is_stale(en_dst, [en_src]):
+            en_raw = open(en_src, "rb").read()
+            e_zx, _ = zx0_compress(bytes(en_raw), classic=True, quick=ZX0_QUICK)
+            write_package(en_dst, lv["id"], 0, [(0xC6, True, 0x4000, bytes(e_zx), len(en_raw))])
+            mark_fresh(en_dst, [en_src])
+            print("PAK: %sENEMI %d B" % (tag, os.path.getsize(en_dst)))
+
 
 
 def package(starter_path, starter_start, game_path):
@@ -1648,7 +1727,8 @@ def main():
         build_bank(force)  # Banc 5 (necessita el mapa resident per l'equ)
         build_levelcode(force)  # Banc 1: codi del nivell (ascensors)
         build_enemybank(force)  # Banc C3 (walkers; reutilitza bank_equ.rel)
-        build_level_bundles(force)  # Paquets de joc (JAKE, ELWOOD, L1WORLD, L1ENEMI)
+        build_level_bundles(force)  # JAKE / ELWOOD (Banc C7)
+        build_level_packages(force)  # LnWORLD.PAK / LnENEMI + GAMEOVER (manifest)
         build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)
         build_front(force)  # FRONT banked (necessita el mapa resident)
         starter_path, starter_start = build_starter(force)

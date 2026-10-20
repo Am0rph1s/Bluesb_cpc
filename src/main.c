@@ -715,6 +715,43 @@ u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
 #define GAMEOVER_PTR ((const u8*)0x5800)
 
 // ============================================================
+// Carregador generic de paquets de nivell (docs/LEVEL_PACKAGE.md)
+// ------------------------------------------------------------
+// Capcalera (16 B): magic 'B', version, level_id, flags, total_len,
+//   n_sections, disc_id, hdr_crc, reserved.
+// Seccio (8 B): bank, flags (bit0=ZX0), dest(u16), src_off(u16), src_len(u16).
+// Retorna 1 si el fitxer s'ha llegit, el CRC es correcte i el manifest es valid.
+// ============================================================
+static u8 load_package(const DiskFileDesc* f, u16 crc) {
+    const u8* pak = (const u8*)0x8320;
+    u8 t, ok = 0, n, i;
+
+    for (t = 0; t < 3 && !ok; t++) {
+        if (!fdc_load_file(0xC0, f, 0xC0, (void*)0x8320)) continue;
+        if (fdc_crc16(pak, (u16)(f->ondisk_bytes - 128)) == crc) ok = 1;
+    }
+    if (!ok) return 0;
+    if (pak[0] != 0x42 || pak[1] != 1) return 0;
+
+    n = pak[6];
+    for (i = 0; i < n; i++) {
+        const u8* d = pak + 16 + (u16)i * 8;
+        u16 dst = (u16)(d[2] | ((u16)d[3] << 8));
+        u16 off = (u16)(d[4] | ((u16)d[5] << 8));
+        u16 len = (u16)(d[6] | ((u16)d[7] << 8));
+        u8 prev = bank_set(d[0]);
+        if (d[1] & 1) {
+            zx0_decompress(pak + off, (void*)dst);
+        } else {
+            cpct_memcpy((void*)dst, pak + off, len);
+        }
+        bank_restore(prev);
+    }
+    return 1;
+}
+
+
+// ============================================================
 // Carrega del nivell des del disc + reset de video.
 // 1:1 DOS: el bucle principal de game.c crida load_level_data(g_vars.level)
 // a CADA iteracio del bucle de nivell (game.c:344), o sigui tambe despres
@@ -744,58 +781,29 @@ static void load_level_packages(void) {
         }
     }
 
-    // 2. Mon Nivell 1: L1WORLD.PAK -> 4 sub-blocs descomprimits als seus respectius bancs
+    // 2. Mon: LnWORLD.PAK amb MANIFEST (docs/LEVEL_PACKAGE.md). El carregador
+    //    es generic: capita el header, recorre les seccions i descomprimeix
+    //    cadascuna al seu banc/adreca. Cap adreca de desti al codi.
     {
-        u8 ok = 0, t;
-        for (t = 0; t < 3 && !ok; t++) {
-            if (!fdc_load_file(0xC0, &g_file_l1world, 0xC0, (void*)0x8320)) continue;
-            if (fdc_crc16((const u8*)0x8320, (u16)(g_file_l1world.ondisk_bytes - 128)) == CRC_L1WORLD) ok = 1;
+        if (!load_package(&g_file_l1world, CRC_L1WORLD)) {
+            cpct_setBorder(0x42); while (1) { }
         }
-        if (!ok) { cpct_setBorder(0x42); while (1) { } }
-        {
-            const u8* pak = (const u8*)0x8320;
-            u16 off_bank5 = (u16)(pak[0] | (pak[1] << 8));
-            u16 off_mus   = (u16)(pak[2] | (pak[3] << 8));
-            u16 off_elev  = (u16)(pak[4] | (pak[5] << 8));
-            u8 prev;
+        // Parametres del nivell (geometria, tiles, start, checkpoint...). Viuen
+        // a la imatge de C1; la Fase 3 en treura l'offset del manifest.
+        level_params_load();
+    }
 
-            // Sub-bloc 1: Tileset (Mode 0) -> Banc C4:0x4000
-            prev = bank_set(0xC4);
-            zx0_decompress((const void*)(pak + 6), (void*)0x4000);
-            bank_restore(prev);
-
-            // Sub-bloc 2: Mapa + Triggers + Codi Banc 5 -> Banc C5:0x4000
-            prev = bank_set(0xC5);
-            zx0_decompress((const void*)(pak + off_bank5), (void*)0x4000);
-            bank_restore(prev);
-
-            // Sub-bloc 3: Musica + HUD + Rooms + Doors + Params -> Banc C1:0x5000
-            prev = bank_set(0xC1);
-            zx0_decompress((const void*)(pak + off_mus), (void*)0x5000);
-            bank_restore(prev);
-            // Els parametres del nivell (geometria, tiles, start, checkpoint)
-            // surten del paquet: el Bloc 0 no en te cap constant compilada.
-            level_params_load();
-
-            // Sub-bloc 4: GAMEOVER (0x7600) -> Banc C1 / C0
-            prev = bank_set(0xC1);
-            zx0_decompress((const void*)(pak + off_elev), (void*)0x5800);
-            bank_restore(prev);
+    // 2b. GAMEOVER: fitxer comu (decisio 2), una seccio -> C1:0x5800
+    {
+        if (!load_package(&g_file_gameover, CRC_GAMEOVER)) {
+            cpct_setBorder(0x44); while (1) { }
         }
     }
 
-    // 3. Enemics Nivell 1: L1ENEMI.ZX0 -> Banc C6:0x4000
+    // 3. Enemics: LnENEMI amb manifest -> Banc C6:0x4000
     {
-        u8 ok = 0, t;
-        for (t = 0; t < 3 && !ok; t++) {
-            if (!fdc_load_file(0xC0, &g_file_l1enemi, 0xC0, (void*)0x8320)) continue;
-            if (fdc_crc16((const u8*)0x8320, (u16)(g_file_l1enemi.ondisk_bytes - 128)) == CRC_L1ENEMI) ok = 1;
-        }
-        if (!ok) { cpct_setBorder(0x43); while (1) { } }
-        {
-            u8 prev = bank_set(0xC6);
-            zx0_decompress((const void*)0x8320, (void*)0x4000);
-            bank_restore(prev);
+        if (!load_package(&g_file_l1enemi, CRC_L1ENEMI)) {
+            cpct_setBorder(0x43); while (1) { }
         }
     }
 

@@ -93,6 +93,7 @@ def check_dsk():
     crcs.update(parse_defines(st))
 
     files = [("l1world", "CRC_L1WORLD"), ("l1enemi", "CRC_L1ENEMI"),
+             ("gameover", "CRC_GAMEOVER"),
              ("jake", "CRC_JAKE"), ("elwood", "CRC_ELWOOD"),
              ("front", "CRC_FRONT"), ("game", "GAME_CRC")]
 

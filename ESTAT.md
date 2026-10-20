@@ -1,14 +1,15 @@
 # ESTAT DEL PROJECTE — The Blues Brothers (CPC, català)
 
-Última actualització: 2026-10-20 — Sessió 36: Resolució definitiva del crash després del mapa (col·lisió de GAMEOVER amb el driver FDC a 0x7800 resolta reubicant GAMEOVER a 0x5800), codi dels ascensors allotjat al Banc 1 (0xC1) alliberant el Bloc 0 resident (motor genèric), boot net Splash -> Select -> Map -> Joc Nivell 1 verificat en ZEsarUX (Jake i Elwood).
+Última actualització: 2026-10-20 — Sessió 36: Resolució de les pampallugues i errors gràfics dels ascensors (ús correcte de la configuració Gate Array 0xC0 en lloc de 0xC1, ja que 0xC1 mapeja la RAM 7 d'expansió a 0xC000..0xFFFF ocultant la VRAM de la pàgina 0 del doble buffer). Resolució del crash després del mapa (GAMEOVER a 0x5800).
 Idioma de treball amb l'usuari: **català**.
 
 ## Estat vigent — Codi de Nivell al Banc C1 i Resolució del Boot/Crash (20/10/2026)
 
-- **1) Extracció del Codi d'Ascensors del Bloc 0 Resident cap al Banc 1 (`0xC1`)**:
+- **1) Extracció del Codi d'Ascensors del Bloc 0 Resident i Correcció de Pampallugues (0xC0)**:
   - **Objectiu arquitectònic**: El Bloc 0 resident ha de ser estrictament el **motor comú** de joc (sprites, scroll, cicle de vida, FDC, gestor d'entitats), sense codi específic de cap nivell concret.
-  - **Implementació**: Creat `src/level_code.c` i la taula de salts bancada `engine/bank1_table.s` compilada a `0x6934` del Banc 1.
-  - Les rutines `moving_draw` i `moving_restore` a `src/moving.c` es converteixen en simples trampolins cap a `call_banked(0xC1, LC1_DRAW)` i `call_banked(0xC1, LC1_RESTORE)`.
+  - **Implementació**: Creat `src/level_code.c` i la taula de salts bancada `engine/bank1_table.s` compilada a `0x6934` de la RAM 1.
+  - **Causa de les pampallugues i glitches**: El Gate Array del CPC 6128 amb la configuració `0xC1` commuta la finestra `0xC000..0xFFFF` cap a la **RAM 7 d'expansió** en comptes de la RAM 3 de base (la VRAM de la Pàgina 0). Quan `moving_draw` o `moving_restore` s'executaven sota `0xC1`, en els frames parells (`page == 0`) escrivien i restauraven a la RAM 7 en lloc de la pantalla, provocant que la Pàgina 0 mai s'esborrés (acumulació de ratlles i glitches) i que l'ascensor desaparegués el 50% del temps (flicker a 25 Hz).
+  - **Solució**: Cridat `call_banked(0xC0, LC1_DRAW)` i `call_banked(0xC0, LC1_RESTORE)`. Sota `0xC0`, la RAM 1 (`0x4000..0x7FFF`, ascensors) i les dues pàgines de VRAM (`0x8000` i `0xC000`) són plenament accessibles i visibles a la pantalla real.
   - Els frames (`0x6E20`) i buffers de fons dels ascensors (`0x7000`) s'empaqueten directament al sub-bloc musical/nivell de `L1WORLD.PAK`.
 
 - **2) Diagnòstic i Resolució del Crash després del Mapa (Doble Solapament de Memòria)**:

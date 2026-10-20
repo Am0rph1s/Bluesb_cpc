@@ -5,7 +5,7 @@
 // Generat per tools/build.py. NO EDITAR.
 #define GAME_START 0x13A7
 #define GAME_LEN 15219
-#define GAME_CRC 0x813E
+#define GAME_CRC 0x21BA
 #define FDC_LEN 913
 #define CRC_FDC 0x0ADB
 #define FRONT_LEN 2448

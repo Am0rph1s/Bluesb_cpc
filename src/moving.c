@@ -53,14 +53,14 @@ void moving_popup_restore(u8 page) { bc_a = page; call_banked(0xC5, BC_RESTORE);
 void moving_restore(u8 page, u8 force) {
     (void)force;
     bc_a = page;
-    call_banked(0xC1, LC1_RESTORE);
+    call_banked(0xC0, LC1_RESTORE);
 }
 
 void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
     bc_a = page;
     bc_b = cam_x4;
     bc_c = cam_row;
-    call_banked(0xC1, LC1_DRAW);
+    call_banked(0xC0, LC1_DRAW);
 }
 
 void moving_draw_conveyor_tiles(void) { call_banked(0xC5, (void*)0x6E12); }

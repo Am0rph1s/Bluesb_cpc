@@ -279,10 +279,14 @@ def check_boot(keep=False):
         im.crop(((w - 768) // 2, (h - 512) // 2,
                  (w - 768) // 2 + 768, (h - 512) // 2 + 512)).save(shot_png)
 
-    ok = magic == MAGIC and px != 0 and py != 0
-    print("  magic=0x%02X px8=%d py8=%d bank=0x%02X  -> %s" % (
-        magic & 0xFF, px, py, z.r8(a_bank) & 0xFF if a_bank else 0,
-        "OK" if ok else "FALLADA"), flush=True)
+    # Posicio esperada: la del paquet (s_lv.start_px/start_py, a +34/+36).
+    spx = z.r16(a_magic + 34) if a_magic else 0
+    spy = z.r16(a_magic + 36) if a_magic else 0
+    ok = (magic == MAGIC and px != 0 and py != 0 and
+          abs(px - spx * 8) <= 64 and abs(py - spy * 8) <= 1024)
+    print("  magic=0x%02X px8=%d py8=%d (esperat %d,%d) bank=0x%02X  -> %s" % (
+        magic & 0xFF, px, py, spx * 8, spy * 8,
+        z.r8(a_bank) & 0xFF if a_bank else 0, "OK" if ok else "FALLADA"), flush=True)
     if not ok:
         regs = z.cmd("get-registers", wait=0.3)
         m = re.search(r"PC=(\w+)", regs)

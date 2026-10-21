@@ -126,8 +126,6 @@ void start(void) {
     main();
 }
 
-static const u16 s_row100[10] = { 0, 100, 200, 300, 400, 500, 600, 700, 800, 900 };
-
 // --- Parametres del NIVELL (runtime; venen del paquet) -------------------
 // El bloc sencer del paquet (C1:0x6900) es copia aqui i s'hi accedeix
 // amb les macros de level_params.h: cap constant del nivell 1 al Bloc 0
@@ -137,8 +135,7 @@ LevelParams s_lv;
 void level_params_load(void) {
     // El bloc de parametres del nivell es llegeix del paquet (Banc C1:0x6900)
     // i es queda al resident: la part u8 (geometria, tiles, mides) es usa a
-    // cada frame; els valors de 16 bits (start, checkpoint, camera) es
-    // compilen mes avall per no gastar codi.
+    // cada frame; els valors de 16 bits (start, checkpoint, camera) tambe.
     u8 prev = bank_set(0xC1);
     cpct_memcpy(&s_lv, (const void*)0x6900, sizeof(LevelParams));
     bank_restore(prev);
@@ -146,13 +143,14 @@ void level_params_load(void) {
 
 static u8 get_tile_at(u16 col, u16 row) {
     u8 prev, t;
-    if (row >= 74 && row < 84 && col < 100) {
+    if (row >= s_lv.room_row0 && row < (u16)(s_lv.room_row0 + s_lv.room_rows) &&
+        col < s_lv.room_total_cols) {
         prev = bank_set(0xC1);
-        t = ((const u8*)0x6400)[s_row100[row - 74] + col];
+        t = ((const u8*)(u16)s_lv.rooms_off)[s_lv.room_rowoff[row - s_lv.room_row0] + col];
         bank_restore(prev);
         return t;
     }
-    if (col >= LEVEL_MAP_W || row >= LEVEL_MAP_H) return 0xFF;
+    if (col >= s_lv.map_w || row >= s_lv.map_h) return 0xFF;
     prev = bank_set(0xC5);
     t = MAP_PTR[(row << 7) + col];
     bank_restore(prev);
@@ -180,9 +178,9 @@ u8 tile_flags(u16 col, u16 row) {
 
 u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
     u8 op;
-    if (row >= 74) {
-        if (row >= 83) return (vy >= 0);
-    } else if (row >= (LEVEL_MAP_H - 1)) {
+    if (row >= s_lv.room_row0) {
+        if (row >= s_lv.room_row_last) return (vy >= 0);
+    } else if (row >= (u16)(s_lv.map_h - 1)) {
         return (vy >= 0);
     }
     op = get_trig_byte(col, row, 2);
@@ -266,11 +264,11 @@ static void enter_door(u8 dst_col, u8 dst_row) {
         s_scrolling_locked = 0;
 
         if (cam_col < 0) cam_col = 0;
-        if (cam_col > (LEVEL_MAP_W - 20)) cam_col = LEVEL_MAP_W - 20;
+        if (cam_col > (i16)s_lv.cam_max_x4) cam_col = (i16)s_lv.cam_max_x4;
         g_cam_x4 = (u16)(cam_col << 1);
 
         if (cam_r < 0) cam_r = 0;
-        if (cam_r > (LEVEL_MAX_CAM_ROW >> 1)) cam_r = (LEVEL_MAX_CAM_ROW >> 1);
+        if (cam_r > (i16)(s_lv.max_cam_row >> 1)) cam_r = (i16)(s_lv.max_cam_row >> 1);
         g_cam_row = (u16)(cam_r << 1);
         enemy_room_exit((i16)(s_px8 >> 3), (i16)(s_py8 >> 3));
     }
@@ -295,8 +293,8 @@ static void check_doors(void) {
     u8 i, prev;
     const LevelDoor* d;
     prev = bank_set(0xC1);
-    d = (const LevelDoor*)0x6800;
-    for (i = 0; i < 23; i++, d++) {
+    d = (const LevelDoor*)(u16)s_lv.doors_off;
+    for (i = 0; i < s_lv.door_count; i++, d++) {
         if (d->src_col == j_col && d->src_row == j_row) {
             u8 dc = d->dst_col;
             u8 dr = d->dst_row;
@@ -310,12 +308,13 @@ static void check_doors(void) {
 
 static void check_room_bonus(u8 col, u8 feet_row) {
     u8 r, prev, t;
-    if (col >= 100) return;
-    for (r = feet_row; r >= (feet_row - 2) && r >= 74; r--) {
-        if (r >= 84) continue;
-        u16 off = s_row100[r - 74] + col;
+    u8 row_last = (u8)(s_lv.room_row0 + s_lv.room_rows);
+    if (col >= s_lv.room_total_cols) return;
+    for (r = feet_row; r >= (feet_row - 2) && r >= s_lv.room_row0; r--) {
+        if (r >= row_last) continue;
+        u16 off = s_lv.room_rowoff[r - s_lv.room_row0] + col;
         prev = bank_set(0xC1);
-        t = ((const u8*)0x6400)[off];
+        t = ((const u8*)(u16)s_lv.rooms_off)[off];
         if (t == s_lv.tile_vinyl) {
             if (g_vinyls_count < 99) g_vinyls_count++;
         } else if (t == s_lv.tile_instr) {
@@ -324,7 +323,7 @@ static void check_room_bonus(u8 col, u8 feet_row) {
             bank_restore(prev);
             continue;
         }
-        ((u8*)0x6400)[off] = s_lv.tile_empty;
+        ((u8*)(u16)s_lv.rooms_off)[off] = s_lv.tile_empty;
         bank_restore(prev);
         if (s_rep_n < 4) {
             s_rep_col[s_rep_n] = col;
@@ -538,7 +537,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
         ncol = (u16)(((s_carry_vx > 0) ? (cx + 8) : cx) >> 3);
         nrow = (u16)((cy + 6) >> 4);
         tt = tile_type(ncol, nrow);
-        if (sx < -4 || sx > 76 || sy < -16 || sy > 160 || cx < 16 || cx > (i16)(LEVEL_W_PX - 24) ||
+        if (sx < -4 || sx > 76 || sy < -16 || sy > 160 || cx < 16 || cx > (i16)(s_lv.map_w_px - 24) ||
             tt == 6 || enemy_check_crate_hit(cx, cy, s_carry_vx)) {
             carry_abort();
         }
@@ -570,7 +569,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
     }
     {
         i16 min_x = s_in_room ? (i16)(g_cam_x4 << 5) : 0;
-        i16 max_x = s_in_room ? (i16)(min_x + 1152) : (i16)((LEVEL_W_PX - PW) * SUB);
+        i16 max_x = s_in_room ? (i16)(min_x + 1152) : (i16)((s_lv.map_w_px - PW) * SUB);
         if (s_px8 < min_x) { s_px8 = min_x; s_vx = 0; }
         else if (s_px8 > max_x) { s_px8 = max_x; s_vx = 0; }
     }
@@ -637,7 +636,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                     landed = 1;
                 }
                 {
-                    u16 max_r = s_in_room ? (u16)(s_lv.room_row0 + s_lv.room_rows) : LEVEL_MAP_H;
+                    u16 max_r = s_in_room ? (u16)(s_lv.room_row0 + s_lv.room_rows) : s_lv.map_h;
                     u16 target_row = (u16)(curr_feet >> 4);
                     if (!landed && target_row < max_r) {
                         i16 surf = (i16)(target_row << 4);
@@ -850,7 +849,7 @@ static void restore_level_tiles(void) {
     // posicions dins ROOMS0.BIN tenen un disc i quin es el seu tile inicial.
     // L'instrument (tile 159) NO hi es: l'item secret persisteix (1:1 DOS).
     prev = bank_set(0xC1);
-    tbl = (const u8*)0x6860;
+    tbl = (const u8*)(u16)s_lv.restore_off;
     n = (u16)(tbl[0] | (tbl[1] << 8));
     for (i = 0; i < n; i++) {
         const u8* e = tbl + 2 + (u16)(i * 3);
@@ -1057,15 +1056,15 @@ void main(void) {
                 moving_respawn();          // objectes mobils a l'estat inicial
                 enemy_init();              // enemics a la seva posicio inicial
                 if (g_checkpoint) {
-                    s_px8 = (i16)(LEVEL_CHK_PX * SUB);
-                    s_py8 = (i16)(LEVEL_CHK_PY * SUB);
-                    g_cam_x4 = (u16)LEVEL_CHK_CAM_X4;
-                    g_cam_row = (u16)LEVEL_CHK_CAM_ROW;
+                    s_px8 = (i16)(s_lv.chk_px * SUB);
+                    s_py8 = (i16)(s_lv.chk_py * SUB);
+                    g_cam_x4 = (u16)s_lv.chk_cam_x4;
+                    g_cam_row = (u16)s_lv.chk_cam_row;
                 } else {
-                    s_px8 = (i16)(LEVEL_START_PX * SUB);
-                    s_py8 = (i16)(LEVEL_START_PY * SUB);
-                    g_cam_x4 = (u16)LEVEL_CAM0_X4;
-                    g_cam_row = (u16)LEVEL_CAM0_ROW;
+                    s_px8 = (i16)(s_lv.start_px * SUB);
+                    s_py8 = (i16)(s_lv.start_py * SUB);
+                    g_cam_x4 = (u16)s_lv.cam0_x4;
+                    g_cam_row = (u16)s_lv.cam0_row;
                 }
                 s_vx = 0; s_vy = 0;
                 s_on_ground = 1;
@@ -1112,7 +1111,7 @@ void main(void) {
             if (!s_scrolling_locked && !s_dying_timer) {
                 i16 sy = (i16)(py - (i16)(g_cam_row * 8));
                 i16 sx = (i16)(px - (i16)(g_cam_x4 * 4));
-                if (sx > DEAD_R && g_cam_x4 < ((LEVEL_W_PX / 4) - PLAY_CHARS)) {
+                if (sx > DEAD_R && g_cam_x4 < (u16)(s_lv.map_w_x2 - PLAY_CHARS)) {
                     g_cam_x4++;
                     move_x = 1;
                 } else if (sx < DEAD_L && g_cam_x4 > 0) {
@@ -1137,7 +1136,7 @@ void main(void) {
                     // calcula exactament (fins a 2 files per frame = 16 px).
                     u16 d = ((u16)(sy - DEAD_B) + 7) >> 3;
                     if (d > 2) d = 2;
-                    if (g_cam_row + d > LEVEL_MAX_CAM_ROW) d = LEVEL_MAX_CAM_ROW - g_cam_row;
+                    if (g_cam_row + d > s_lv.max_cam_row) d = s_lv.max_cam_row - g_cam_row;
                     g_cam_row += d;
                     move_y = (i8)d;
                 } else if (sy < DEAD_T && g_cam_row > 0) {

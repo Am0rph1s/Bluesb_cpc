@@ -547,8 +547,11 @@ def build_levelcode(force):
         mark_fresh(c_rel, [c_src] + headers)
     rels.append(c_rel)
     rels.append(equ_rel)
+    # Base del codi: just despres de la imatge C1 (MUSMAIN.BIN), alineada a 8.
+    # Ja no es una constant: creix si la imatge creix (p. ex. parametres v2).
+    base = (0x5000 + os.path.getsize(os.path.join(obj, "MUSMAIN.BIN")) + 7) & 0xFFF8
     ihx = os.path.join(obj, "levelcode.ihx")
-    run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % LC1_CODE_BASE,
+    run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % base,
          "--data-loc", "0x%04X" % LC1_DATA_BASE] + rels + ["-o", ihx])
     map_path = os.path.join(obj, "levelcode.map")
     code_s, code_l = map_area(map_path, "CODE")
@@ -562,11 +565,11 @@ def build_levelcode(force):
     # El codi i les dades van en dos fitxers perqu? al paquet el codi va
     # abans dels frames i dels buffers de fons (que son dades, no codi).
     code_path = os.path.join(obj, "LEVELCODE.BIN")
-    convert_ihx(ihx, code_path, start_addr=LC1_CODE_BASE, max_length=code_l)
+    convert_ihx(ihx, code_path, start_addr=base, max_length=code_l)
     data_path = os.path.join(obj, "LEVELDATA.BIN")
     convert_ihx(ihx, data_path, start_addr=LC1_DATA_BASE, max_length=data_l)
     print("BANC1: codi del nivell a 0x%04X (%d B de codi, %d B de dades)"
-          % (LC1_CODE_BASE, code_l, data_l))
+          % (base, code_l, data_l))
     return code_path
 
 
@@ -1024,7 +1027,7 @@ def build_music(force):
     # manera que al Bloc 0 no hi ha cap constant del nivell 1 compilada.
     parm_src = os.path.join(PROJ, "assets", "bbdata", "LEVELPARM0.BIN")
     parm_data = open(parm_src, "rb").read()
-    assert len(parm_data) == 52, len(parm_data)
+    assert len(parm_data) == LVLPARM_SIZE, len(parm_data)
     pad_parm = bytes(0x1900 - (0x1860 + len(rr_data)))
     open(mainbin, "wb").write(mdata + pad_main + hud_raw + pad_rooms + rooms_data +
                               pad_doors + doors_data + pad_rr + rr_data +
@@ -1433,6 +1436,8 @@ PAK_VERSION     = 1
 PAK_HDR         = 16
 PAK_DESC        = 8
 PAK_SCRATCH_MAX = 0xBC00 - 0x8320      # 14.560 B: limit del carregador FDC
+LVLPARM_SIZE    = 72                   # mida de LEVELPARMn.BIN (LevelParams v2)
+LVLPARM_CODE_EXC = 70                  # offset del camp code_exc_off dins el bloc
 
 # Fase 2.1: nomes el nivell 1. Els altres 5 s'hi afegeixen a la Fase 4.
 LEVELS = [
@@ -1535,15 +1540,21 @@ def build_level_packages(force=False):
             assert len(b5_raw) == 9216 + 2560 + os.path.getsize(bank5_src), len(b5_raw)
             b5_zx, _ = zx0_compress(bytes(b5_raw), classic=True, quick=ZX0_QUICK)
 
-            # Imatge del Banc 1 (identica al format antic, Fase 2.1):
-            #   MUSMAIN.BIN + pad a 0x6934 + codi + pad a 0x6E20 + frames
-            m_data = open(mus_src, "rb").read()
-            m_data += bytes(LC1_CODE_BASE - 0x5000 - len(m_data))
+            # Imatge del Banc 1: MUSMAIN.BIN + codi del nivell (a la base que el
+            # build ha calculat, guardada al parametre code_exc_off) + frames.
+            mus_raw = open(mus_src, "rb").read()
+            code_base = (0x5000 + len(mus_raw) + 7) & 0xFFF8
+            m_data = bytearray(mus_raw)
+            # code_exc_off: camp 70 dels parametres, que son a l'offset 0x1900
+            m_data[0x1900 + LVLPARM_CODE_EXC] = code_base & 0xFF
+            m_data[0x1900 + LVLPARM_CODE_EXC + 1] = (code_base >> 8) & 0xFF
+            m_data += bytes(code_base - 0x5000 - len(m_data))
             m_data += open(code_src, "rb").read()
             assert len(m_data) <= (LC1_FRAMES_BASE - 0x5000), len(m_data)
             m_data += bytes(LC1_FRAMES_BASE - 0x5000 - len(m_data))
             m_data += open(elev_src, "rb").read()
-            m_zx, _ = zx0_compress(bytes(m_data), classic=True, quick=ZX0_QUICK)
+            m_data = bytes(m_data)
+            m_zx, _ = zx0_compress(m_data, classic=True, quick=ZX0_QUICK)
 
             flags = ((1 if lv["has_code"] else 0) | (2 if lv["has_elev"] else 0) |
                      (4 if lv["has_rooms"] else 0) | 8)

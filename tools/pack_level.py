@@ -348,7 +348,16 @@ def build_level_pkg(level_idx=0):
     prm += struct.pack("<hhhhhhhh", start_px, start_py, cam0_x4, cam0_row,
                        chk_px, chk_py, chk_cam_x4, chk_cam_row)
     prm += struct.pack("<H", max(0, (map_h * 2) - 20))   # fila maxima de camera
-    assert len(prm) == 52, len(prm)
+    # --- v2: geometries i OFFSETS dels blocs (Fase 3, PLA_NIVELLS_UNIVERSAL) --
+    # El build els reescriu si cal (build.py); aqui van els valors actuals perque
+    # el fitxer sigui autosuficient.
+    prm += bytes((map_w & 0xFF, map_h & 0xFF, map_h & 0xFF, 23))
+    prm += struct.pack("<HHH", 0x6400, 0x6800, 0x6860)  # rooms, doors, restore (C1)
+    # Valors derivats perque el resident NO faci matematiques de 16 bits:
+    prm += struct.pack("<HHH", map_w * 8, map_w * 2, max(0, map_w * 2 - 20))
+    prm += bytes(((74 + 10 - 1) & 0xFF, 0))             # room_row_last + pad
+    prm += struct.pack("<H", 0x6934)                   # code_exc_off (el build el reescriu)
+    assert len(prm) == 72, len(prm)
     parm_path = os.path.join(PROJ, "assets", "bbdata", "LEVELPARM%d.BIN" % level_idx)
     with open(parm_path, "wb") as f:
         f.write(bytes(prm))

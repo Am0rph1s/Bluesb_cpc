@@ -23,7 +23,7 @@ from dskutil import DskPatcher, create_empty_cpc_dsk, amsdos_header  # noqa: E40
 SDCC    = r"C:\Program Files\SDCC\bin\sdcc.exe"
 SDASZ80 = r"C:\Program Files\SDCC\bin\sdasz80.exe"
 
-CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "60000",
+CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "15000",
              "--disable-warning", "110"]
 # El _DATA comença a 0x3880. El Bloc 0 esta ple; amb el codi dels ascensors
 # fora del resident (Banc 1) el marge de codi es de 836 B.
@@ -99,9 +99,9 @@ BANK5_BASE = 0x6E00
 #   0x6860 taula de restauracio | 0x6900 parametres | 0x6934 codi
 #   0x6E20 frame de l'ascensor | 0x7000 buffers de fons | 0x7500 dades
 LC1_CODE_BASE    = 0x6934
-LC1_FRAMES_BASE  = 0x6E20
-LC1_BG_BASE      = 0x7000
-LC1_DATA_BASE    = 0x7500
+LC1_FRAMES_BASE  = 0x7100
+LC1_BG_BASE      = 0x7200
+LC1_DATA_BASE    = 0x7600
 LC1_ELEV_BG_SIZE = 1120   # 2 pagines x 5 ascensors x 112 B
 LC1_GAMEOVER_BASE = 0x5800
 BANK5_MAXLEN = 0x1200   # finestra: CODE + pad zeros fins fi _DATA (0x7E07);
@@ -546,6 +546,17 @@ def build_levelcode(force):
         run([SDCC] + INCLUDES + CFLAGS + ["-c", c_src, "-o", c_rel])
         mark_fresh(c_rel, [c_src] + headers)
     rels.append(c_rel)
+    # HUD + GAME OVER al mateix bloc de codi de C1 (escriuen VRAM: RAM 1, 0xC0)
+    hb_src = os.path.join(PROJ, "src", "hud_bank.c")
+    hb_rel = os.path.join(obj, "hud_bank.rel")
+    hb_headers = [os.path.join(PROJ, n) for n in
+                  ("engine/cpctelera.h", "src/moving.h", "src/level_params.h")]
+    if force or is_stale(hb_rel, [hb_src] + hb_headers):
+        run([SDCC] + INCLUDES + CFLAGS + ["-c", hb_src, "-o", hb_rel])
+        mark_fresh(hb_rel, [hb_src] + hb_headers)
+    rels.append(hb_rel)
+    # _s_hud_strips (EQU 0x6000) viu a enemy_ext.rel
+    rels.append(os.path.join(obj, "enemy_ext.rel"))
     rels.append(equ_rel)
     # Base del codi: just despres de la imatge C1 (MUSMAIN.BIN), alineada a 8.
     # Ja no es una constant: creix si la imatge creix (p. ex. parametres v2).

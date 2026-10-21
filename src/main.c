@@ -711,8 +711,6 @@ volatile u8 g_map_level; // 0..5 (el GAME l'escriu abans del mapa; el FRONT
 u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
                     // primer mus_init: evita Play sobre C1 buit (reboot).
 
-#define GAMEOVER_PTR ((const u8*)0x5800)
-
 // ============================================================
 // Carregador generic de paquets de nivell (docs/LEVEL_PACKAGE.md)
 // ------------------------------------------------------------
@@ -859,30 +857,11 @@ static void restore_level_tiles(void) {
     bank_restore(prev);
 }
 
+// GAME OVER: el codi viu al Banc 1 (src/hud_bank.c), slot base+12.
+// Cal cridar-lo amb 0xC0 perque escriu a la VRAM (pagina 0 o 1).
 static void draw_gameover_banner(u8 page) {
-    u16 vram_base = (page == 0) ? 0xC000 : 0x8000;
-    const u8* src = GAMEOVER_PTR;
-    u8 y;
-    u8 prev_b = bank_set(0xC0);
-    for (y = 0; y < 34; y++) {
-        u8 r_char = (u8)(10 + (y >> 3));
-        u16 r_line_hi = (u16)((y & 7) << 11);
-        u16 ma_row = (u16)((g_vram_start + (u16)r_char * 40) & 0x03FF);
-        u16 ma_start = (u16)((ma_row + 10) & 0x03FF);
-        if (ma_start <= 1004) {
-            u8* dst = (u8*)(vram_base | r_line_hi | (ma_start << 1));
-            cpct_memcpy(dst, src, 40);
-        } else {
-            u16 chars1 = 1024 - ma_start;
-            u16 bytes1 = chars1 << 1;
-            u8* dst1 = (u8*)(vram_base | r_line_hi | (ma_start << 1));
-            u8* dst2 = (u8*)(vram_base | r_line_hi);
-            cpct_memcpy(dst1, src, bytes1);
-            cpct_memcpy(dst2, src + bytes1, (u16)(40 - bytes1));
-        }
-        src += 40;
-    }
-    bank_restore(prev_b);
+    bc_a = page;
+    call_banked(0xC0, (void*)(u16)(s_lv.code_exc_off + 12));
 }
 
 void main(void) {

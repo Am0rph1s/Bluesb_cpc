@@ -3,6 +3,25 @@
 Última actualització: 2026-10-20 — Sessió 37: **Regressió del build.py resolta** (el joc no arrencava per un empaquetat del Banc 1 reescrit), **smoke test d'arrencada + verificació del DSK** afegits i integrats al build (`--check`), i **revisió del pla universal amb les mides REALS dels mapes** (habitacions incloses).
 Idioma de treball amb l'usuari: **català**.
 
+## Sessió 40 — Fase 3.5: HUD i GAME OVER al Banc 1 (marge 208 → 903 B)
+
+- **Problema**: treure les constants de nivell del resident (sessió 39) va costar
+  +429 B; amb `--max-allocs 60000` el marge era 352 B però els rebuilds passaven
+  de 6 a ~34 min.
+- **Solució (opció B)**: moure a la **RAM 1** (regla: només el codi que escriu
+  VRAM hi pot viure, cridat amb `0xC0`):
+  - `hud_render`, `hud_init`, `hud_set_digits` i els 5 arrays estàtics,
+  - `draw_gameover_banner`.
+  Nou `src/hud_bank.c` enllaçat dins el **bloc de codi del C1** (`0x6948`,
+  1.726 B amb els ascensors) amb slots a `engine/bank1_table.s`:
+  `+0 draw · +3 restore · +6 hud_init · +9 hud_render · +12 gameover`.
+  El resident només té els 3 wrappers (usen `s_lv.code_exc_off`).
+- **Layout C1 recol·locat** per fer-hi lloc: codi `0x6948-0x7006`, frames
+  `0x7100`, buffers de fons `0x7200`, dades del codi `0x7600`, còpia FDC `0x7800`.
+- **`--max-allocs` torna a 15000** (builds ràpids).
+- **Resultat: `_CODE` 13.305 B → marge 903 B** (4,3× l'opció A i 4,3× l'anterior),
+  amb el joc idèntic (DSK + arrencada + captura verificats).
+
 ## Sessió 39 — Fase 3.1: fora constants de nivell del resident (20/10/2026)
 
 - **`LevelParams` v2 (72 B)**: `map_w/map_h/map_rows/door_count`, offsets

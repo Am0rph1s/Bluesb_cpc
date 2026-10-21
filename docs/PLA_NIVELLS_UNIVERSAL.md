@@ -446,17 +446,23 @@ Objectiu: que cap regressió torni a passar desapercebuda hores.
 
 ## Fase 3 — Resident genèric
 
-- [ ] **3.1** `load_level_packages(level)` guiat pel manifest (cap adreça de
-      nivell al resident).
+- [x] **3.1** `load_level_packages()` guiat pel manifest: 4 blocs de
+      descompressió → **`load_package()` genèric** (Fase 2) + **fora constants i
+      adreces de nivell** del resident (sessió 39): `LevelParams` v2 amb offsets
+      (`rooms_off`, `doors_off`, `restore_off`, `code_exc_off`) i valors derivats
+      (`map_w_px`, `map_w_x2`, `cam_max_x4`, `room_row_last`).
 - [ ] **3.2** Sales al paquet del nivell, dins C5 (mapa · sales compactes · TRIG),
       amb un **sol accessor** `get_tile()`. Eliminar `render_room()`,
-      `check_room_bonus()`, `s_row100[]`, `if (row >= 74)` i les adreces
-      `0x6400`/`0x6860` del resident (§1.5, §4.4).
+      `check_room_bonus()` i `s_row100[]` (aquest ja fora). *Pendent: cal
+      reorganitzar C5 (el codi del món ha de sortir de C5).*
 - [ ] **3.3** `g_map_level` realment usat (carrega el paquet del nivell triat).
-- [ ] **3.4** Treure de `moving.*`/`main.c` les constants de §1.5.
-- [ ] **3.5** Revisar marge del Bloc 0 (objectiu: no baixar dels ~962 B de §1.6).
-- **CHECKPOINT F3:** nivell 1 idèntic, habitacions/portes/vinils verificats
-  (`verify_door_live.py`, `test_room_vinyls.py`), commit + push.
+- [x] **3.4** Treure de `moving.*`/`main.c` les constants de nivell (§1.5):
+      fet (sessió 39), inclòs `LC1_DRAW/RESTORE` i `GAMEOVER_PTR`.
+- [x] **3.5** Marge del Bloc 0 recuperat: **903 B** (sessió 40, movent el HUD i
+      el GAME OVER al bloc de codi del C1).
+- **CHECKPOINT F3:** pendent (3.2 i 3.3), amb verificació
+  (`tools/smoke_test.py` + `verify_door_live.py` + `test_room_vinyls.py`).
+
 
 ---
 

@@ -23,8 +23,8 @@
 #include "level_params.h"
 
 // --- Dades del mateix Banc 1 --------------------------------------------
-#define LC_ELEV_FRAMES  ((const u8*)0x6E20)   // ELEV.BIN: frame unic (14 files)
-#define LC_ELEV_BG      ((u8*)0x7000)         // buffers de fons (2 pagines x 5)
+#define LC_ELEV_FRAMES  ((const u8*)0x7100)   // ELEV.BIN: frame unic (14 files)
+#define LC_ELEV_BG      ((u8*)0x7200)         // buffers de fons (2 pagines x 5)
 
 // --- Codi resident cridat des d'aqui (declarat a moving.h) --------------
 

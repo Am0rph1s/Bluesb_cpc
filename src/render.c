@@ -30,18 +30,20 @@ extern void hud_blit_col(const u8* strip24, u16 ma20);
 
 u16 g_render_tile_offset;
 
-// HUD: el codi viu al Banc 1 (src/hud_bank.c) perque escriu VRAM i no ha
-// d ocupar el Bloc 0. Els slots son a s_lv.code_exc_off + 6 (init) i +9 (render).
-
+// HUD: el codi viu al Banc 1 COMPARTIT (MUSBANK, src/hud_bank.c) perque
+// escriu a la VRAM. Les adreces son EQUs generats per build_music
+// (obj/hud_ext.s), no constants al resident.
+extern void hud_init_o(void);
+extern void hud_render_o(void);
 
 void hud_init(void) {
-    call_banked(0xC0, (void*)(u16)(s_lv.code_exc_off + 6));
+    call_banked(0xC0, (void*)hud_init_o);
 }
 
 void hud_render(u8 page, u8 force) {
     bc_a = page;
     bc_b = force;
-    call_banked(0xC0, (void*)(u16)(s_lv.code_exc_off + 9));
+    call_banked(0xC0, (void*)hud_render_o);
 }
 
 static void draw_char(u8 tile_index, u16 ma, u8 tile_half_y, u8 tile_half_x) {

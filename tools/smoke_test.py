@@ -294,11 +294,20 @@ def check_boot(keep=False):
         print("  pila: %s" % z.cmd("get-stack-backtrace", wait=0.3), flush=True)
         print("  captura: %s" % shot_png, flush=True)
 
+    # Segona captura 3 s despres (sense input): detecta si algu esborra el HUD.
+    time.sleep(3.0)
+    bmp2 = os.path.join(HERE, "smoke_level2.bmp")
+    png2 = os.path.join(HERE, "smoke_level2.png")
+    if z.shot(bmp2):
+        im = Image.open(bmp2).convert("RGB")
+        w, h = im.size
+        im.crop(((w - 768) // 2, (h - 512) // 2,
+                 (w - 768) // 2 + 768, (h - 512) // 2 + 512)).save(png2)
+
     if not keep:
         subprocess.run(["powershell", "-Command",
                         "Stop-Process -Name zesarux -Force -ErrorAction SilentlyContinue"])
     return ok
-
 
 def main():
     args = sys.argv[1:]

@@ -55,7 +55,9 @@ void hud_init_b(void) {
     s_hud_vram_start[0] = s_hud_vram_start[1] = 0xFFFF;
 }
 
-void hud_render_b(u8 page, u8 force) {
+void hud_render_b(void) {
+    u8 page = (u8)bc_a;
+    u8 force = (u8)bc_b;
     u8 cx, i;
     u16 ma;
     if (!force &&
@@ -98,7 +100,8 @@ void hud_render_b(u8 page, u8 force) {
 }
 
 // Banner GAME OVER (1:1 DOS): 34 files de 40 bytes sobre el backbuffer.
-void gameover_banner_b(u8 page) {
+void gameover_banner_b(void) {
+    u8 page = (u8)bc_a;
     u16 vram_base = (page == 0) ? 0xC000 : 0x8000;
     const u8* src = GAMEOVER_PTR;
     u8 y;

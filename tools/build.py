@@ -99,9 +99,9 @@ BANK5_BASE = 0x6E00
 #   0x6860 taula de restauracio | 0x6900 parametres | 0x6934 codi
 #   0x6E20 frame de l'ascensor | 0x7000 buffers de fons | 0x7500 dades
 LC1_CODE_BASE    = 0x6934
-LC1_FRAMES_BASE  = 0x7100
-LC1_BG_BASE      = 0x7200
-LC1_DATA_BASE    = 0x7600
+LC1_FRAMES_BASE  = 0x6E20
+LC1_BG_BASE      = 0x7000
+LC1_DATA_BASE    = 0x7500
 LC1_ELEV_BG_SIZE = 1120   # 2 pagines x 5 ascensors x 112 B
 LC1_GAMEOVER_BASE = 0x5800
 BANK5_MAXLEN = 0x1200   # finestra: CODE + pad zeros fins fi _DATA (0x7E07);
@@ -546,17 +546,6 @@ def build_levelcode(force):
         run([SDCC] + INCLUDES + CFLAGS + ["-c", c_src, "-o", c_rel])
         mark_fresh(c_rel, [c_src] + headers)
     rels.append(c_rel)
-    # HUD + GAME OVER al mateix bloc de codi de C1 (escriuen VRAM: RAM 1, 0xC0)
-    hb_src = os.path.join(PROJ, "src", "hud_bank.c")
-    hb_rel = os.path.join(obj, "hud_bank.rel")
-    hb_headers = [os.path.join(PROJ, n) for n in
-                  ("engine/cpctelera.h", "src/moving.h", "src/level_params.h")]
-    if force or is_stale(hb_rel, [hb_src] + hb_headers):
-        run([SDCC] + INCLUDES + CFLAGS + ["-c", hb_src, "-o", hb_rel])
-        mark_fresh(hb_rel, [hb_src] + hb_headers)
-    rels.append(hb_rel)
-    # _s_hud_strips (EQU 0x6000) viu a enemy_ext.rel
-    rels.append(os.path.join(obj, "enemy_ext.rel"))
     rels.append(equ_rel)
     # Base del codi: just despres de la imatge C1 (MUSMAIN.BIN), alineada a 8.
     # Ja no es una constant: creix si la imatge creix (p. ex. parametres v2).
@@ -980,13 +969,60 @@ def build_music(force):
             print("\n[FATAL] Canco %s: 0x%04X+%d surt de la finestra!" % (tag, MUS_SONG_SLOT, ssize))
             sys.exit(1)
         songs[tag] = (sbin, ssize)
-    # MUSBANK = player + pad fins slot + intro.
+    # --- HUD + GAME OVER: codi COMU al C1 compartit (MUSBANK) ---------------
+    # Escriuen a VRAM => han de viure a la RAM 1 i cridar-se amb 0xC0. Com que
+    # son comuns a tots els nivells, van a MUSBANK (0x4C10, despres del player)
+    # i no al bloc de codi del nivell.
+    hb_base, hb_data = 0x4C10, 0x4F40
+    hb_src = os.path.join(PROJ, "src", "hud_bank.c")
+    hb_rel = os.path.join(obj, "hud_bank.rel")
+    hb_headers = [os.path.join(PROJ, n) for n in
+                  ("engine/cpctelera.h", "src/moving.h", "src/level_params.h")]
+    if force or is_stale(hb_rel, [hb_src] + hb_headers):
+        run([SDCC] + INCLUDES + CFLAGS + ["-c", hb_src, "-o", hb_rel])
+        mark_fresh(hb_rel, [hb_src] + hb_headers)
+    equ_s = build_bank_equ(os.path.join(obj, "bluesb.map"))
+    equ_rel = os.path.join(obj, "bank_equ.rel")
+    if force or is_stale(equ_rel, [equ_s]):
+        run([SDASZ80, "-plosgff", equ_rel, equ_s])
+        mark_fresh(equ_rel, [equ_s])
+    hb_ihx = os.path.join(obj, "hudbank.ihx")
+    run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % hb_base,
+         "--data-loc", "0x%04X" % hb_data] +
+        [hb_rel, equ_rel, os.path.join(obj, "enemy_ext.rel")] + ["-o", hb_ihx])
+    hb_map = os.path.join(obj, "hudbank.map")
+    code_s, code_l = map_area(hb_map, "CODE")
+    if code_s is not None and (code_s + code_l) > hb_data:
+        print("\n[FATAL] HUD (MUSBANK): el codi arriba a les dades (0x%04X)!" % hb_data)
+        sys.exit(1)
+    hb_bin = os.path.join(obj, "hud_bank.bin")
+    convert_ihx(hb_ihx, hb_bin, start_addr=hb_base, max_length=code_l)
+    hb_syms = {}
+    for line in open(hb_rel, encoding="latin1"):
+        m = re.match(r"S (\S+) Def([0-9A-Fa-f]+)", line.strip())
+        if m:
+            hb_syms[m.group(1)] = hb_base + int(m.group(2), 16)
+    need_hud = {"_hud_init_o": "_hud_init_b", "_hud_render_o": "_hud_render_b",
+                "_gameover_o": "_gameover_banner_b"}
+    if any(k not in hb_syms for k in need_hud.values()):
+        print("\n[FATAL] HUD: simbols no trobats (%s)" % sorted(hb_syms))
+        sys.exit(1)
+    ext_hud = os.path.join(obj, "hud_ext.s")
+    ext_hud_txt = ("    .module hud_ext\n" + "".join(
+        "    .globl %s\n%s = 0x%04X\n" % (o, o, hb_syms[n])
+        for o, n in need_hud.items()))
+    if not os.path.exists(ext_hud) or open(ext_hud).read() != ext_hud_txt:
+        open(ext_hud, "w").write(ext_hud_txt)
+
+    # MUSBANK = player + HUD/GAMEOVER + pad fins slot + intro.
     mbin = os.path.join(obj, "MUSBANK.BIN")
     pdata = open(pbin, "rb").read()
     idata = open(songs["intro"][0], "rb").read()
-    pad = MUS_SONG_SLOT - (MUS_PLAYER_BASE + len(pdata))
-    assert pad >= 0
-    open(mbin, "wb").write(pdata + bytes(pad) + idata)
+    hdata = open(hb_bin, "rb").read()
+    pad1 = hb_base - (MUS_PLAYER_BASE + len(pdata))
+    pad2 = MUS_SONG_SLOT - (hb_base + len(hdata))
+    assert pad1 >= 0 and pad2 >= 0, (pad1, pad2)
+    open(mbin, "wb").write(pdata + bytes(pad1) + hdata + bytes(pad2) + idata)
     # MUSMAIN = tema sol + tires del HUD a offset 0x1000 (C1:0x6000).
     mainbin = os.path.join(obj, "MUSMAIN.BIN")
     mdata = open(songs["main"][0], "rb").read()
@@ -1091,6 +1127,17 @@ def compile_and_link(force):
         run([SDASZ80, "-plosgff", mus_ext_rel, mus_ext_s])
         mark_fresh(mus_ext_rel, [mus_ext_s])
     objs.append(mus_ext_rel)
+    # EQU del HUD/GAME OVER (obj/hud_ext.s, generat per build_music): adreces
+    # del codi comu al C1 compartit (MUSBANK).
+    hud_ext_s = os.path.join(obj, "hud_ext.s")
+    hud_ext_rel = os.path.join(obj, "hud_ext.rel")
+    if not os.path.exists(hud_ext_s):
+        print("\n[FATAL] obj/hud_ext.s no existeix: build_music() ha de correr abans!")
+        sys.exit(1)
+    if force or is_stale(hud_ext_rel, [hud_ext_s]):
+        run([SDASZ80, "-plosgff", hud_ext_rel, hud_ext_s])
+        mark_fresh(hud_ext_rel, [hud_ext_s])
+    objs.append(hud_ext_rel)
     # EQU d'enemics/HUD (obj/enemy_ext.s: _s_hud_strips a C2; llavor al
     # main(), real des de build_enemybank). render.c hi accedeix banked.
     en_ext_s = os.path.join(obj, "enemy_ext.s")

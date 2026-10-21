@@ -857,11 +857,11 @@ static void restore_level_tiles(void) {
     bank_restore(prev);
 }
 
-// GAME OVER: el codi viu al Banc 1 (src/hud_bank.c), slot base+12.
-// Cal cridar-lo amb 0xC0 perque escriu a la VRAM (pagina 0 o 1).
+// GAME OVER: codi comu al Banc 1 (src/hud_bank.c, MUSBANK). Escriu VRAM -> 0xC0.
+extern void gameover_o(void);
 static void draw_gameover_banner(u8 page) {
     bc_a = page;
-    call_banked(0xC0, (void*)(u16)(s_lv.code_exc_off + 12));
+    call_banked(0xC0, (void*)gameover_o);
 }
 
 void main(void) {

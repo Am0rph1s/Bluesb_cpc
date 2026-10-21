@@ -3,6 +3,28 @@
 Última actualització: 2026-10-20 — Sessió 37: **Regressió del build.py resolta** (el joc no arrencava per un empaquetat del Banc 1 reescrit), **smoke test d'arrencada + verificació del DSK** afegits i integrats al build (`--check`), i **revisió del pla universal amb les mides REALS dels mapes** (habitacions incloses).
 Idioma de treball amb l'usuari: **català**.
 
+## Sessió 39 — Fase 3.1: fora constants de nivell del resident (20/10/2026)
+
+- **`LevelParams` v2 (72 B)**: `map_w/map_h/map_rows/door_count`, offsets
+  (`rooms_off`, `doors_off`, `restore_off`, `code_exc_off`) i **valors
+  derivats** (`map_w_px`, `map_w_x2`, `cam_max_x4`, `room_row_last`) perquè el
+  resident **no faci matemàtiques de 16 bits** (costaven 429 B de codi!).
+- **Fora del resident**: `LEVEL_MAP_W/H`, `LEVEL_W_PX`, `LEVEL_MAX_CAM_ROW`,
+  `LEVEL_START_*`, `LEVEL_CAM0_*`, `LEVEL_CHK_*`, `s_row100[]` i les adreces
+  `0x6400` (sales), `0x6800` (portes), `0x6860` (restauració). Tot surt de
+  `s_lv` (paquet).
+- **Codi de nivell**: `moving.c` agafa la base de `s_lv.code_exc_off`; el build
+  la calcula a partir de la mida de la imatge C1 (ara **0x6948**) i la desa al
+  paràmetre. Ja no hi ha `0x6934` enlloc del codi.
+- **Optimitzador**: `--max-allocs-per-node` 15000 → **60000** (recupera **144 B**
+  al resident i 207 B al codi de C5). **Cost: rebuild complet ~34 min**
+  (incremental, només els fitxers tocaus).
+- **Marge del resident: 352 B** (`_CODE` 13.856 B).
+- **Smoke test**: ara valida que la posició inicial coincideix amb el paquet
+  (`px8=256`, `py8=8848` = `start_px/start_py × 8`), no només que sigui ≠ 0.
+- **Pendent**: sales a C5, codi del món a C1 amb accessors, `mem_map.h` i els
+  asserts de ≥256 B.
+
 ## Sessió 38 — Fase 2.1: manifest de paquet + carregador genèric (20/10/2026)
 
 - **Format nou (aprovat)**: `LnWORLD.PAK` / `LnENEMI.ZX0` amb manifest

@@ -23,7 +23,7 @@ from dskutil import DskPatcher, create_empty_cpc_dsk, amsdos_header  # noqa: E40
 SDCC    = r"C:\Program Files\SDCC\bin\sdcc.exe"
 SDASZ80 = r"C:\Program Files\SDCC\bin\sdasz80.exe"
 
-CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "15000",
+CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "60000",
              "--disable-warning", "110"]
 # El _DATA comença a 0x3880. El Bloc 0 esta ple; amb el codi dels ascensors
 # fora del resident (Banc 1) el marge de codi es de 836 B.

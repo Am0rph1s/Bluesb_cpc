@@ -349,6 +349,37 @@ bloc de `0x6400` (1.024 B). Sense això, el codi del món no hi cap (§4.3).
 
 
 
+### 4.4b Pressupost de la reorganitzacio de la Fase 3.2 (mesurat)
+
+Repartiment objectiu: **C5 = mapa + sales + TRIG** i **codi del mon (4.086 B) a la
+RAM 1**. Sumes reals (AKG 4.096 + canco + HUD 936 + portes + restore 90 +
+params 72 + codi d'excepcions + codi del mon 4.086 + frames + buffers +
+GAMEOVER 1.360 + copia FDC 785):
+
+| Nivell | C5 | lliures | RAM 1 | lliures |
+|---|---|---|---|---|
+| 1 magasin | 12.776 | +3.608 | 15.443 | +941 |
+| 2 ent | 11.776 | +4.608 | 14.146 | +2.238 |
+| **3 prison** | 12.976 | +3.408 | **16.191** | **+193** |
+| 4 egou | 10.968 | +5.416 | 13.124 | +3.260 |
+| **5 ville** | **14.920** | **+1.464** | 14.154 | +2.230 |
+| 6 concert | 8.832 | +7.552 | 16.119 | +265 |
+
+**C5 sempre cap.** A la RAM 1, prison (193 B) i concert (265 B) queden per sota del
+minim de 256 B, perque fan servir **Theme2 (4.670 B)**. Sortides, per ordre:
+
+1. **Dieta del codi del mon** (~300 B): 4.086 -> 3.786 deixa prison amb ~493 B.
+   Es el mes net (no depen de cap altre element).
+2. **Copia mestra FDC (785 B) a C6** (espai lliure del banc d'enemics): +785 B a
+   tots. Risc: C6 depen de la mida dels frames d'enemics de cada nivell.
+3. Comprimir el GAMEOVER al paquet **no serveix** directament: es copia fila a
+   fila a la VRAM amb wrapping, i descomprimir-lo necessitaria un buffer de
+   1.360 B (no hi ha lloc).
+
+**Fase 3.2 = canvi atomic**: les sales no poden entrar a C5 sense que el codi del
+mon en surti (nivell 1 quedaria a 16.862 B > 16.384). Per tant es fa en un sol
+bloc, amb el smoke test (2 captures) i aquests asserts.
+
 ### 4.5 C4, C6, C7
 
 - **C4** = tileset del nivell (nivell 1: **16.384**, ple). **Cal mesurar els

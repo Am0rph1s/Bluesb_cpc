@@ -100,4 +100,4 @@ Després: 3.3 (`g_map_level` real), de-hardcodejar `src/enemy.c` (C6, encara usa
 `tools/pack_level.py` · `tools/smoke_test.py` ·
 `docs/PLA_NIVELLS_UNIVERSAL.md` (§4.4b) · `docs/LEVEL_PACKAGE.md` · `ESTAT.md`.
 
-HEAD = `4cb565d`; arbre net.
+HEAD = bcf6577 (docs). Estat de codi: build verd, marge resident 922 B.

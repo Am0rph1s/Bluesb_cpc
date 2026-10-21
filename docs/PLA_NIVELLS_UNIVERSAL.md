@@ -349,36 +349,34 @@ bloc de `0x6400` (1.024 B). Sense això, el codi del món no hi cap (§4.3).
 
 
 
-### 4.4b Pressupost de la reorganitzacio de la Fase 3.2 (mesurat)
+### 4.4b Repartiment de la Fase 3.2 (numeros reals, 21/10/2026)
 
-Repartiment objectiu: **C5 = mapa + sales + TRIG** i **codi del mon (4.086 B) a la
-RAM 1**. Sumes reals (AKG 4.096 + canco + HUD 936 + portes + restore 90 +
-params 72 + codi d'excepcions + codi del mon 4.086 + frames + buffers +
-GAMEOVER 1.360 + copia FDC 785):
+El codi del mon es `obj/BANK5.BIN` = **4.548 B** (no 4.086: aquest numero era
+dolent i invalidava el pressupost anterior). Moure'l a la RAM 1 **no hi cap**
+(nivell 1: +724 B; prison: +2.568 B per Theme2 4.670). La copia mestra del FDC
+(785 B) nomes pot viure a `RAM1:0x7800` (cap carrega hi escriu) o al resident
+(922 < 785): no es mou.
 
-| Nivell | C5 | lliures | RAM 1 | lliures |
-|---|---|---|---|---|
-| 1 magasin | 12.776 | +3.608 | 15.443 | +941 |
-| 2 ent | 11.776 | +4.608 | 14.146 | +2.238 |
-| **3 prison** | 12.976 | +3.408 | **16.191** | **+193** |
-| 4 egou | 10.968 | +5.416 | 13.124 | +3.260 |
-| **5 ville** | **14.920** | **+1.464** | 14.154 | +2.230 |
-| 6 concert | 8.832 | +7.552 | 16.119 | +265 |
+**Troballa clau**: el TRIG son 256 entrades de 10 B (2.560 B) pero
+`b5_check_bonus_triggers` fa `if (b6 >= 64) return;` -> **nomes calen 64
+entrades = 640 B** (estalvi 1.920 B), i encara menys per nivell segons el `b6`
+maxim real del mapa.
 
-**C5 sempre cap.** A la RAM 1, prison (193 B) i concert (265 B) queden per sota del
-minim de 256 B, perque fan servir **Theme2 (4.670 B)**. Sortides, per ordre:
+Repartiment: **C5 = mapa + sales + TRIG(c) 640 + codi del mon 4.548**.
 
-1. **Dieta del codi del mon** (~300 B): 4.086 -> 3.786 deixa prison amb ~493 B.
-   Es el mes net (no depen de cap altre element).
-2. **Copia mestra FDC (785 B) a C6** (espai lliure del banc d'enemics): +785 B a
-   tots. Risc: C6 depen de la mida dels frames d'enemics de cada nivell.
-3. Comprimir el GAMEOVER al paquet **no serveix** directament: es copia fila a
-   fila a la VRAM amb wrapping, i descomprimir-lo necessitaria un buffer de
-   1.360 B (no hi ha lloc).
+| Nivell | C5 | lliures |
+|---|---|---|
+| 1 magasin | 15.404 | +980 |
+| 2 ent | 14.404 | +1.980 |
+| 3 prison | 15.604 | +780 |
+| 4 egou | 13.596 | +2.788 |
+| **5 ville** | **17.548** | **-1.164** |
+| 6 concert | 11.460 | +4.924 |
 
-**Fase 3.2 = canvi atomic**: les sales no poden entrar a C5 sense que el codi del
-mon en surti (nivell 1 quedaria a 16.862 B > 16.384). Per tant es fa en un sol
-bloc, amb el smoke test (2 captures) i aquests asserts.
+5 de 6 nivells queden resolts **sense tocar codi ni el layout**, nomes retallant
+el TRIG al build. **Ville** necessita ~1.100 B mes: dieta real del codi del mon
+(~800 B) o repartiment propi (sales+TRIG a la RAM 1, que per a ville te ~3,2 KB
+lliures).
 
 ### 4.5 C4, C6, C7
 

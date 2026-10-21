@@ -3,6 +3,22 @@
 Última actualització: 2026-10-20 — Sessió 37: **Regressió del build.py resolta** (el joc no arrencava per un empaquetat del Banc 1 reescrit), **smoke test d'arrencada + verificació del DSK** afegits i integrats al build (`--check`), i **revisió del pla universal amb les mides REALS dels mapes** (habitacions incloses).
 Idioma de treball amb l'usuari: **català**.
 
+## Sessió 41 — Correcció del HUD a MUSBANK (20/10/2026)
+
+- La sessió 40 va posar el HUD/GAME OVER al **bloc de codi del nivell** (C1).
+  Dos errors: (1) les funcions bancades es cridaven amb parametres C (el
+  projecte fa servir `bc_a`/`bc_b`); (2) el bloc va creixer fins a `0x7006` i
+  els **buffers d'ascensor (`0x7200-0x765F`) trepitjaven les dades del codi
+  (`0x7600`)**, i el HUD desapareixia al cap d'uns segons.
+- **Solucio**: el HUD es **comu**, va a **MUSBANK** (C1 compartit) a `0x4C10`
+  (data `0x4F40`), amb EQUs generats (`obj/hud_ext.s`) com `mus_ext.s`. El bloc
+  de codi del nivell torna a `0x6948` (963 B) i el layout C1 original
+  (frames `0x6E20`, buffers `0x7000`, dades `0x7500`) queda sense solapaments.
+- **Verificat**: smoke test amb **dues captures** (t=0 i t+3 s) -> el HUD hi es
+  a les dues; i test en viu: escriure `g_vinyls_count=5` fa que el HUD passi a
+  "05" (el codi bancat s'executa i repinta).
+- Marge del resident: **922 B**.
+
 ## Sessió 40 — Fase 3.5: HUD i GAME OVER al Banc 1 (marge 208 → 903 B)
 
 - **Problema**: treure les constants de nivell del resident (sessió 39) va costar

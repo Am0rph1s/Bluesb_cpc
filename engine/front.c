@@ -403,9 +403,63 @@ static void f_load(const DiskFileDesc* f, u8 bank, const void* dst) {
     }
 }
 
-void front_run(void) {
-    u8 d, j, lvl;
+// Les pantalles del FRONT son imatges de 200 linies (160x200); el joc fa
+// servir R6=22 (176 linies, HUD a sota). Cal mostrar les 25 files mentre dura
+// el prejoc; video_init() torna a posar R6=22 en carregar el nivell.
+static void f_crtc_200(void) {
+    __asm
+        ld      bc, #0xBC06
+        out     (c), c
+        ld      bc, #0xBD19
+        out     (c), c
+    __endasm;
+}
 
+// Dibuixa el mapa del nivell actual. El caller ha de tenir FMAP.ZX0 carregat
+// a fmap_zx (front_run el carrega al splash; front_map el carrega nomes).
+static void f_map_draw(void) {
+    u8 j, lvl;
+    zx0_decompress((const void*)fmap_zx, (void*)0xC000);
+    f_fpal(g_pal_fmap);
+    lvl = g_map_level;
+    if (lvl > 5) lvl = 5;
+    for (j = 0; j < lvl; j++) f_map_leg(j);
+    if (lvl == 5) f_map_leg(5);
+    else f_map_sticker(lvl);
+}
+
+// Espera tecla; amb auto_exit, tambe surt al cap de ~4 s (DOS do_inter_screen:
+// 4*1000 ms). g_ticks es de 8 bits a 300 Hz: 5 fases de 240 = 1.200 ticks.
+static void f_map_wait(u8 auto_exit) {
+    u8 n, t0;
+    while (f_fkey_pressed()) { }
+    if (!auto_exit) {
+        while (!f_fkey_pressed()) { }
+        return;
+    }
+    for (n = 0; n < 5; n++) {
+        t0 = g_ticks;
+        while ((u8)(g_ticks - t0) < 240) {
+            if (f_fkey_pressed()) return;
+        }
+    }
+}
+
+// Entrada de transicio de nivell (C4:0x4003): NOMES mapa, sense splash ni
+// select. El mapa queda a VRAM mentre load_level_packages fa les lectures FDC.
+void front_map(void) {
+    f_crtc_200();
+    fdc_set_stay_on(1);
+    f_load(&g_file_fmap, 0xC0, (void*)fmap_zx);
+    fdc_motor_off();
+    f_map_draw();
+    f_map_wait(1);
+}
+
+void front_run(void) {
+    u8 d;
+
+    f_crtc_200();
     fdc_set_stay_on(1);
 
     // 1. SPLASH: carrega MUSBANK + les 3 pantalles a RAM
@@ -479,13 +533,6 @@ void front_run(void) {
     g_player_choice = f_choice;
 
     // 3. MAP
-    zx0_decompress((const void*)fmap_zx, (void*)0xC000);
-    f_fpal(g_pal_fmap);
-    lvl = g_map_level;
-    if (lvl > 5) lvl = 5;
-    for (j = 0; j < lvl; j++) f_map_leg(j);
-    if (lvl == 5) f_map_leg(5);
-    else f_map_sticker(lvl);
-    while (f_fkey_pressed()) { }
-    while (!f_fkey_pressed()) { }
+    f_map_draw();
+    f_map_wait(0);
 }

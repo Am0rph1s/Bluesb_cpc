@@ -5,5 +5,6 @@
 
 #define FRONT_BASE 0x4000
 #define FRONT_RUN  0x4000
+#define FRONT_MAP  0x4003
 
 #endif // FRONT_H

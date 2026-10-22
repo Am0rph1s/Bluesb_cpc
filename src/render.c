@@ -96,15 +96,17 @@ void render_all(u16 cam_x4, u16 cam_row) {
 
 void render_room(u8 room_idx) {
     u8 r, c;
-    u16 base_col = (u16)(room_idx * 20);
-    u16 cam_x4 = (u16)(room_idx * 40);
+    u16 base_col = (u16)(room_idx * s_lv.room_cols);
+    u16 cam_x4 = (u16)(room_idx * ((u16)s_lv.room_cols << 1));
     for (r = 0; r < 10; r++) {
-        u16 r_off = (u16)r * 100 + base_col;
-        for (c = 0; c < 20; c++) {
-            u8 prev_b = bank_set(0xC1);
-            u8 t = ((const u8*)0x6400)[r_off + c];
+        u16 r_off = (u16)(s_lv.room_rowoff[r] + base_col);
+        for (c = 0; c < s_lv.room_cols; c++) {
+            u8 prev_b = bank_set(0xC5);
+            u8 t = ((const u8*)(u16)s_lv.rooms_off)[r_off + c];
             bank_restore(prev_b);
-            render_tile_world(t, (u16)(base_col + c), (u16)(74 + r), cam_x4, 148);
+            render_tile_world(t, (u16)(base_col + c),
+                              (u16)(s_lv.room_row0 + r), cam_x4,
+                              s_lv.room_cam_row);
         }
     }
 }

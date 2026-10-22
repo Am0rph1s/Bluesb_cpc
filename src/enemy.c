@@ -52,6 +52,8 @@ typedef struct {
     u8 kind;
     u8 vx;
     u8 base_cell;
+    u8 aim_cell;    // pose de tret (kind 4)
+    u8 throw_cell;  // pose de llançament (kind 17)
 } Spawn;
 
 typedef struct {
@@ -111,8 +113,6 @@ extern void zx0_decompress(const void* src, void* dst);
 // ============================================================
 #define ENEMY_CELLS        16
 #define ENEMY_CELL_SIZE    512
-#define POLICE_AIM_CELL    14   // pose de tirc de la policia (DOS tipus 4 sa2 final)
-#define WAITRESS_THROW_CELL 15  // pose de llancament de la cambrera (DOS tipus 17 sa2 final)
 #define AIM_FRAMES         12   // duracio de la pose (~0,5 s a 25 Hz; DOS la soste 6-10 passos)
 #define ENEMY_CELL_TABLE   ((const u8*)0x4000)
 #define ENEMY_CACHE_BASE   ((u8*)0x5000)
@@ -146,45 +146,50 @@ static const u8* en2_cell(u8 cell) {
 // "slot DOS" del comentario es l'index de staticres.c del qual surt.
 // Aterratge validat amb `py -3 tools/sim_enemies.py` (MAP0/TRIG0 reals).
 // 3 iaies, 5 policies, 2 peixos, 3 ocells, 2 grangers, 1 cambrera, 4 rockers.
+#if LEVEL_ID == 0
 static const Spawn s_spawn[ENEMY_N] = {
     // 3 Iaies (kind 15, DOS op0): slots 1, 2, 5
-    { 456, 1088 << 3, 15, 36,  1 }, //  0: Iaia 1 (PB Store)
-    { 624, 1088 << 3, 15, 36,  1 }, //  1: Iaia 2 (PB Bar)
-    { 592,  960 << 3, 15, 36,  1 }, //  2: Iaia 3 (1r pis botiga)
+    { 456, 1088 << 3, 15, 36,  1 , 14, 15 }, //  0: Iaia 1 (PB Store)
+    { 624, 1088 << 3, 15, 36,  1 , 14, 15 }, //  1: Iaia 2 (PB Bar)
+    { 592,  960 << 3, 15, 36,  1 , 14, 15 }, //  2: Iaia 3 (1r pis botiga)
 
     // 5 Policies (kind 4, DOS op2): slots 3, 0, 7, 29, 18
-    { 744, 1088 << 3,  4, 24,  3 }, //  3: Policia 1 (PB dreta botigues) [slot 3]
-    { 280, 1088 << 3,  4, 24,  3 }, //  4: Policia 2 (carrer, PB Store) [slot 0]
+    { 744, 1088 << 3,  4, 24,  3 , 14, 15 }, //  3: Policia 1 (PB dreta botigues) [slot 3]
+    { 280, 1088 << 3,  4, 24,  3 , 14, 15 }, //  4: Policia 2 (carrer, PB Store) [slot 0]
                                    //     Abans hi havia (816,784) vx=0, fila sense
                                    //     parell a staticres.c: on_ground=1 inicial ->
                                    //     no queia mai i pivotava al replÃ  d'ascensors.
-    { 272,  960 << 3,  4, 24,  3 }, //  5: Policia 3 (1r pis sota escala) [slot 7]
-    { 768,  496 << 3,  4,  0,  3 }, //  6: Policia 4 (2n pis replÃ  ascensors) [slot 29]
-    { 688,  320 << 3,  4, 24,  3 }, //  7: Policia 5 (3r pis) [slot 18]
+    { 272,  960 << 3,  4, 24,  3 , 14, 15 }, //  5: Policia 3 (1r pis sota escala) [slot 7]
+    { 768,  496 << 3,  4,  0,  3 , 14, 15 }, //  6: Policia 4 (2n pis replÃ  ascensors) [slot 29]
+    { 688,  320 << 3,  4, 24,  3 , 14, 15 }, //  7: Policia 5 (3r pis) [slot 18]
 
     // 2 Peixos (kind 8, DOS op0): slots 24 i 12 dels 4 oficials (11/12/24/25)
-    { 428,  480 << 3,  8, 16,  0 }, //  8: Peix 1 (Peixera 1) [slot 24]
-    { 548,  496 << 3,  8, 16,  0 }, //  9: Peix 2 (Peixera 2) [slot 12]
+    { 428,  480 << 3,  8, 16,  0 , 14, 15 }, //  8: Peix 1 (Peixera 1) [slot 24]
+    { 548,  496 << 3,  8, 16,  0 , 14, 15 }, //  9: Peix 2 (Peixera 2) [slot 12]
 
     // 3 Ocells (kind 19, DOS op8): slots 26, 27, 28
-    { 232,   64 << 3, 19, 32,  5 }, // 10: Ocell 1 (NÃºvols esquerra) [slot 26]
-    { 512,   48 << 3, 19, 32,  5 }, // 11: Ocell 2 (NÃºvols centre) [slot 27]
-    { 808,   64 << 3, 19, 32,  5 }, // 12: Ocell 3 (NÃºvols dreta) [slot 28]
+    { 232,   64 << 3, 19, 32,  5 , 14, 15 }, // 10: Ocell 1 (NÃºvols esquerra) [slot 26]
+    { 512,   48 << 3, 19, 32,  5 , 14, 15 }, // 11: Ocell 2 (NÃºvols centre) [slot 27]
+    { 808,   64 << 3, 19, 32,  5 , 14, 15 }, // 12: Ocell 3 (NÃºvols dreta) [slot 28]
 
     // 2 Grangers (kind 18, DOS op1): slots 16, 17
-    { 352,  320 << 3, 18, 24,  7 }, // 13: Granger 1 (escala vinils esq) [slot 16]
-    { 496,  320 << 3, 18, 24,  7 }, // 14: Granger 2 (escala vinils dreta) [slot 17]
+    { 352,  320 << 3, 18, 24,  7 , 14, 15 }, // 13: Granger 1 (escala vinils esq) [slot 16]
+    { 496,  320 << 3, 18, 24,  7 , 14, 15 }, // 14: Granger 2 (escala vinils dreta) [slot 17]
 
     // 1 Cambrera (kind 17, DOS op10): slot 10
-    {  72,  592 << 3, 17, 20,  9 }, // 15: Cambrera (Bar/Restaurant) [slot 10]
+    {  72,  592 << 3, 17, 20,  9 , 14, 15 }, // 15: Cambrera (Bar/Restaurant) [slot 10]
 
     // 4 Rockers (kind 20, DOS op1): slots 6, 15, 9, 13
     // (els slots 4 i 8 son dins d'habitacions, files 80: no a l'exterior)
-    { 432,  960 << 3, 20, 24, 11 }, // 16: Rocker 1 (1r pis davant botiga) [slot 6]
-    { 624,  768 << 3, 20, 24, 11 }, // 17: Rocker 2 (2n pis dreta) [slot 15]
-    {  72,  464 << 3, 20, 24, 11 }, // 18: Rocker 3 (prop Bar/Restaurant) [slot 9]
-    { 584,  720 << 3, 20, 24, 11 }, // 19: Rocker 4 (2n pis) [slot 13]
+    { 432,  960 << 3, 20, 24, 11 , 14, 15 }, // 16: Rocker 1 (1r pis davant botiga) [slot 6]
+    { 624,  768 << 3, 20, 24, 11 , 14, 15 }, // 17: Rocker 2 (2n pis dreta) [slot 15]
+    {  72,  464 << 3, 20, 24, 11 , 14, 15 }, // 18: Rocker 3 (prop Bar/Restaurant) [slot 9]
+    { 584,  720 << 3, 20, 24, 11 , 14, 15 }, // 19: Rocker 4 (2n pis) [slot 13]
 };
+#else
+#include "enemy_spawn.h"
+#endif
+
 
 static void en2_spawn_proj(u8 kind, u8 ht, u8 row_off, i16 x, i16 y, i16 vx, i16 vy, u8 cd) {
     s_proj.kind = kind;
@@ -517,8 +522,8 @@ void en2_draw(void) {
             u8 step = (e->dead || sp->kind == 8 || sp->vx == 0) ? 0 : (u8)((e->tick >> 2) & 1);
             u8 cell = (u8)(sp->base_cell + step);
             if (e->shoot_timer) {
-                if (sp->kind == 4) cell = POLICE_AIM_CELL;          // pose de tirc
-                else if (sp->kind == 17) cell = WAITRESS_THROW_CELL; // pose de llancament
+                if (sp->kind == 4) cell = sp->aim_cell;          // pose de tret
+                else if (sp->kind == 17) cell = sp->throw_cell;  // pose de llançament
             }
             const u8* src = en2_cell(cell);
             if (e->dir < 0) {

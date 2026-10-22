@@ -15,6 +15,7 @@
     .globl _b5_tile_type
     .globl _b5_set_tile
     .globl _b5_world_reset_tile
+    .globl _s_lv
     .globl _s_popup_drawn
     .globl _s_popup_dst
     .globl _s_popup_bg
@@ -74,13 +75,12 @@ _b5_trig_ptr::
     set     6, h                ;; HL = 0x4000 + (row << 7) + col
     ld      l, (hl)             ;; L = tile id
     ld      h, #0
-    add     hl, hl              ;; *2
     ld      d, h
-    ld      e, l                ;; DE = *2
+    ld      e, l                ;; DE = tile id
+    add     hl, hl              ;; *2
     add     hl, hl              ;; *4
-    add     hl, hl              ;; *8
-    add     hl, de              ;; *10
-    ld      de, #0x6400
+    add     hl, de              ;; *5 (TRIG compacte: 5 B/entrada)
+    ld      de, (_s_lv + 69)    ;; DE = trig_off (dins C5; struct empaquetat)
     add     hl, de
     ex      de, hl
     ret

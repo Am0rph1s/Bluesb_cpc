@@ -5,3 +5,5 @@
 ;; absoluta (el build verifica que l'entry es FRONT_BASE).
 _front_entry::
     jp      _front_run
+_front_map_entry::
+    jp      _front_map

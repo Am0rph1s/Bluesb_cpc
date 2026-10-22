@@ -349,34 +349,47 @@ bloc de `0x6400` (1.024 B). Sense això, el codi del món no hi cap (§4.3).
 
 
 
-### 4.4b Repartiment de la Fase 3.2 (numeros reals, 21/10/2026)
+### 4.4b Repartiment de la Fase 3.2 (corregit i implementat, 21/10/2026)
 
-El codi del mon es `obj/BANK5.BIN` = **4.548 B** (no 4.086: aquest numero era
-dolent i invalidava el pressupost anterior). Moure'l a la RAM 1 **no hi cap**
-(nivell 1: +724 B; prison: +2.568 B per Theme2 4.670). La copia mestra del FDC
-(785 B) nomes pot viure a `RAM1:0x7800` (cap carrega hi escriu) o al resident
-(922 < 785): no es mou.
+El codi del mon es `obj/BANK5.BIN` = **4.156 B** (4.086 de codi + 68 de dades,
+amb `_DATA` enganxada just despres del codi; abans eran 4.548 B per un forat de
+392 B). Moure'l a la RAM 1 **no hi cap** (nivell 1: +724 B; prison: +2.568 B per
+Theme2 4.670). La copia mestra del FDC (785 B) nomes pot viure a `RAM1:0x7800`
+(cap carrega hi escriu) o al resident (801 < 785 un cop feta la 3.2): no es mou.
 
-**Troballa clau**: el TRIG son 256 entrades de 10 B (2.560 B) pero
-`b5_check_bonus_triggers` fa `if (b6 >= 64) return;` -> **nomes calen 64
-entrades = 640 B** (estalvi 1.920 B), i encara menys per nivell segons el `b6`
-maxim real del mapa.
+**Correccio important (sessio 42):** el TRIG **no s'indexa per `b6`**, sino pel
+**tile id** (`TRIG[t * 10 + offset]`); `b6` nomes es el byte 6 de cada entrada.
+Truncar a 64 entrades trencaria els 138 tiles amb id >= 64 (nivell 1). El
+runtime nomes llegeix els bytes **0 (tipus), 1 (flags), 2 (op), 6 (b6) i 9
+(avt de reixes)**: es desen **256 entrades de 5 B = 1.280 B** (estalvi 1.280 B),
+no 640 B.
 
-Repartiment: **C5 = mapa + sales + TRIG(c) 640 + codi del mon 4.548**.
+Repartiment implementat (3 seccions independents a C5, sense omplir el forat):
 
-| Nivell | C5 | lliures |
-|---|---|---|
-| 1 magasin | 15.404 | +980 |
-| 2 ent | 14.404 | +1.980 |
-| 3 prison | 15.604 | +780 |
-| 4 egou | 13.596 | +2.788 |
-| **5 ville** | **17.548** | **-1.164** |
-| 6 concert | 11.460 | +4.924 |
+```
+C5:  [ mapa 0x4000 ][ sales rooms_off ][ TRIG5 trig_off ] ... [ codi 0x6E00 ]
+C1:  [ imatge 0x5000: musica, HUD, GAMEOVER, portes, restore, params,
+      codi del nivell 0x6950, frames 0x6E20, buffers 0x7000 ]
+```
 
-5 de 6 nivells queden resolts **sense tocar codi ni el layout**, nomes retallant
-el TRIG al build. **Ville** necessita ~1.100 B mes: dieta real del codi del mon
-(~800 B) o repartiment propi (sales+TRIG a la RAM 1, que per a ville te ~3,2 KB
-lliures).
+`rooms_off`, `trig_off` (camp nou) i `code_exc_off` van a `LevelParams` i al
+manifest; `BANK5_BASE = 0x6E00` es mante fix (slots `BC_*` del resident).
+
+| Nivell | mapa | sales | TRIG5 | codi | total | lliures |
+|---|---|---|---|---|---|---|
+| 1 magasin | 9.216 | 1.000 | 1.160 | 4.156 | 15.532 | **+852** |
+| 2 ent | 9.216 | 0 | 930 (N=186) | 2.964 | 13.110 | +3.274 |
+| 3 prison | 9.216 | 1.200 | 1.045 (N=209) | 3.060 | 14.521 | **+1.863** |
+| 4 egou | 7.808 | 600 | 1.050 (N=210) | 2.996 | 12.454 | +3.930 |
+| **5 ville** | 12.160 | 200 | 1.020 (N=204) | 2.964 | 16.344 | **+40** |
+| 6 concert | 6.272 | 0 | 820 (N=164) | 2.660 | 9.752 | +6.632 |
+
+**Nivell 1 fet i verificat en viu** (arrencada, sales/discs, bonus/malus, cor,
+ball, sortida, mort/respawn, instrument de sala, restore compacte del mapa).
+**Compilació per nivell feta**: L2-L6 enllacen amb 0 ascensors/span (2.660-3.060 B
+vs 4.156 de L1); L1 continua idèntic. **Ville** té només **+40 B** de base;
+afegint el mover generic ASM (646 B) i traient sales+TRIG de C5 queda a
+**+614 B**. `engine/mover_gen.s` NO s'enllaça a L1 (op4 en C es mes petit).
 
 ### 4.5 C4, C6, C7
 

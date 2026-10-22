@@ -47,7 +47,8 @@ def parse_staticres_arrays(path):
     return arrays
 
 
-def build_level_pkg(level_idx=0):
+def build_level_pkg(level_idx=0, out_dir=None):
+    measure_only = "--measure" in sys.argv
     staticres_path = os.path.join(HERE, "blues_dos", "bb", "staticres.c")
     arrays = parse_staticres_arrays(staticres_path)
     lname = LEVEL_NAMES[level_idx]
@@ -87,7 +88,9 @@ def build_level_pkg(level_idx=0):
         elev_y = [y for _, _, y in elevators]
         elev_col = [(x >> 4) for _, x, _ in elevators]
         start_px = xpos_arr[39] >> 1
-        start_py = ypos_arr[39]
+        # DOS dona la base dels peus; el motor CPC fa servir la cantonada
+        # superior (s_py8), igual que el cas hardcoded de Magasin (ypos - PH).
+        start_py = ypos_arr[39] - 30
         cam0_x4 = 0
         cam0_row = max(0, (map_h * 2) - 20)
 
@@ -98,9 +101,15 @@ def build_level_pkg(level_idx=0):
     chk_cam_x4 = max(0, min((map_w * 2) - 40, (chk_px - 80) // 4))
     chk_cam_row = max(0, min((map_h * 2) - 20, (chk_py - 80) // 8))
 
-    # Escanejar MAP0.BIN + TRIG0.BIN per extreure spans de tiles animats (cintes + aigua)
-    map_bin = open(os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN"), "rb").read()
-    trig_bin = open(os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN"), "rb").read()
+    # Fitxers del nivell (permetre N nivells: MAP<n>.BIN, TRIG<n>.BIN...)
+    map_path = os.path.join(PROJ, "assets", "bbdata", "MAP%d.BIN" % level_idx)
+    trig_path = os.path.join(PROJ, "assets", "bbdata", "TRIG%d.BIN" % level_idx)
+    rooms_path = os.path.join(PROJ, "assets", "bbdata", "ROOMS%d.BIN" % level_idx)
+    tileset_path = os.path.join(PROJ, "assets", "bbdata", "TILESET%d.BIN" % level_idx)
+    map_bin = open(map_path, "rb").read()
+    trig_bin = open(trig_path, "rb").read()
+    rooms_bin = open(rooms_path, "rb").read() if os.path.exists(rooms_path) else b""
+    tileset_full = open(tileset_path, "rb").read()
 
     used_b4 = sorted(DOS_ANIM_SEQS.keys())
     b4_to_seq = {b4: i for i, b4 in enumerate(used_b4)}
@@ -149,6 +158,51 @@ def build_level_pkg(level_idx=0):
     # Al mapa principal no hi ha d'aparèixer duplicat.
     inst_col, inst_row, inst_tile = (0, 0, 0)
 
+    # --- Compactacio d'IDs de tile (build-time, 1:1) ---------------------
+    # Es reordena el tileset amb els tiles realment usats i es remapegen
+    # mapa, sales, TRIG, restore, sequencies animades i bg_tile dels triggers.
+    # Els IDs compactes son els que veu el runtime (tileset + TRIG + mapa).
+    used = set(map_bin) | set(rooms_bin)
+    for seq in DOS_ANIM_SEQS.values():
+        used |= set(seq)
+    for entry in trig_entries:
+        used.add(entry[1])
+    used |= {208, 159, 96}          # vinil, instrument, tile buit
+    tile_order = sorted(used)
+    assert len(tile_order) <= 256, len(tile_order)
+    remap = [0] * 256
+    for i, t in enumerate(tile_order):
+        remap[t] = i
+    assert len(tileset_full) == 16384, len(tileset_full)
+    tileset_c = b"".join(tileset_full[t * 64:(t + 1) * 64] for t in tile_order)
+    map_c = bytes(remap[t] for t in map_bin)
+    rooms_c = bytes(remap[t] for t in rooms_bin)
+    trig_c = b"".join(bytes((trig_bin[t * 10], trig_bin[t * 10 + 1],
+                            trig_bin[t * 10 + 2], trig_bin[t * 10 + 6],
+                            trig_bin[t * 10 + 9])) for t in tile_order)
+    trig_entries = [
+        (k, remap[bg], av, sv, ah, sa, inst, ex, pop, al, b6)
+        for (k, bg, av, sv, ah, sa, inst, ex, pop, al, b6) in trig_entries
+    ]
+    if inst_tile:
+        inst_tile = remap[inst_tile]
+    tile_vinyl_c = remap[208]
+    tile_instr_c = remap[159]
+    tile_empty_c = remap[96]
+    print("  tile compaction: %d tiles usats (tileset %d B, TRIG %d B)" %
+          (len(tile_order), len(tileset_c), len(trig_c)))
+    if measure_only:
+        return
+    for name, data in (("TILESETC%d.BIN" % level_idx, tileset_c),
+                       ("MAPC%d.BIN" % level_idx, map_c),
+                       ("ROOMSC%d.BIN" % level_idx, rooms_c),
+                       ("TRIGC%d.BIN" % level_idx, trig_c)):
+        with open(os.path.join(PROJ, "assets", "bbdata", name), "wb") as f:
+            f.write(data)
+
+    elev_storage = max(1, len(elev_x))
+    span_storage = max(1, len(spans))
+    trig_storage = max(1, len(trig_entries))
     lines = [
         "#ifndef LEVEL_PKG_H",
         "#define LEVEL_PKG_H",
@@ -174,19 +228,20 @@ def build_level_pkg(level_idx=0):
         f"#define LEVEL_CHK_CAM_ROW   {chk_cam_row}",
         "",
         f"#define LEVEL_ELEVATOR_COUNT {len(elev_x)}",
+        f"#define LEVEL_ELEVATOR_STORAGE {elev_storage}",
         f"#define LEVEL_INST_COL      {inst_col}",
         f"#define LEVEL_INST_ROW      {inst_row}",
         f"#define LEVEL_INST_TILE     {inst_tile}",
         "",
         "#ifndef LEVEL_PKG_DEFS_ONLY",
-        "static const i16 s_bank_start_x[LEVEL_ELEVATOR_COUNT] = { "
-        + ", ".join(str(x) for x in elev_x)
+        "static const i16 s_bank_start_x[LEVEL_ELEVATOR_STORAGE] = { "
+        + (", ".join(str(x) for x in elev_x) if elev_x else "0")
         + " };",
-        "static const i16 s_bank_start_y[LEVEL_ELEVATOR_COUNT] = { "
-        + ", ".join(str(y) for y in elev_y)
+        "static const i16 s_bank_start_y[LEVEL_ELEVATOR_STORAGE] = { "
+        + (", ".join(str(y) for y in elev_y) if elev_y else "0")
         + " };",
-        "static const u8 s_bank_map_col[LEVEL_ELEVATOR_COUNT] = { "
-        + ", ".join(str(c) for c in elev_col)
+        "static const u8 s_bank_map_col[LEVEL_ELEVATOR_STORAGE] = { "
+        + (", ".join(str(c) for c in elev_col) if elev_col else "0")
         + " };",
         "",
         "// Taula unificada de 6 fases (MCM de 3 i 2) per a totes les animacions de tiles del nivell",
@@ -194,7 +249,7 @@ def build_level_pkg(level_idx=0):
         "static const u8 s_level_anim_seqs[LEVEL_ANIM_SEQ_COUNT][6] = {",
     ]
     for b4 in used_b4:
-        seq = DOS_ANIM_SEQS[b4]
+        seq = [remap[t] for t in DOS_ANIM_SEQS[b4]]
         seq6 = [seq[i % len(seq)] for i in range(6)]
         lines.append(
             "    { "
@@ -211,11 +266,14 @@ def build_level_pkg(level_idx=0):
     lines.append("} LevelAnimSpan;")
     lines.append("")
     lines.append(f"#define LEVEL_ANIM_SPAN_COUNT {len(spans)}")
-    lines.append("static const LevelAnimSpan s_level_anim_spans[LEVEL_ANIM_SPAN_COUNT] = {")
+    lines.append(f"#define LEVEL_ANIM_SPAN_STORAGE {span_storage}")
+    lines.append("static const LevelAnimSpan s_level_anim_spans[LEVEL_ANIM_SPAN_STORAGE] = {")
     for r, c0, c1, seq_idx, b4 in spans:
         lines.append(
             f"    {{ {r:2d}, {c0:3d}, {c1:3d}, {seq_idx} }}, // row {r}, cols {c0}..{c1} (DOS b4={b4})"
         )
+    if not spans:
+        lines.append("    { 0, 0, 0, 0 },")
     lines.append("};")
     lines.append("")
     lines.append("// Taula de triggers d'ítems / bonus / malus (DOS level_triggersdata_2030)")
@@ -240,12 +298,15 @@ def build_level_pkg(level_idx=0):
     popup_to_idx = {pop: i for i, pop in enumerate(used_popups)}
 
     lines.append(f"#define LEVEL_TRIG3_COUNT {len(trig_entries)}")
-    lines.append("static const LevelTriggerEntry s_level_trig3[LEVEL_TRIG3_COUNT] = {")
+    lines.append(f"#define LEVEL_TRIG3_STORAGE {trig_storage}")
+    lines.append("static const LevelTriggerEntry s_level_trig3[LEVEL_TRIG3_STORAGE] = {")
     for kind, bg, av, sv, ah, sa, inst, ex, pop, al, b6 in trig_entries:
         pop_val = popup_to_idx.get(pop, 0xFF) if kind == 12 else pop
         lines.append(
             f"    {{ {kind:2d}, {bg:3d}, {av:2d}, {sv:2d}, {ah}, {sa:2d}, {inst}, {ex}, {pop_val:3d}, {al} }}, // DOS b6={b6}"
         )
+    if not trig_entries:
+        lines.append("    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },")
     lines.append("};")
     lines.append("")
     lines.append("// LUT ràpida: byte 6 de TRIG.BIN (0..63) -> índex a s_level_trig3 (0xFF = cap)")
@@ -264,8 +325,10 @@ def build_level_pkg(level_idx=0):
 
     sqv_frames = load_sqv_frames(os.path.join(PROJ, "assets", "bbdata", "SPRITE.SQV"))
     popup_labels = {16: "-10", 17: "-20", 18: "-30", 19: "-40", 20: "-50", 21: "+50", 22: "1UP"}
+    popup_storage = max(1, len(used_popups))
     lines.append(f"#define LEVEL_POPUP_COUNT {len(used_popups)}")
-    lines.append("static const u8 s_popup_sprites[LEVEL_POPUP_COUNT][56] = {")
+    lines.append(f"#define LEVEL_POPUP_STORAGE {popup_storage}")
+    lines.append("static const u8 s_popup_sprites[LEVEL_POPUP_STORAGE][56] = {")
     for idx_p, pop_gt in enumerate(used_popups):
         dos_f = 128 + (pop_gt - 16)
         w, h, px = sqv_frames[dos_f]
@@ -283,12 +346,16 @@ def build_level_pkg(level_idx=0):
                 raw.append(img)
         hex_str = ", ".join(f"0x{b:02X}" for b in raw)
         lines.append(f"    {{ {hex_str} }}, // {idx_p}: grab_type {pop_gt} ({popup_labels[pop_gt]})")
+    if not used_popups:
+        lines.append("    { " + ", ".join(["0"] * 56) + " },")
     lines.append("};")
     lines.append("#endif // LEVEL_PKG_DEFS_ONLY")
     lines.append("")
     lines.append("#endif")
 
-    out_path = os.path.join(PROJ, "src", "level_pkg.h")
+    hdr_dir = out_dir if out_dir else os.path.join(PROJ, "src")
+    os.makedirs(hdr_dir, exist_ok=True)
+    out_path = os.path.join(hdr_dir, "level_pkg.h")
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     print(
@@ -311,12 +378,10 @@ def build_level_pkg(level_idx=0):
     restore = []
     for r in range(map_h):
         for c in range(map_w):
-            t = map_bin[(r << 7) + c]
-            if t == 0xFF:
-                continue
-            canviable = trig_bin[t * 10 + 0] in (5, 8, 9)
+            t = map_c[(r << 7) + c]
+            canviable = trig_c[t * 5 + 0] in (5, 8, 9)
             if not canviable:
-                b6 = trig_bin[t * 10 + 6]
+                b6 = trig_c[t * 5 + 3]
                 if b6 < 64:
                     i = b6_lut[b6]
                     if i != 0xFF and trig_entries[i][0] in (11, 12):
@@ -338,33 +403,47 @@ def build_level_pkg(level_idx=0):
     # quedar cap constant del nivell 1.
     prm = bytearray()
     prm += bytes((0xB0, 1))                  # magic, version
-    prm += bytes((5, 20, 10))                 # habitacions, columnes, files
-    prm += bytes((74, 83, 100, 148))          # fila 0, fila del terra, total col, fila de camera
-    prm += bytes((208, 159, 96))              # tiles: vinil, instrument, buit
+    room_count = len(rooms_bin) // 200
+    txt_level = open(os.path.join(HERE, "blues_dos", "bb", "level.c"),
+                     encoding="latin1").read()
+    mpos = re.search(r"uint8_t\s+pos\[\]\s*=\s*\{([^}]*)\}", txt_level)
+    room_pos = [int(x.strip(), 0) for x in mpos.group(1).split(",") if x.strip()]
+    r0 = room_pos[level_idx] if level_idx < len(room_pos) else 0
+    room_total_cols = 20 * room_count
+    room_floor_row = r0 + 9
+    room_cam_row = r0 * 2
+    prm += bytes((room_count, 20, 10))        # habitacions, columnes, files
+    prm += bytes((r0, room_floor_row, room_total_cols, room_cam_row))
+    prm += bytes((tile_vinyl_c, tile_instr_c, tile_empty_c))  # vinil, instrument, buit (compactes)
     prm += bytes((5, level_idx))              # nombre d'ascensors, id del nivell
     # Offsets de fila dins el mapa de les habitacions (el resident no ha de
     # multiplicar: multiplicar 16 bits costa codi).
-    prm += b"".join(struct.pack("<H", r * 100) for r in range(10))
+    prm += b"".join(struct.pack("<H", r * room_total_cols) for r in range(10))
     prm += struct.pack("<hhhhhhhh", start_px, start_py, cam0_x4, cam0_row,
                        chk_px, chk_py, chk_cam_x4, chk_cam_row)
     prm += struct.pack("<H", max(0, (map_h * 2) - 20))   # fila maxima de camera
     # --- v2: geometries i OFFSETS dels blocs (Fase 3, PLA_NIVELLS_UNIVERSAL) --
     # El build els reescriu si cal (build.py); aqui van els valors actuals perque
     # el fitxer sigui autosuficient.
-    prm += bytes((map_w & 0xFF, map_h & 0xFF, map_h & 0xFF, 23))
-    prm += struct.pack("<HHH", 0x6400, 0x6800, 0x6860)  # rooms, doors, restore (C1)
+    doors_path = os.path.join(PROJ, "assets", "bbdata", "DOORS%d.BIN" % level_idx)
+    door_count = (len(open(doors_path, "rb").read()) // 4) if os.path.exists(doors_path) else 0
+    prm += bytes((map_w & 0xFF, map_h & 0xFF, map_h & 0xFF, door_count))
+    prm += struct.pack("<HHH", 0x6400, 0x6800, 0x6860)  # rooms (C5), doors/restore (C1)
     # Valors derivats perque el resident NO faci matematiques de 16 bits:
     prm += struct.pack("<HHH", map_w * 8, map_w * 2, max(0, map_w * 2 - 20))
-    prm += bytes(((74 + 10 - 1) & 0xFF, 0))             # room_row_last + pad
+    # NOTA: SDCC empaqueta LevelParams sense alineacio: room_row_last=68,
+    # trig_off=69, code_exc_off=71 (sizeof=73). El blob ha de coincidir-hi.
+    prm += bytes(((room_floor_row & 0xFF),))            # room_row_last
+    prm += struct.pack("<H", 0x67E8)                   # trig_off (el build el reescriu)
     prm += struct.pack("<H", 0x6934)                   # code_exc_off (el build el reescriu)
-    assert len(prm) == 72, len(prm)
+    assert len(prm) == 73, len(prm)
     parm_path = os.path.join(PROJ, "assets", "bbdata", "LEVELPARM%d.BIN" % level_idx)
     with open(parm_path, "wb") as f:
         f.write(bytes(prm))
     print("  LEVELPARM%d.BIN: %d bytes (parametres del nivell per al paquet)"
           % (level_idx, len(prm)))
 
-    build_hud_pkg(level_idx, sqv_frames)
+    build_hud_pkg(level_idx, sqv_frames, hdr_dir)
 
 
 def encode_m0_byte(p0, p1):
@@ -384,7 +463,7 @@ def grid_to_strip24(grid12x4):
     return out
 
 
-def build_hud_pkg(level_idx, sqv_frames):
+def build_hud_pkg(level_idx, sqv_frames, out_dir=None):
     bar_pen = {11: 11, 4: 4, 3: 2, 8: 12, 15: 0, 5: 1}
     inst_uncol_pen = {11: 11, 4: 4, 3: 2, 8: 12, 15: 0}
     inst_col_pen = {11: 11, 4: 4, 3: 2, 8: 12, 7: 7, 5: 1, 15: 0}
@@ -550,7 +629,9 @@ def build_hud_pkg(level_idx, sqv_frames):
     h_lines.append("")
     h_lines.append("#endif")
 
-    hud_path = os.path.join(PROJ, "src", "hud_pkg.h")
+    hud_dir = out_dir if out_dir else os.path.join(PROJ, "src")
+    os.makedirs(hud_dir, exist_ok=True)
+    hud_path = os.path.join(hud_dir, "hud_pkg.h")
     with open(hud_path, "w", encoding="utf-8") as f:
         f.write("\n".join(h_lines) + "\n")
     print(f"Generat {hud_path}: 23 tires Mode 0 (552 B) per al HUD del nivell {level_idx + 1}.")
@@ -558,5 +639,8 @@ def build_hud_pkg(level_idx, sqv_frames):
 
 if __name__ == "__main__":
     lvl = int(sys.argv[1]) if len(sys.argv) > 1 else 0
-    build_level_pkg(lvl)
+    out_dir = None
+    if "--outdir" in sys.argv:
+        out_dir = sys.argv[sys.argv.index("--outdir") + 1]
+    build_level_pkg(lvl, out_dir)
 

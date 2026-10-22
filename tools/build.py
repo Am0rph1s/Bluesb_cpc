@@ -8,6 +8,7 @@ src/disk_tables.h amb les taules CHS per al carregador FDC raw.
 import os
 import sys
 import re
+import shutil
 import json
 import hashlib
 import subprocess
@@ -82,6 +83,8 @@ DSKNAME8 = "BLUESB"
 ENEMY_BASE = 0x5C00
 ENEMY_DATA = 0x5820  # dins l'area alliberada pels frames comprimits (cache 0x5000..0x57FF, estat 0x5800..0x581F)
 ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
+# L2-L6: ENEMI2.BIN..ENEMI6.BIN (mateix format de 16 celes); build_enemybank
+# els tria per level_idx.
 ENEMY_C_SOURCES = ["src/enemy.c"]
 ENEMY_ASM_SOURCES = ["engine/enemy_table.s"]
 ENEMY_C_HEADERS = {
@@ -158,6 +161,8 @@ DATA_FILES = [
     # 4. Paquets Nivell 1 + GAMEOVER comu
     ("L1WORLD", "PAK", os.path.join(PROJ, "obj", "L1WORLD.PAK")),
     ("L1ENEMI", "ZX0", os.path.join(PROJ, "obj", "L1ENEMI.ZX0")),
+    ("L2WORLD", "PAK", os.path.join(PROJ, "obj", "L2WORLD.PAK")),
+    ("L2ENEMI", "ZX0", os.path.join(PROJ, "obj", "L2ENEMI.ZX0")),
     ("GAMEOVER", "ZX0", os.path.join(PROJ, "obj", "GAMEOVER.ZX0")),
 ]
 
@@ -453,7 +458,7 @@ def build_bank_equ(resident_map):
     return path
 
 
-def build_bank(force):
+def build_bank(force, level_idx=None):
     """Compila+enllaça el Banc 5 (moving_bank) a 0x6E00. Retorna BANK5.BIN."""
     obj = os.path.join(PROJ, "obj")
     resident_map = os.path.join(obj, "bluesb.map")
@@ -466,13 +471,41 @@ def build_bank(force):
             run([SDASZ80, "-plosgff", rel, src])
             mark_fresh(rel, [src])
         bank_rels.append(rel)
-    for rel_src in BANK_C_SOURCES:
-        src = os.path.join(PROJ, rel_src)
-        rel = os.path.join(obj, os.path.splitext(os.path.basename(src))[0] + ".rel")
-        headers = [os.path.join(PROJ, name) for name in BANK_C_HEADERS[rel_src]]
-        if force or is_stale(rel, [src] + headers):
-            run([SDCC] + INCLUDES + CFLAGS + ["-c", src, "-o", rel])
-            mark_fresh(rel, [src] + headers)
+    if level_idx is None:
+        for rel_src in BANK_C_SOURCES:
+            src = os.path.join(PROJ, rel_src)
+            rel = os.path.join(obj, os.path.splitext(os.path.basename(src))[0] + ".rel")
+            headers = [os.path.join(PROJ, name) for name in BANK_C_HEADERS[rel_src]]
+            if force or is_stale(rel, [src] + headers):
+                run([SDCC] + INCLUDES + CFLAGS + ["-c", src, "-o", rel])
+                mark_fresh(rel, [src] + headers)
+            bank_rels.append(rel)
+    else:
+        # Compilacio per nivell: header i codi a obj/lvl<n> perque SDCC
+        # trobi el level_pkg.h del nivell (include local).
+        vdir = os.path.join(obj, "lvl%d" % level_idx)
+        os.makedirs(vdir, exist_ok=True)
+        src_c = os.path.join(vdir, "moving_bank.c")
+        hdr = os.path.join(vdir, "level_pkg.h")
+        def _sync(a, b):
+            data = open(a, "rb").read()
+            if not os.path.exists(b) or open(b, "rb").read() != data:
+                open(b, "wb").write(data)
+        _sync(os.path.join(PROJ, "src", "moving_bank.c"), src_c)
+        if level_idx == 0:
+            hdr_src = os.path.join(PROJ, "src", "level_pkg.h")
+        else:
+            hdr_src = os.path.join(vdir, "level_pkg.h")
+            if not os.path.exists(hdr_src):
+                print("\n[FATAL] Falta %s; genera'l amb pack_level.py %d --outdir %s" %
+                      (hdr_src, level_idx, vdir))
+                sys.exit(1)
+        _sync(hdr_src, hdr)
+        rel = os.path.join(vdir, "moving_bank.rel")
+        headers = [hdr] + [os.path.join(PROJ, name) for name in BANK_C_HEADERS["src/moving_bank.c"]]
+        if force or is_stale(rel, [src_c] + headers):
+            run([SDCC, "-I" + vdir] + INCLUDES + CFLAGS + ["-c", src_c, "-o", rel])
+            mark_fresh(rel, [src_c] + headers)
         bank_rels.append(rel)
     equ_s = os.path.join(obj, "bank_equ.s")
     equ_rel = os.path.join(obj, "bank_equ.rel")
@@ -480,11 +513,22 @@ def build_bank(force):
         run([SDASZ80, "-plosgff", equ_rel, equ_s])
         mark_fresh(equ_rel, [equ_s])
     bank_rels.append(equ_rel)
-    ihx = os.path.join(PROJ, "bank5.ihx") if False else os.path.join(obj, "bank5.ihx")
-    run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % BANK5_BASE,
-         "--data-loc", "0x7F80"] + bank_rels + ["-o", ihx])
-    map_path = os.path.join(obj, "bank5.map")
-    b5_code_s, b5_code_l = map_area(map_path, "CODE")
+    suffix = "" if level_idx is None else "_%d" % level_idx
+    ihx = os.path.join(obj, "bank5%s.ihx" % suffix)
+    map_path = os.path.join(obj, "bank5%s.map" % suffix)
+
+    def link_b5(data_loc):
+        run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % BANK5_BASE,
+             "--data-loc", "0x%04X" % data_loc] + bank_rels + ["-o", ihx])
+        return map_area(map_path, "CODE")
+
+    # 1a passada amb _DATA a dalt de tot; 2a passada enganxant _DATA just
+    # despres del codi: elimina el forat de ~392 B dins la imatge C5.
+    b5_code_s, b5_code_l = link_b5(0x7F80)
+    if b5_code_s is not None:
+        dloc = (b5_code_s + b5_code_l + 7) & 0xFFF8
+        if dloc < 0x8000:
+            b5_code_s, b5_code_l = link_b5(dloc)
     b5_data_s, b5_data_l = map_area(map_path, "DATA")
     if b5_code_s is not None and b5_data_s is not None and (b5_code_s + b5_code_l) > b5_data_s:
         print("\n[FATAL] Banc 5 _CODE (0x%04X..0x%04X) envaeix _DATA (0x%04X)!" %
@@ -502,7 +546,7 @@ def build_bank(force):
             print("\n[FATAL] Slot %s: esperat 0x%04X, mapa diu %s. Revisa bank5_table.s!" %
                   (name, want, ("0x%04X" % got) if got >= 0 else "absent"))
             sys.exit(1)
-    bin_path = os.path.join(obj, "BANK5.BIN")
+    bin_path = os.path.join(obj, "BANK5%s.BIN" % suffix)
     convert_ihx(ihx, bin_path, start_addr=BANK5_BASE,
                 max_length=image_length(map_path, BANK5_BASE))
     size = os.path.getsize(bin_path)
@@ -510,12 +554,15 @@ def build_bank(force):
         print("\n[FATAL] Banc 5: %d bytes > límit 0x%04X! Cal aprimar moving_bank.c." %
               (size, BANK5_MAXLEN))
         sys.exit(1)
-    print("BANC5: 0x%04X (%d bytes, code=%d B, marge_code=%d B)" %
-          (BANK5_BASE, size, b5_code_l, (b5_data_s or 0x7F80) - (BANK5_BASE + b5_code_l)))
+    print("BANC5%s: 0x%04X (%d bytes, code=%d B, marge_code=%d B)" %
+          (suffix, BANK5_BASE, size, b5_code_l,
+           (b5_data_s or 0x7F80) - (BANK5_BASE + b5_code_l)))
+    if level_idx == 0:
+        shutil.copyfile(bin_path, os.path.join(obj, "BANK5.BIN"))
     return bin_path
 
 
-def build_levelcode(force):
+def build_levelcode(force, level_idx=None):
     """Compila el codi del NIVELL (ascensors) per al Banc 1 (C1).
 
     El codi del nivell no ha de viure al Bloc 0 resident (que ha de ser el
@@ -550,10 +597,11 @@ def build_levelcode(force):
     # Base del codi: just despres de la imatge C1 (MUSMAIN.BIN), alineada a 8.
     # Ja no es una constant: creix si la imatge creix (p. ex. parametres v2).
     base = (0x5000 + os.path.getsize(os.path.join(obj, "MUSMAIN.BIN")) + 7) & 0xFFF8
-    ihx = os.path.join(obj, "levelcode.ihx")
+    suffix = "" if level_idx is None else "_%d" % level_idx
+    ihx = os.path.join(obj, "levelcode%s.ihx" % suffix)
     run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % base,
          "--data-loc", "0x%04X" % LC1_DATA_BASE] + rels + ["-o", ihx])
-    map_path = os.path.join(obj, "levelcode.map")
+    map_path = os.path.join(obj, "levelcode%s.map" % suffix)
     code_s, code_l = map_area(map_path, "CODE")
     data_s, data_l = map_area(map_path, "DATA")
     if code_s is not None and (code_s + code_l) > LC1_FRAMES_BASE:
@@ -564,16 +612,19 @@ def build_levelcode(force):
         sys.exit(1)
     # El codi i les dades van en dos fitxers perqu? al paquet el codi va
     # abans dels frames i dels buffers de fons (que son dades, no codi).
-    code_path = os.path.join(obj, "LEVELCODE.BIN")
+    code_path = os.path.join(obj, "LEVELCODE%s.BIN" % suffix)
     convert_ihx(ihx, code_path, start_addr=base, max_length=code_l)
-    data_path = os.path.join(obj, "LEVELDATA.BIN")
+    data_path = os.path.join(obj, "LEVELDATA%s.BIN" % suffix)
     convert_ihx(ihx, data_path, start_addr=LC1_DATA_BASE, max_length=data_l)
-    print("BANC1: codi del nivell a 0x%04X (%d B de codi, %d B de dades)"
-          % (base, code_l, data_l))
+    print("BANC1%s: codi del nivell a 0x%04X (%d B de codi, %d B de dades)"
+          % (suffix, base, code_l, data_l))
+    if level_idx == 0:
+        shutil.copyfile(code_path, os.path.join(obj, "LEVELCODE.BIN"))
+        shutil.copyfile(data_path, os.path.join(obj, "LEVELDATA.BIN"))
     return code_path
 
 
-def build_enemybank(force):
+def build_enemybank(force, level_idx=None):
     """Imatge C6 (walkers L1): frames ENEMI1.BIN a 0x4000 + codi linkat a
     ENEMY_BASE (taula engine/enemy_table.s primera: slots fixos 0x5200+3k)
     + dades a ENEMY_DATA. Retorna obj/ENEMI.BIN (concatenat, llest pel DSK).
@@ -587,19 +638,55 @@ def build_enemybank(force):
             run([SDASZ80, "-plosgff", rel, src])
             mark_fresh(rel, [src])
         en_rels.append(rel)
-    for rel_src in ENEMY_C_SOURCES:
-        src = os.path.join(PROJ, rel_src)
-        rel = os.path.join(obj, os.path.splitext(os.path.basename(src))[0] + ".rel")
-        headers = [os.path.join(PROJ, name) for name in ENEMY_C_HEADERS[rel_src]]
-        if force or is_stale(rel, [src] + headers):
-            run([SDCC] + INCLUDES + CFLAGS + ["-c", src, "-o", rel])
-            mark_fresh(rel, [src] + headers)
+    if level_idx is None:
+        for rel_src in ENEMY_C_SOURCES:
+            src = os.path.join(PROJ, rel_src)
+            rel = os.path.join(obj, os.path.splitext(os.path.basename(src))[0] + ".rel")
+            headers = [os.path.join(PROJ, name) for name in ENEMY_C_HEADERS[rel_src]]
+            if force or is_stale(rel, [src] + headers):
+                run([SDCC] + INCLUDES + CFLAGS + ["-c", src, "-o", rel])
+                mark_fresh(rel, [src] + headers)
+            en_rels.append(rel)
+    else:
+        vdir = os.path.join(obj, "lvl%d" % level_idx)
+        os.makedirs(vdir, exist_ok=True)
+        src_c = os.path.join(vdir, "enemy.c")
+        hdr = os.path.join(vdir, "level_pkg.h")
+        def _sync(a, b):
+            data = open(a, "rb").read()
+            if not os.path.exists(b) or open(b, "rb").read() != data:
+                open(b, "wb").write(data)
+        _sync(os.path.join(PROJ, "src", "enemy.c"), src_c)
+        if level_idx == 0:
+            hdr_src = os.path.join(PROJ, "src", "level_pkg.h")
+        else:
+            hdr_src = os.path.join(vdir, "level_pkg.h")
+            if not os.path.exists(hdr_src):
+                print("\n[FATAL] Falta %s; genera'l amb pack_level.py %d --outdir %s" %
+                      (hdr_src, level_idx, vdir))
+                sys.exit(1)
+        _sync(hdr_src, hdr)
+        spawn_h = os.path.join(vdir, "enemy_spawn.h")
+        spawn_src = os.path.join(PROJ, "tools", "blues_dos", "bb", "staticres.c")
+        if os.path.basename(vdir) != "lvl0":
+            if force or is_stale(spawn_h, [spawn_src]):
+                run([sys.executable, os.path.join(HERE, "gen_enemy_spawn.py"),
+                     "--level", str(level_idx), "--out", spawn_h])
+                mark_fresh(spawn_h, [spawn_src])
+        rel = os.path.join(vdir, "enemy.rel")
+        headers = [hdr] + [os.path.join(PROJ, name) for name in ENEMY_C_HEADERS["src/enemy.c"]]
+        if os.path.basename(vdir) != "lvl0":
+            headers.append(spawn_h)
+        if force or is_stale(rel, [src_c] + headers):
+            run([SDCC, "-I" + vdir] + INCLUDES + CFLAGS + ["-c", src_c, "-o", rel])
+            mark_fresh(rel, [src_c] + headers)
         en_rels.append(rel)
     en_rels.append(os.path.join(obj, "bank_equ.rel"))
-    ihx = os.path.join(obj, "enemybank.ihx")
+    suffix = "" if level_idx is None else "_%d" % level_idx
+    ihx = os.path.join(obj, "enemybank%s.ihx" % suffix)
     run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % ENEMY_BASE,
          "--data-loc", "0x%04X" % ENEMY_DATA] + en_rels + ["-o", ihx])
-    map_path = os.path.join(obj, "enemybank.map")
+    map_path = os.path.join(obj, "enemybank%s.map" % suffix)
     en_code_s, en_code_l = map_area(map_path, "CODE")
     en_data_s, en_data_l = map_area(map_path, "DATA")
     # Layout C6 nou: frames comprimits 0x4000, cache 0x5000, estat 0x5800,
@@ -622,10 +709,17 @@ def build_enemybank(force):
             print("\n[FATAL] Slot %s: esperat 0x%04X, mapa diu %s. Revisa enemy_table.s!" %
                   (name, want, ("0x%04X" % got) if got >= 0 else "absent"))
             sys.exit(1)
-    code_path = os.path.join(obj, "ENEMYCODE.BIN")
+    code_path = os.path.join(obj, "ENEMYCODE%s.BIN" % suffix)
     convert_ihx(ihx, code_path, start_addr=ENEMY_BASE,
                 max_length=en_code_l)
-    frames = open(ENEMY_FRAMES, "rb").read()
+    frames_path = ENEMY_FRAMES if level_idx in (None, 0) else \
+        os.path.join(PROJ, "assets", "bbdata", "ENEMI%d.BIN" % (level_idx + 1))
+    if level_idx == 1:
+        gen2 = os.path.join(PROJ, "tools", "gen_enemy2_frames.py")
+        sqv2 = os.path.join(PROJ, "assets", "bbdata", "ENEMI2.SQV")
+        if force or is_stale(frames_path, [gen2, sqv2]):
+            run([sys.executable, gen2])
+    frames = open(frames_path, "rb").read()
     code = open(code_path, "rb").read()
     assert len(frames) % 512 == 0 and len(frames) // 512 >= 14, len(frames)
 
@@ -682,17 +776,19 @@ def build_enemybank(force):
           % (len(blocks), len(frames), ncell, EN_CACHE_SLOTS, EN_CACHE))
     print("ENEMY restore: %d B a 0x%04X (%d posicions)"
           % (len(rt), EN_RESTORE, rt[0] | (rt[1] << 8)))
-    out_path = os.path.join(obj, "ENEMI.BIN")
+    out_path = os.path.join(obj, "ENEMI%s.BIN" % suffix)
     if not os.path.exists(out_path) or open(out_path, "rb").read() != im:
         open(out_path, "wb").write(im)
-    print("ENEMYB: blocs %d B + codi %d B = %d B (0x4000..0x%04X)"
-          % (len(blocks), len(code), total, 0x4000 + total))
+    print("ENEMYB%s: blocs %d B + codi %d B = %d B (0x4000..0x%04X)"
+          % (suffix, len(blocks), len(code), total, 0x4000 + total))
     # EQU pel GAME (render.c llegeix s_hud_strips a 0x6000 paginant Banc C1 / C0).
     ext_s = os.path.join(obj, "enemy_ext.s")
     ext_txt = ("    .module enemy_ext\n"
                "    .globl _s_hud_strips\n_s_hud_strips = 0x6000\n")
     if not os.path.exists(ext_s) or open(ext_s).read() != ext_txt:
         open(ext_s, "w").write(ext_txt)
+    if level_idx == 0:
+        shutil.copyfile(out_path, os.path.join(obj, "ENEMI.BIN"))
     return out_path
 
 
@@ -872,6 +968,10 @@ def build_front(force):
         print("\n[FATAL] FRONT: entry=0x%04X (esperat 0x%04X). Ordre _CODE trencat!" %
               (syms_f.get("_front_entry", -1), FRONT_BASE))
         sys.exit(1)
+    if syms_f.get("_front_map_entry", -1) != FRONT_BASE + 3:
+        print("\n[FATAL] FRONT: map entry=0x%04X (esperat 0x%04X)." %
+              (syms_f.get("_front_map_entry", -1), FRONT_BASE + 3))
+        sys.exit(1)
     f_code_s, f_code_l = map_area(map_path, "CODE")
     f_data_s, f_data_l = map_area(map_path, "DATA")
     if (f_code_s is not None and f_data_s is not None and
@@ -936,6 +1036,59 @@ def link_bin(rel_path, map_name, base, data_loc, bin_path, extra_labels=()):
     convert_ihx(ihx, bin_path, start_addr=base,
                 max_length=(code_s + code_l) - base if code_s is not None else image_length(map_path, base))
     return os.path.getsize(bin_path), labels
+
+
+
+def _hud_strips_raw():
+    hud_h = os.path.join(PROJ, "src", "hud_pkg.h")
+    hud_src = open(hud_h, "r").read()
+    m_hud = re.search(r"const u8 s_hud_strips\[39\]\[24\] = \{(.*?)\};",
+                      hud_src, re.DOTALL)
+    hud_raw = bytearray()
+    for hl in m_hud.group(1).strip().split("\n"):
+        hl_clean = re.sub(r"//.*", "", hl).strip()
+        m_r = re.search(r"\{(.*?)\}", hl_clean)
+        if m_r:
+            nums = [int(x.strip(), 16) for x in m_r.group(1).split(",") if x.strip()]
+            assert len(nums) == 24
+            hud_raw.extend(nums)
+    assert len(hud_raw) == 39 * 24
+    return bytes(hud_raw)
+
+
+def build_c1_pre(level_idx, song_bin):
+    """Imatge C1 ABANS del codi/frames per a un nivell (cançó + HUD + portes
+    + restore + parametres). Per a L2 (sense codi ni frames) es la imatge
+    completa. Per a L1 no s'usa: build_music() ja la genera igual."""
+    obj = os.path.join(PROJ, "obj")
+    mdata = open(song_bin, "rb").read()
+    assert len(mdata) <= (LC1_GAMEOVER_BASE - 0x5000), len(mdata)
+    hud_raw = _hud_strips_raw()
+    rooms_data = open(os.path.join(PROJ, "assets", "bbdata",
+                                   "ROOMSC%d.BIN" % level_idx), "rb").read()
+    parm_data = open(os.path.join(PROJ, "assets", "bbdata",
+                                  "LEVELPARM%d.BIN" % level_idx), "rb").read()
+    assert len(parm_data) == LVLPARM_SIZE, len(parm_data)
+    tile_vinyl = parm_data[9]
+    room_restore = [(off, t) for off, t in enumerate(rooms_data) if t == tile_vinyl]
+    rr_data = struct.pack("<H", len(room_restore)) + b"".join(
+        struct.pack("<HB", o, t) for o, t in room_restore)
+    doors_data = open(os.path.join(PROJ, "assets", "bbdata",
+                                   "DOORS%d.BIN" % level_idx), "rb").read()
+    pad_main = bytes(0x1000 - len(mdata))
+    pad_rooms = bytes(0x1400 - (0x1000 + len(hud_raw)))
+    pad_doors = bytes(0x1800 - (0x1400 + len(rooms_data)))
+    pad_rr = bytes(0x1860 - (0x1800 + len(doors_data)))
+    pad_parm = bytes(0x1900 - (0x1860 + len(rr_data)))
+    out = os.path.join(obj, "MUSMAIN_%d.BIN" % level_idx)
+    # Les sales viuen a C5: al forat C1 nomes hi van zeros.
+    data = (mdata + pad_main + hud_raw + pad_rooms + bytes(len(rooms_data)) +
+            pad_doors + doors_data + pad_rr + rr_data + pad_parm + parm_data)
+    if not os.path.exists(out) or open(out, "rb").read() != data:
+        open(out, "wb").write(data)
+    print("MUSMAIN_%d: %d B (pre-codi, canco %d B, portes %d)" %
+          (level_idx, len(data), len(mdata), len(doors_data) // 4))
+    return out
 
 
 def build_music(force):
@@ -1041,20 +1194,17 @@ def build_music(force):
             hud_raw.extend(nums)
     assert len(hud_raw) == 39 * 24
     pad_main = bytes(0x1000 - len(mdata))
-    rooms_bin = os.path.join(PROJ, "assets", "bbdata", "ROOMS0.BIN")
+    rooms_bin = os.path.join(PROJ, "assets", "bbdata", "ROOMSC0.BIN")
     rooms_data = open(rooms_bin, "rb").read()
     assert len(rooms_data) == 1000, len(rooms_data)
+    # tile_vinyl compacte (offset 9 de LEVELPARM0.BIN)
+    tile_vinyl = open(os.path.join(PROJ, "assets", "bbdata", "LEVELPARM0.BIN"),
+                      "rb").read()[9]
     pad_rooms = bytes(0x1400 - (0x1000 + len(hud_raw)))
-    doors_list = [
-        (36, 70, 19, 82), (19, 82, 36, 70), (18, 82, 36, 70),
-        (58, 70, 29, 82), (29, 82, 58, 70), (28, 82, 58, 70), (30, 82, 58, 70),
-        (75, 70, 53, 82), (76, 70, 54, 82), (53, 82, 75, 70), (54, 82, 76, 70),
-        (70, 82, 75, 62), (75, 62, 70, 82), (69, 82, 75, 62), (71, 82, 75, 62),
-        (39, 62, 89, 82), (40, 62, 90, 82), (89, 82, 39, 62), (90, 82, 40, 62),
-        (57, 70, 29, 82), (59, 70, 29, 82), (74, 62, 70, 82), (76, 62, 70, 82)
-    ]
-    doors_data = bytes([b for d in doors_list for b in d])
-    assert len(doors_data) == 92
+    # Portes del nivell (extretes del DOS per tools/extract_level_assets.py).
+    doors_bin = os.path.join(PROJ, "assets", "bbdata", "DOORS0.BIN")
+    doors_data = open(doors_bin, "rb").read()
+    assert len(doors_data) == 92, len(doors_data)   # 23 portes (nivell 1)
     pad_doors = bytes(0x1800 - (0x1400 + len(rooms_data)))
     # Taula de restauracio de les HABITACIONS (C1:0x6860): els discs que
     # hi ha dins les sales son consumibles com els del mapa (al DOS es
@@ -1064,7 +1214,7 @@ def build_music(force):
     # l'item secret ha de persistir després de morir (1:1 DOS).
     room_restore = []
     for off, tile in enumerate(rooms_data):
-        if tile == 208:
+        if tile == tile_vinyl:
             room_restore.append((off, tile))
     rr_data = struct.pack("<H", len(room_restore)) + b"".join(
         struct.pack("<HB", o, t) for o, t in room_restore)
@@ -1076,7 +1226,10 @@ def build_music(force):
     parm_data = open(parm_src, "rb").read()
     assert len(parm_data) == LVLPARM_SIZE, len(parm_data)
     pad_parm = bytes(0x1900 - (0x1860 + len(rr_data)))
-    open(mainbin, "wb").write(mdata + pad_main + hud_raw + pad_rooms + rooms_data +
+    # Les SALES viuen a C5 des de la Fase 3.2: al forat C1:0x6400 nomes hi van
+    # zeros (es conserva l'adreca per no moure portes/restore/parametres).
+    open(mainbin, "wb").write(mdata + pad_main + hud_raw + pad_rooms +
+                              bytes(len(rooms_data)) +
                               pad_doors + doors_data + pad_rr + rr_data +
                               pad_parm + parm_data)
     # EQU pel GAME (mus.s crida _akg_init/_akg_play en finestra C1).
@@ -1093,6 +1246,8 @@ def build_music(force):
     print("MUSBANK: player %d B + intro %d B = %d B; MUSMAIN %d B; init=0x%04X play=0x%04X" %
           (len(pdata), len(idata), os.path.getsize(mbin), len(mdata),
            need["_akg_init"], need["_akg_play"]))
+    # Pre-imatge C1 dels nivells que comparteixen la canco main (L2 de moment).
+    build_c1_pre(1, songs["main"][0])
     return mbin, mainbin
 
 
@@ -1494,13 +1649,19 @@ PAK_VERSION     = 1
 PAK_HDR         = 16
 PAK_DESC        = 8
 PAK_SCRATCH_MAX = 0xBC00 - 0x8320      # 14.560 B: limit del carregador FDC
-LVLPARM_SIZE    = 72                   # mida de LEVELPARMn.BIN (LevelParams v2)
-LVLPARM_CODE_EXC = 70                  # offset del camp code_exc_off dins el bloc
+# ATENCIO: SDCC empaqueta LevelParams sense alineacio (room_row_last=68,
+# trig_off=69, code_exc_off=71; sizeof=73). Els offsets ho han de reflectir.
+LVLPARM_SIZE    = 73                   # mida de LEVELPARMn.BIN (LevelParams v2)
+LVLPARM_ROOMS   = 56                   # offset del camp rooms_off dins el bloc
+LVLPARM_TRIG    = 69                   # offset del camp trig_off dins el bloc
+LVLPARM_CODE_EXC = 71                  # offset del camp code_exc_off dins el bloc
 
 # Fase 2.1: nomes el nivell 1. Els altres 5 s'hi afegeixen a la Fase 4.
 LEVELS = [
     dict(id=0, tag="L1", song="main", doors=23, has_code=True, has_elev=True,
          has_rooms=True),
+    dict(id=1, tag="L2", song="main", doors=0, has_code=False, has_elev=False,
+         has_rooms=False),
 ]
 
 
@@ -1573,44 +1734,81 @@ def build_level_packages(force=False):
 
     for lv in LEVELS:
         tag = lv["tag"]
-        tiles_src = os.path.join(PROJ, "assets", "bbdata", "TILESET0.BIN")
-        map_src = os.path.join(PROJ, "assets", "bbdata", "MAP0.BIN")
-        trig_src = os.path.join(PROJ, "assets", "bbdata", "TRIG0.BIN")
-        bank5_src = os.path.join(obj, "BANK5.BIN")
-        mus_src = os.path.join(obj, "MUSMAIN.BIN")
-        code_src = os.path.join(obj, "LEVELCODE.BIN")
-        code_data_src = os.path.join(obj, "LEVELDATA.BIN")
+        lid = lv["id"]
+        tiles_src = os.path.join(PROJ, "assets", "bbdata", "TILESETC%d.BIN" % lid)
+        map_src = os.path.join(PROJ, "assets", "bbdata", "MAPC%d.BIN" % lid)
+        trig_src = os.path.join(PROJ, "assets", "bbdata", "TRIGC%d.BIN" % lid)
+        rooms_src = os.path.join(PROJ, "assets", "bbdata", "ROOMSC%d.BIN" % lid)
+        bank5_src = os.path.join(obj, "BANK5_%d.BIN" % lid)
+        mus_src = os.path.join(obj, "MUSMAIN.BIN" if lid == 0 else "MUSMAIN_%d.BIN" % lid)
+        code_src = os.path.join(obj, "LEVELCODE_%d.BIN" % lid)
+        code_data_src = os.path.join(obj, "LEVELDATA_%d.BIN" % lid)
         elev_src = os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")
-        en_src = os.path.join(obj, "ENEMI.BIN")
+        en_src = os.path.join(obj, "ENEMI_%d.BIN" % lid)
 
         world_dst = os.path.join(obj, tag + "WORLD.PAK")
         en_dst = os.path.join(obj, tag + "ENEMI.ZX0")
-        srcs = [tiles_src, map_src, trig_src, bank5_src, mus_src, elev_src,
-                code_src, code_data_src, en_src, go_src, os.path.join(PROJ, "assets",
-                "bbdata", "LEVELPARM0.BIN"), os.path.join(PROJ, "assets", "bbdata",
-                "ROOMS0.BIN")]
+        srcs = [tiles_src, map_src, trig_src, rooms_src, bank5_src, mus_src,
+                en_src, go_src,
+                os.path.join(PROJ, "assets", "bbdata", "LEVELPARM%d.BIN" % lid)]
+        if lv["has_code"]:
+            srcs += [code_src, code_data_src]
+        if lv["has_elev"]:
+            srcs.append(elev_src)
 
         if force or is_stale(world_dst, srcs):
             t_raw = open(tiles_src, "rb").read()
             t_zx, _ = zx0_compress(bytes(t_raw), classic=True, quick=ZX0_QUICK)
 
-            b5_raw = open(map_src, "rb").read() + open(trig_src, "rb").read() + open(bank5_src, "rb").read()
-            assert len(b5_raw) == 9216 + 2560 + os.path.getsize(bank5_src), len(b5_raw)
-            b5_zx, _ = zx0_compress(bytes(b5_raw), classic=True, quick=ZX0_QUICK)
+            # C5 (Fase 3.2): [mapa][sales][TRIG compacte] ... [codi del mon].
+            # Tres seccions independents: el codi queda a BANK5_BASE (0x6E00)
+            # fix (slots BC_* del resident) i els offsets reals de les sales i
+            # el TRIG van al manifest i a LevelParams. El forat entre TRIG i
+            # codi no es compta com a usat (no cal omplir-lo de zeros).
+            map_raw = open(map_src, "rb").read()
+            rooms_raw = open(rooms_src, "rb").read()
+            trigc_raw = open(trig_src, "rb").read()
+            code_raw = open(bank5_src, "rb").read()
+            assert len(trigc_raw) % 5 == 0 and len(trigc_raw) > 0, len(trigc_raw)
+            rooms_off = 0x4000 + len(map_raw)
+            trig_off = rooms_off + len(rooms_raw)
+            assert trig_off + len(trigc_raw) <= BANK5_BASE, \
+                "C5: sales+TRIG (fins 0x%04X) trepitgen el codi (0x%04X)" % (
+                    trig_off + len(trigc_raw), BANK5_BASE)
+            assert BANK5_BASE + len(code_raw) <= 0x8000, (BANK5_BASE, len(code_raw))
+            rooms_trig_raw = rooms_raw + trigc_raw
+            map_zx, _ = zx0_compress(bytes(map_raw), classic=True, quick=ZX0_QUICK)
+            rt_zx, _ = zx0_compress(bytes(rooms_trig_raw), classic=True, quick=ZX0_QUICK)
+            code_zx, _ = zx0_compress(bytes(code_raw), classic=True, quick=ZX0_QUICK)
+            c5_used = len(map_raw) + len(rooms_trig_raw) + len(code_raw)
+            assert 16384 - c5_used >= 256, \
+                "C5 del nivell %s: nomes %d B lliures (minim 256)" % (
+                    tag, 16384 - c5_used)
+            print("    C5: mapa 0x4000 (%d), sales 0x%04X (%d), TRIG 0x%04X (%d), "
+                  "codi 0x%04X (%d) -> %d B, %d lliures" %
+                  (len(map_raw), rooms_off, len(rooms_raw), trig_off,
+                   len(trigc_raw), BANK5_BASE, len(code_raw), c5_used,
+                   16384 - c5_used))
 
             # Imatge del Banc 1: MUSMAIN.BIN + codi del nivell (a la base que el
             # build ha calculat, guardada al parametre code_exc_off) + frames.
             mus_raw = open(mus_src, "rb").read()
-            code_base = (0x5000 + len(mus_raw) + 7) & 0xFFF8
+            code_base = ((0x5000 + len(mus_raw) + 7) & 0xFFF8
+                         if lv["has_code"] else 0)
             m_data = bytearray(mus_raw)
-            # code_exc_off: camp 70 dels parametres, que son a l'offset 0x1900
-            m_data[0x1900 + LVLPARM_CODE_EXC] = code_base & 0xFF
-            m_data[0x1900 + LVLPARM_CODE_EXC + 1] = (code_base >> 8) & 0xFF
-            m_data += bytes(code_base - 0x5000 - len(m_data))
-            m_data += open(code_src, "rb").read()
-            assert len(m_data) <= (LC1_FRAMES_BASE - 0x5000), len(m_data)
-            m_data += bytes(LC1_FRAMES_BASE - 0x5000 - len(m_data))
-            m_data += open(elev_src, "rb").read()
+            # Parametres (a l'offset 0x1900 de la imatge = C1:0x6900): offsets
+            # reals de sales i TRIG dins C5 + base del codi del nivell.
+            for fld, val in ((LVLPARM_ROOMS, rooms_off), (LVLPARM_TRIG, trig_off),
+                             (LVLPARM_CODE_EXC, code_base)):
+                m_data[0x1900 + fld] = val & 0xFF
+                m_data[0x1900 + fld + 1] = (val >> 8) & 0xFF
+            if lv["has_code"]:
+                m_data += bytes(code_base - 0x5000 - len(m_data))
+                m_data += open(code_src, "rb").read()
+                assert len(m_data) <= (LC1_FRAMES_BASE - 0x5000), len(m_data)
+                if lv["has_elev"]:
+                    m_data += bytes(LC1_FRAMES_BASE - 0x5000 - len(m_data))
+                    m_data += open(elev_src, "rb").read()
             m_data = bytes(m_data)
             m_zx, _ = zx0_compress(m_data, classic=True, quick=ZX0_QUICK)
 
@@ -1618,12 +1816,15 @@ def build_level_packages(force=False):
                      (4 if lv["has_rooms"] else 0) | 8)
             write_package(world_dst, lv["id"], flags, [
                 (0xC4, True, 0x4000, bytes(t_zx), len(t_raw)),
-                (0xC5, True, 0x4000, bytes(b5_zx), len(b5_raw)),
+                (0xC5, True, 0x4000, bytes(map_zx), len(map_raw)),
+                (0xC5, True, rooms_off, bytes(rt_zx), len(rooms_trig_raw)),
+                (0xC5, True, BANK5_BASE, bytes(code_zx), len(code_raw)),
                 (0xC1, True, 0x5000, bytes(m_zx), len(m_data)),
             ])
             mark_fresh(world_dst, srcs)
-            print("PAK: %sWORLD %d B (tiles=%d b5=%d c1=%d)" %
-                  (tag, os.path.getsize(world_dst), len(t_zx), len(b5_zx), len(m_zx)))
+            print("PAK: %sWORLD %d B (tiles=%d c5=%d+%d+%d c1=%d)" %
+                  (tag, os.path.getsize(world_dst), len(t_zx), len(map_zx),
+                   len(rt_zx), len(code_zx), len(m_zx)))
 
         if force or is_stale(en_dst, [en_src]):
             en_raw = open(en_src, "rb").read()
@@ -1793,9 +1994,11 @@ def main():
         # newer(); avoid recompiling every assembly and C source on pass two.
         build_music(force)  # MUSICA primer (obj/mus_ext.s pel GAME)
         game_path, game_start, game_size = compile_and_link(force)
-        build_bank(force)  # Banc 5 (necessita el mapa resident per l'equ)
-        build_levelcode(force)  # Banc 1: codi del nivell (ascensors)
-        build_enemybank(force)  # Banc C3 (walkers; reutilitza bank_equ.rel)
+        build_bank(force, 0)  # Banc 5 per nivell
+        build_bank(force, 1)
+        build_levelcode(force, 0)  # Banc 1: codi del nivell (ascensors)
+        build_enemybank(force, 0)  # Banc C3 (walkers; reutilitza bank_equ.rel)
+        build_enemybank(force, 1)
         build_level_bundles(force)  # JAKE / ELWOOD (Banc C7)
         build_level_packages(force)  # LnWORLD.PAK / LnENEMI + GAMEOVER (manifest)
         build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)

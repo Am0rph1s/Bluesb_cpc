@@ -16,6 +16,9 @@
 // s_lv i hi accedeix com a camps (cap cost de codi extra).
 // ============================================================
 
+// ATENCIO: SDCC empaqueta l'struct sense alineacio (sizeof=73). Els offsets
+// dels camps son contractuals amb tools/pack_level.py i tools/build.py:
+// rooms_off=56, trig_off=69, code_exc_off=71. No inserir-hi camps al mig.
 typedef struct {
     u8  magic;
     u8  version;
@@ -54,6 +57,7 @@ typedef struct {
     u16 map_w_x2;       // map_w * 2  (limits de camera en unitats x4)
     u16 cam_max_x4;     // map_w * 2 - 20
     u8  room_row_last;  // room_row0 + room_rows - 1 (terra de la sala)
+    u16 trig_off;       // adreca del TRIG compacte (5 B/entrada) a C5
     u16 code_exc_off;   // adreca del codi d'excepcions del nivell (C1)
 } LevelParams;
 

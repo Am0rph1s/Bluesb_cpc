@@ -3,6 +3,58 @@
 Última actualització: 2026-10-20 — Sessió 37: **Regressió del build.py resolta** (el joc no arrencava per un empaquetat del Banc 1 reescrit), **smoke test d'arrencada + verificació del DSK** afegits i integrats al build (`--check`), i **revisió del pla universal amb les mides REALS dels mapes** (habitacions incloses).
 Idioma de treball amb l'usuari: **català**.
 
+## Sessió 42 — Fase 3.2: sales i TRIG a C5 (21/10/2026)
+
+- **Correcció d'un supòsit erroni del pla**: el TRIG s'indexa pel **tile id**
+  (`TRIG[t*10+off]`), no per `b6`; retallar-lo a 64 entrades hauria trencat 138
+  tiles del nivell 1. El runtime només llegeix els bytes **0 (tipus), 1 (flags),
+  2 (op), 6 (b6) i 9 (avt)**, així que es genera `TRIGC<n>.BIN` de **5 B/entrada**
+  amb `tools/pack_level.py` (L1: 232×5 = 1.160 B; abans 1.280).
+- **`LevelParams` v2 = 73 B** (SDCC empaqueta sense alineació): `rooms_off`=56,
+  `trig_off`=69 (camp nou), `code_exc_off`=71 (abans el build el patchava a 70
+  i el runtime llegia una adreça incorrecta; s'ha corregit el blob i el build).
+- **C5 en 3 seccions independents**: mapa `0x4000` (ZX0), sales `0x6400`
+  (1.000) + TRIG5 `0x67E8` (1.160), codi `0x6E00` fix. Ja no s'omple el forat
+  entre TRIG i codi. Les sales surten de la imatge C1 (s'hi deixa el forat).
+- **`_DATA` empaquetada al C5** (dues passades d'enllaç): `--data-loc` es
+  calcula just després del codi, en lloc de fix a `0x7F80`. Elimina el forat
+  de **392 B**: `BANK5.BIN` **4.156 B** (era 4.548).
+- **Compactació d'IDs de tile (1:1, build-time)**: `pack_level.py` reordena el
+  tileset amb els tiles usats i remapeja mapa, sales, TRIG, restore, seqüències
+  animades i `bg_tile`. L1: **232 tiles** → `TILESETC0.BIN` **14.848 B**
+  (C4 **1.536 B lliures**), `TRIGC0.BIN` **1.160 B**, `MAPC0/ROOMSC0`. C5 =
+  **15.532 B, 852 B lliures**. Els fitxers compactes són la font del build.
+- **Resident**: `get_tile_at`/`check_room_bonus`/`render_room` llegeixen les
+  sales de C5 via `rooms_off`; `get_trig_byte` i `b5_trig_ptr` (asm) fan servir
+  `trig_off` i stride 5 (`tp[3]`=b6, `tp[4]`=avt). Restauració de sales: taula a
+  C1 i dades a C5, commutant per entrada. `render_room`/`enter_door` deixen de
+  tenir 20/40/74/148 hardcoded (ara `room_cols`/`room_row0`/`room_cam_row`).
+- **Verificat en viu (ZEsarUX)**: build + `--check-boot` verd; sales/discs de la
+  sala 2 (8 discs, repintat net), bonus/malus (+1, +50, -10), cor, ball, sortida
+  de nivell i instrument secret de la sala 4; mort/respawn (lives 3→2) amb la
+  restauració de sales C1→C5; i **restore compacte del mapa** (un vinil recollit
+  torna a aparèixer després de morir).
+- **Marge resident**: `_CODE` 13.407 B (801 B fins a `_DATA`). `BANK5.BIN`
+  **4.156 B**. `L1WORLD.PAK` **12.235 B**. C4: 14.848 usats / 1.536 lliures.
+- **Prototip ASM del mover genèric** (Fase 4, NO linkat): `engine/mover_gen.s`
+  + `src/mover_def.h` + `tools/measure_mover_sizes.py`. Mesura **646 B**
+  (vertical + tile17 + horitzontal + find + respawn) vs **1.062 B** de la
+  versió C equivalent. L'op4 de L1 es queda en C perquè és més petit.
+- **Assets dels 6 nivells extrets** (`tools/extract_level_assets.py`): L1
+  reproduït idèntic; `TILESET/MAP/TRIG/ROOMS` i **`DOORS<n>.BIN`** de L2-L6
+  generats (portes: 23/0/24/20/2/6; llista L1 byte a byte).
+- **Compilació per nivell feta** (`obj/lvl<n>/level_pkg.h`, `BANK5_<n>.BIN`,
+  `ENEMI_<n>.BIN`, `LEVELCODE_<n>.BIN`; L1 idèntic CRC 0xE2AF). Codis C5
+  mesurats: 4.156 / 2.964 / 3.060 / 2.996 / **2.964** / 2.660. N/TRIG5/C5:
+  L1 232/1.160/15.532 (+852) · L2 186/930/13.110 (+3.274) · L3
+  209/1.045/14.521 (+1.863) · L4 210/1.050/12.454 (+3.930) · **L5 ville
+  204/1.020/16.344 (+40)** · L6 164/820/9.752 (+6.632). C4 lliures:
+  1.536/4.480/3.008/2.944/3.328/5.888.
+- **Pendent**: ville té només +40 B sense els seus movers; afegint el mover
+  ASM (646 B) i traient sales+TRIG de C5 queda a **+614 B**. Per incloure
+  nivells: C1/música per nivell, portes/params per nivell, frames d'enemics
+  per nivell, `LEVELS[]` i `g_map_level` real. Fase 3.3 i Fase 4.
+
 ## Sessió 41 — Correcció del HUD a MUSBANK (20/10/2026)
 
 - La sessió 40 va posar el HUD/GAME OVER al **bloc de codi del nivell** (C1).

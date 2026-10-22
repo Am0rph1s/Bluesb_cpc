@@ -92,7 +92,7 @@ Les seccions comencen a `16 + 8 × n_sections`, **sense alineació obligatòria*
 | 1 | Tileset | `0xC4` | `0x4000` | **16.384** (256 × 64 B) | ZX0 |
 | 2 | Mapa | `0xC5` | `0x4000` | `128 × files_reals` (10.752 / 9.216 / 11.136 / 9.728 / **12.160** / 6.272) | ZX0 |
 | 3 | Sales | `0xC5` | `0x4000 + map_len` | `200 × room_count` (1.000 / 0 / 1.200 / 600 / 200 / 0) | cru |
-| 4 | TRIG | `0xC5` | `després de les sales` | **2.560** | cru |
+| 4 | TRIG | `0xC5` | `després de les sales` | **1.280** (256 × 5 B) | cru |
 | 5 | Cançó | `0xC1` | `0x5000` | **1.619 / 2.721 / 1.619 / 1.619 / 2.721 / 4.670** | ZX0 |
 | 6 | HUD | `0xC1` | després de la cançó | 936 | cru |
 | 7 | Portes | `0xC1` | després del HUD | `4 × n_portes` (92 màx.) | cru |
@@ -111,6 +111,10 @@ Notes:
   pressupost del nivell ho permet (l'assert ho decideix).
 - L'ordre de les seccions dins el fitxer és lliure; el build les emet en l'ordre
   que li convingui (les ZX0 grans primer, per si mai cal streaming).
+- **Sessió 42 — compactació d'IDs**: el build reordena el tileset amb els tiles
+  usats i remapeja mapa, sales, TRIG, restore, animacions i `bg_tile`. El
+  tileset passa a `N×64` (L1: 232 = 14.848 B) i el TRIG a `N×5` (L1: 1.160 B);
+  les mides d'aquesta taula són les màximes amb 256 tiles.
 
 ---
 
@@ -122,8 +126,10 @@ hi ha cap adreça de C1 hardcoded al resident.
 ```
 C4:  0x4000  tileset (16.384)                                        [ple]
 C5:  0x4000  mapa (128 * files_reals)
-     +        sales (200 * room_count)
-     +        TRIG (2.560)
+     +        sales (200 * room_count)          <- rooms_off
+     +        TRIG compacte (256 * 5 = 1.280)  <- trig_off
+     ...      (forat lliure)
+     0x6E00   codi del món (4.548, base fixa BC_*)
 C1:  0x4000  player AKG (4.096, slot fix)          [no és secció: MUSBANK]
      0x5000  cançó (S)
      +       HUD (936)
@@ -168,7 +174,7 @@ El resident **només** llegeix aquests camps. Cap constant de nivell al codi.
 | `level_id` | u8 | índex 0..5 |
 | `map_w`, `map_h` | u8, u8 | `level_dim` (columnes / files visibles) |
 | `map_rows` | u8 | files reals (amb el bloc de sales) |
-| `rooms_off`, `trig_off` | u16, u16 | offsets **dins C5** |
+| `rooms_off`, `trig_off` | u16, u16 | offsets **dins C5** (`trig_off` = 69 al struct) |
 | `room_count`, `room_cols`, `room_row0` | u8 ×3 | `room_cols = 20`, `room_row0 = pos[nivell]` |
 | `hud_off`, `doors_off`, `params_off` | u16 ×3 | offsets **dins C1** |
 | `code_world_off`, `code_exc_off` | u16 ×2 | 0 si no n'hi ha |
@@ -182,9 +188,11 @@ El resident **només** llegeix aquests camps. Cap constant de nivell al codi.
 | `restart_x`, `restart_y` | u16 ×2 | respawn |
 | `max_cam_row` | u16 | `map_h*2 - 20` |
 
-> **Atenció:** el `LevelParams` actual té 52 B (v1, sense offsets). La v2 creix
-> ~30 B. Viu a `s_lv` (resident): `_DATA` acaba a `0x3C73` i el canari és a
-> `0x3D00` → **hi ha 141 B de marge** ✓.
+> **Atenció (sessió 42):** SDCC **empaqueta** l'struct sense alineació. La v2
+> actual fa **73 B**: `rooms_off`=56, `doors_off`=58, `restore_off`=60,
+> `map_w_px`=62, `map_w_x2`=64, `cam_max_x4`=66, `room_row_last`=68,
+> `trig_off`=69, `code_exc_off`=71. El build ha de fer servir aquests offsets
+> (abans es patchava `code_exc_off` a 70 i el runtime llegia 0x4800).
 
 ---
 

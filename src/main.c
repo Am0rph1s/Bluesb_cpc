@@ -40,7 +40,7 @@ extern void cpc_install_isr(void);
 extern volatile u8 g_ticks;
 
 #define MAP_PTR     ((const u8*)0x4000)
-#define TRIG_PTR    ((const u8*)0x6400)
+#define TRIG_STRIDE 5
 #define PLAY_CHARS  40
 #define SUB         8
 #define PH          30
@@ -100,6 +100,7 @@ u8  s_rep_n;
 u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
 
 static u8 s_back_page = 1;
+static u8 s_complete_wait;
 
 void main(void);
 
@@ -145,7 +146,7 @@ static u8 get_tile_at(u16 col, u16 row) {
     u8 prev, t;
     if (row >= s_lv.room_row0 && row < (u16)(s_lv.room_row0 + s_lv.room_rows) &&
         col < s_lv.room_total_cols) {
-        prev = bank_set(0xC1);
+        prev = bank_set(0xC5);
         t = ((const u8*)(u16)s_lv.rooms_off)[s_lv.room_rowoff[row - s_lv.room_row0] + col];
         bank_restore(prev);
         return t;
@@ -161,7 +162,7 @@ static u8 get_trig_byte(u16 col, u16 row, u8 offset) {
     u8 prev, t = get_tile_at(col, row);
     if (t == 0xFF) return 0xFF;
     prev = bank_set(0xC5);
-    t = TRIG_PTR[((u16)t) * 10 + offset];
+    t = ((const u8*)(u16)s_lv.trig_off)[((u16)t) * TRIG_STRIDE + offset];
     bank_restore(prev);
     return t;
 }
@@ -250,11 +251,11 @@ static void enter_door(u8 dst_col, u8 dst_row) {
 
     if (dst_row >= 72) {
         // Entering Room
-        u8 room_idx = (u8)(dst_col / 20);
+        u8 room_idx = (u8)(dst_col / s_lv.room_cols);
         s_in_room = 1;
         s_scrolling_locked = 1;
-        g_cam_x4 = (u16)(room_idx * 40);
-        g_cam_row = 148;
+        g_cam_x4 = (u16)(room_idx * ((u16)s_lv.room_cols << 1));
+        g_cam_row = s_lv.room_cam_row;
         enemy_room_exit(0, 0);
     } else {
         // Exiting Room to main level
@@ -313,7 +314,7 @@ static void check_room_bonus(u8 col, u8 feet_row) {
     for (r = feet_row; r >= (feet_row - 2) && r >= s_lv.room_row0; r--) {
         if (r >= row_last) continue;
         u16 off = s_lv.room_rowoff[r - s_lv.room_row0] + col;
-        prev = bank_set(0xC1);
+        prev = bank_set(0xC5);
         t = ((const u8*)(u16)s_lv.rooms_off)[off];
         if (t == s_lv.tile_vinyl) {
             if (g_vinyls_count < 99) g_vinyls_count++;
@@ -708,6 +709,7 @@ volatile u8 g_player_choice; // 0=Jake, 1=Elwood (l'escriu el FRONT al
                     // select via EQU; el loop la llegeix)
 volatile u8 g_map_level; // 0..5 (el GAME l'escriu abans del mapa; el FRONT
                     // hi pinta sticker nota + ruta statica DOS via EQU)
+static u8 g_front_map_only; // 1 = tornar al FRONT per la transicio de mapa
 u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
                     // primer mus_init: evita Play sobre C1 buit (reboot).
 
@@ -782,7 +784,11 @@ static void load_level_packages(void) {
     //    es generic: capita el header, recorre les seccions i descomprimeix
     //    cadascuna al seu banc/adreca. Cap adreca de desti al codi.
     {
-        if (!load_package(&g_file_l1world, CRC_L1WORLD)) {
+        static const DiskFileDesc* const s_world[2] = { &g_file_l1world, &g_file_l2world };
+        static const u16 s_world_crc[2] = { CRC_L1WORLD, CRC_L2WORLD };
+        u8 lvl = g_map_level;
+        if (lvl > 1) lvl = 1;   // Fase 4: ampliar la taula
+        if (!load_package(s_world[lvl], s_world_crc[lvl])) {
             cpct_setBorder(0x42); while (1) { }
         }
         // Parametres del nivell (geometria, tiles, start, checkpoint...). Viuen
@@ -799,7 +805,11 @@ static void load_level_packages(void) {
 
     // 3. Enemics: LnENEMI amb manifest -> Banc C6:0x4000
     {
-        if (!load_package(&g_file_l1enemi, CRC_L1ENEMI)) {
+        static const DiskFileDesc* const s_enemi[2] = { &g_file_l1enemi, &g_file_l2enemi };
+        static const u16 s_enemi_crc[2] = { CRC_L1ENEMI, CRC_L2ENEMI };
+        u8 lvl = g_map_level;
+        if (lvl > 1) lvl = 1;   // Fase 4: ampliar la taula
+        if (!load_package(s_enemi[lvl], s_enemi_crc[lvl])) {
             cpct_setBorder(0x43); while (1) { }
         }
     }
@@ -840,21 +850,30 @@ static void restore_level_tiles(void) {
     }
     bank_restore(prev);
 
-    // Les HABITACIONS (ROOMS0.BIN, Banc C1:0x6400) tenen els seus propis
+    // Les HABITACIONS (sales a C5 des de la Fase 3.2) tenen els seus propis
     // items consumibles (els discs de les sales). Al DOS el paquet de nivell
     // es rellegeix a cada mort, aixi que a les sales tambe tornen a
-    // aparaitre. La taula (C1:0x6860, generada a tools/build.py) diu quines
-    // posicions dins ROOMS0.BIN tenen un disc i quin es el seu tile inicial.
+    // aparaitre. La taula (C1, restore_off) diu quines posicions dins el bloc
+    // de sales tenen un disc i quin es el seu tile inicial: la taula viu a C1
+    // i les dades a C5, per tant es commuta per entrada.
     // L'instrument (tile 159) NO hi es: l'item secret persisteix (1:1 DOS).
     prev = bank_set(0xC1);
     tbl = (const u8*)(u16)s_lv.restore_off;
     n = (u16)(tbl[0] | (tbl[1] << 8));
-    for (i = 0; i < n; i++) {
-        const u8* e = tbl + 2 + (u16)(i * 3);
-        u16 off = (u16)(e[0] | (e[1] << 8));
-        ((u8*)0x6400)[off] = e[2];
-    }
     bank_restore(prev);
+    for (i = 0; i < n; i++) {
+        const u8* e;
+        u16 off;
+        u8 tile, prev5;
+        prev = bank_set(0xC1);
+        e = (const u8*)(u16)s_lv.restore_off + 2 + (u16)(i * 3);
+        off = (u16)(e[0] | (e[1] << 8));
+        tile = e[2];
+        prev5 = bank_set(0xC5);
+        ((u8*)(u16)s_lv.rooms_off)[off] = tile;
+        bank_restore(prev5);
+        bank_restore(prev);
+    }
 }
 
 // GAME OVER: codi comu al Banc 1 (src/hud_bank.c, MUSBANK). Escriu VRAM -> 0xC0.
@@ -862,6 +881,17 @@ extern void gameover_o(void);
 static void draw_gameover_banner(u8 page) {
     bc_a = page;
     call_banked(0xC0, (void*)gameover_o);
+}
+
+// El FRONT viu a C4 i el nivell hi carrega el tileset a sobre. Cal recarregar
+// FRONT.BIN abans de tornar-lo a cridar (game over o nivell completat).
+static void load_front_bank(void) {
+    u8 ok = 0, t;
+    for (t = 0; t < 3 && !ok; t++) {
+        if (!fdc_load_file(0xC0, &g_file_front, 0xC4, (void*)0x4000)) continue;
+        ok = 1;
+    }
+    if (!ok) { cpct_setBorder(0x4C); while (1) { } }
 }
 
 void main(void) {
@@ -874,11 +904,16 @@ void main(void) {
     fdc_motor_off();
     fdc_load_file(0xC0, 0, 0, 0);
 
+    g_map_level = 0;
     while (1) {
-        g_map_level = 0;
         {
             u8 prev = bank_set(0xC4);
-            ((void(*)(void))FRONT_RUN)();
+            if (g_front_map_only) {
+                g_front_map_only = 0;
+                ((void(*)(void))FRONT_MAP)();
+            } else {
+                ((void(*)(void))FRONT_RUN)();
+            }
             bank_restore(prev);
         }
 
@@ -1013,16 +1048,11 @@ void main(void) {
                     g_mus_ready = 0;
                     palette_black();
                     crtc_set_display_start(0x3000);
-                    {
-                        u8 ok = 0, t;
-                        for (t = 0; t < 3 && !ok; t++) {
-                            if (!fdc_load_file(0xC0, &g_file_front, 0xC4, (void*)0x4000)) continue;
-                            ok = 1;
-                        }
-                        if (!ok) { cpct_setBorder(0x4C); while (1) { } }
-                    }
+                    load_front_bank();
                     s_back_page = 1;
                     g_vram_base_hi = 0x80;
+                    g_map_level = 0;   // game over -> tornar al nivell inicial
+                    g_front_map_only = 0;
                     break;
                 }
                 g_lives_count--;
@@ -1228,6 +1258,28 @@ void main(void) {
         g_vram_base_hi = (s_back_page == 1) ? 0x80 : 0xC0;
         s_pending_x = move_x;
         s_pending_y = move_y;
+
+        // 1:1 DOS (level.c): 50 frames de celebracio i despres mapa/nivell
+        // seguent; al darrer nivell es torna al primer.
+        if (g_level_complete) {
+            if (s_complete_wait < 50) {
+                s_complete_wait++;
+            } else {
+                s_complete_wait = 0;
+                g_level_complete = 0;
+                if (g_map_level < 5) g_map_level++;
+                else g_map_level = 0;
+                mus_stop();
+                g_mus_hold = 1;
+                palette_black();
+                crtc_set_display_start(0x3000);
+                load_front_bank();
+                s_back_page = 1;
+                g_vram_base_hi = 0x80;
+                g_front_map_only = 1;
+                break;
+            }
+        }
     }
     }
 }

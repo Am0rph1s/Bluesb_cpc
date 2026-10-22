@@ -22,25 +22,26 @@
 #define LEVEL_CHK_CAM_ROW   48
 
 #define LEVEL_ELEVATOR_COUNT 5
+#define LEVEL_ELEVATOR_STORAGE 5
 #define LEVEL_INST_COL      0
 #define LEVEL_INST_ROW      0
 #define LEVEL_INST_TILE     0
 
 #ifndef LEVEL_PKG_DEFS_ONLY
-static const i16 s_bank_start_x[LEVEL_ELEVATOR_COUNT] = { 760, 808, 760, 808, 304 };
-static const i16 s_bank_start_y[LEVEL_ELEVATOR_COUNT] = { 384, 464, 592, 736, 784 };
-static const u8 s_bank_map_col[LEVEL_ELEVATOR_COUNT] = { 95, 101, 95, 101, 38 };
+static const i16 s_bank_start_x[LEVEL_ELEVATOR_STORAGE] = { 760, 808, 760, 808, 304 };
+static const i16 s_bank_start_y[LEVEL_ELEVATOR_STORAGE] = { 384, 464, 592, 736, 784 };
+static const u8 s_bank_map_col[LEVEL_ELEVATOR_STORAGE] = { 95, 101, 95, 101, 38 };
 
 // Taula unificada de 6 fases (MCM de 3 i 2) per a totes les animacions de tiles del nivell
 #define LEVEL_ANIM_SEQ_COUNT 7
 static const u8 s_level_anim_seqs[LEVEL_ANIM_SEQ_COUNT][6] = {
-    { 253, 252, 251, 253, 252, 251 }, // seq 0 (DOS b4=29)
-    { 240, 241, 242, 240, 241, 242 }, // seq 1 (DOS b4=30)
-    { 248, 249, 250, 248, 249, 250 }, // seq 2 (DOS b4=31)
-    { 239, 238, 237, 239, 238, 237 }, // seq 3 (DOS b4=32)
-    { 131, 199, 131, 199, 131, 199 }, // seq 4 (DOS b4=76)
-    { 149, 217, 149, 217, 149, 217 }, // seq 5 (DOS b4=77)
-    { 170, 247, 170, 247, 170, 247 }, // seq 6 (DOS b4=78)
+    { 229, 228, 227, 229, 228, 227 }, // seq 0 (DOS b4=29)
+    { 216, 217, 218, 216, 217, 218 }, // seq 1 (DOS b4=30)
+    { 224, 225, 226, 224, 225, 226 }, // seq 2 (DOS b4=31)
+    { 215, 214, 213, 215, 214, 213 }, // seq 3 (DOS b4=32)
+    { 130, 188, 130, 188, 130, 188 }, // seq 4 (DOS b4=76)
+    { 148, 198, 148, 198, 148, 198 }, // seq 5 (DOS b4=77)
+    { 163, 223, 163, 223, 163, 223 }, // seq 6 (DOS b4=78)
 };
 
 typedef struct {
@@ -51,7 +52,8 @@ typedef struct {
 } LevelAnimSpan;
 
 #define LEVEL_ANIM_SPAN_COUNT 18
-static const LevelAnimSpan s_level_anim_spans[LEVEL_ANIM_SPAN_COUNT] = {
+#define LEVEL_ANIM_SPAN_STORAGE 18
+static const LevelAnimSpan s_level_anim_spans[LEVEL_ANIM_SPAN_STORAGE] = {
     { 30,  46,  46, 6 }, // row 30, cols 46..46 (DOS b4=78)
     { 30,  48,  56, 4 }, // row 30, cols 48..56 (DOS b4=76)
     { 30,  58,  58, 5 }, // row 30, cols 58..58 (DOS b4=77)
@@ -87,7 +89,8 @@ typedef struct {
 } LevelTriggerEntry;
 
 #define LEVEL_TRIG3_COUNT 10
-static const LevelTriggerEntry s_level_trig3[LEVEL_TRIG3_COUNT] = {
+#define LEVEL_TRIG3_STORAGE 10
+static const LevelTriggerEntry s_level_trig3[LEVEL_TRIG3_STORAGE] = {
     { 11,  20,  1,  0, 0,  0, 0, 0,   0, 0 }, // DOS b6=14
     { 11,   0,  1,  0, 0,  0, 0, 0,   0, 0 }, // DOS b6=15
     { 11,  20,  0,  0, 1,  0, 0, 0,   0, 0 }, // DOS b6=16
@@ -95,7 +98,7 @@ static const LevelTriggerEntry s_level_trig3[LEVEL_TRIG3_COUNT] = {
     { 12,  20, 50,  0, 0,  0, 0, 0,   2, 0 }, // DOS b6=18
     { 12,   0,  0, 10, 0,  0, 0, 0,   0, 0 }, // DOS b6=19
     { 12,  20,  0, 20, 0,  0, 0, 0,   1, 0 }, // DOS b6=20
-    { 11,  96,  0,  0, 0,  0, 1, 0,   0, 0 }, // DOS b6=21
+    { 11,  95,  0,  0, 0,  0, 1, 0,   0, 0 }, // DOS b6=21
     { 11,  20,  0,  0, 0, 21, 0, 1,   0, 0 }, // DOS b6=22
     { 11,  21,  0,  0, 0,  0, 0, 0,   1, 0 }, // DOS b6=50
 };
@@ -109,7 +112,8 @@ static const u8 s_b6_to_trig3[64] = {
 };
 
 #define LEVEL_POPUP_COUNT 3
-static const u8 s_popup_sprites[LEVEL_POPUP_COUNT][56] = {
+#define LEVEL_POPUP_STORAGE 3
+static const u8 s_popup_sprites[LEVEL_POPUP_STORAGE][56] = {
     { 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xAA, 0x00, 0x00, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xAA, 0x00, 0x00, 0x00, 0x55, 0x00, 0xAA, 0x00, 0x55, 0x00, 0x00, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x55, 0x00 }, // 0: grab_type 16 (-10)
     { 0xFF, 0x00, 0xAA, 0x00, 0x00, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xAA, 0x00, 0x00, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x55, 0x00, 0xAA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xAA, 0x00, 0xAA, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xAA, 0x00, 0xAA, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xAA, 0x00, 0x00, 0x00, 0x55, 0x00 }, // 1: grab_type 17 (-20)
     { 0xFF, 0x00, 0xAA, 0x00, 0x00, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xAA, 0x00, 0xAA, 0x00, 0x55, 0x00, 0xAA, 0x00, 0xAA, 0x00, 0xAA, 0x00, 0x55, 0x00, 0xAA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0x00, 0xAA, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x55, 0x00, 0xFF, 0x00, 0xAA, 0x00, 0x00, 0x00, 0x55, 0x00 }, // 2: grab_type 21 (+50)

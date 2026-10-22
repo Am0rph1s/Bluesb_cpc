@@ -5,8 +5,8 @@
 // conté les particularitats del nivell (src/level_pkg.h generat per
 // tools/pack_level.py), l'animació de tiles basada en TRIG.BIN,
 // els ascensors/entitats i els efectes dels tiles sobre en Jake.
-// Com que viu al Banc 5 (0xC5), MAP_PTR (0x4000) i TRIG_PTR (0x6400)
-// estan mapejats directament sense necessitat de commutar bancs.
+// Com que viu al Banc 5 (0xC5), el mapa (0x4000) i el TRIG compacte
+// (trig_off de LevelParams) estan mapejats directament sense commutar bancs.
 // ============================================================
 
 #include "cpctelera.h"
@@ -17,7 +17,9 @@
 
 #define MAP_PTR  ((const u8*)0x4000)
 #define MAP_MUT  ((u8*)0x4000)
-#define TRIG_PTR ((const u8*)0x6400)
+// TRIG compacte (5 B/entrada): type, flags, op, b6, avt (a s_lv.trig_off).
+#define TP_B6   3
+#define TP_AVT  4
 
 #define SUB           8
 #define PH            30
@@ -176,12 +178,12 @@ static void b5_check_bonus_triggers(u8 col, u8 row, i16 px, i16 py, u8 crouch) {
     const LevelTriggerEntry* e;
 
     if (!tp) return;
-    b6 = tp[6];
+    b6 = tp[TP_B6];
     if (b6 == 255 && !crouch && row > 0) {
         row--;
         tp = b5_trig_ptr(col, row);
         if (!tp) return;
-        b6 = tp[6];
+        b6 = tp[TP_B6];
     }
     if (b6 >= 64) return;
     idx = s_b6_to_trig3[b6];
@@ -393,12 +395,12 @@ void moving_bank_conveyor(void) {
         }
     }
 
-    // 3. Reixes de primer pla dirigides per TRIG.BIN (byte 9: avt_num 12..17)
+    // 3. Reixes de primer pla dirigides pel TRIG compacte (avt 12..17)
     {
         u16 px = (u16)(s_px8 >> 3);
         u16 py = (u16)(s_py8 >> 3);
         const u8* tp = b5_trig_ptr((u8)((px + 8) >> 3), (u8)((py + 16) >> 4));
-        u8 avt = tp ? tp[9] : 255;
+        u8 avt = tp ? tp[TP_AVT] : 255;
         if ((u8)(avt - 12) <= 5) {
             g_grate_enable = 1;
             g_grate_phase_x = (u8)((px >> 1) & 1);

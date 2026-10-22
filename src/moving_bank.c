@@ -76,6 +76,24 @@ void moving_bank_respawn(void) {
         e->frame = 0;
         e->drawn[0] = e->drawn[1] = 0;
     }
+
+    // Premses (op11): van despres dels ascensors al mateix array. El DOS
+    // (objects.c object_func_op11) inicialitza elevator_direction = -1 i
+    // moving_direction = 0 -> puja fins que hi ha un tile de tipus 10 quatre
+    // files per damunt, espera 40 passos, baixa fins que hi ha un tile de
+    // tipus 10 dues files per sota i torna a pujar.
+    for (i = 0; i < LEVEL_PRESS_COUNT; i++) {
+        MovingElevator* e = &g_mag_elevators[MAG_ELEVATOR_COUNT + i];
+        e->center_x = s_bank_press_x[i];
+        e->y = s_bank_press_y[i];
+        e->delta_y = 0;
+        e->direction = -1;
+        e->map_col = s_bank_press_map_col[i];
+        e->wait = 0;
+        e->anim_tick = 0;
+        e->frame = 0;
+        e->drawn[0] = e->drawn[1] = 0;
+    }
 }
 
 void moving_bank_init(void) {
@@ -106,6 +124,19 @@ void moving_bank_find(void) {
             if ((i16)bc_b <= (i16)(surface + 8) && (i16)bc_c >= surface) {
                 *(i16*)bc_e = (i16)(surface - 30);
                 bc_r = i;
+                return;
+            }
+        }
+    }
+
+    // Premses (op11): la superficie on el jugador hi puja es el cap de
+    // l'objecte (level_obj_h[22] = 30 al DOS).
+    for (i = 0; i < LEVEL_PRESS_COUNT; i++, e++) {
+        if ((u16)(e->center_x - bc_a + 8) < 33) {
+            i16 surface = (i16)(e->y - PRESS_OBJECT_H);
+            if ((i16)bc_b <= (i16)(surface + 8) && (i16)bc_c >= surface) {
+                *(i16*)bc_e = (i16)(surface - 30);
+                bc_r = (i8)(MAG_ELEVATOR_COUNT + i);
                 return;
             }
         }
@@ -149,6 +180,41 @@ static void b5_update_entities_and_spans(void) {
 
         // (criteri Amiga: sense frame de motor, no hi ha swap aqui)
         e->anim_tick++;
+    }
+
+    // --- Premses (op11): 1:1 DOS object_func_op11 (objects.c) ---
+    // Espera 40 passos; puja 2 px/frame fins que hi ha un tile de tipus 10
+    // quatre files per damunt (ypos16 - 4); espera 40; baixa 4 px/frame fins
+    // que hi ha un tile de tipus 10 dues files per sota (ypos16 + 2).
+    for (i = 0; i < LEVEL_PRESS_COUNT; i++) {
+        MovingElevator* e = &g_mag_elevators[MAG_ELEVATOR_COUNT + i];
+        u8 row;
+
+        e->delta_y = 0;
+        row = (u8)(e->y >> 4);
+
+        if (e->wait < 40) {
+            e->wait++;
+            continue;
+        }
+
+        if (e->direction < 0) {
+            if (row >= 4 && b5_tile_type(e->map_col, (u8)(row - 4)) == 10) {
+                e->direction = 1;
+                e->wait = 1;
+                continue;
+            }
+            e->y = (i16)(e->y - 2);
+            e->delta_y = -2;
+        } else {
+            if (b5_tile_type(e->map_col, (u8)(row + 2)) == 10) {
+                e->direction = -1;
+                e->wait = 1;
+                continue;
+            }
+            e->y = (i16)(e->y + 4);
+            e->delta_y = 4;
+        }
     }
 
     if (++s_conveyor_tick >= 4) {
@@ -264,6 +330,28 @@ void moving_bank_update(void) {
 
     col = (u8)((px + 8) >> 3);
     row = (u8)((py + PH - 1) >> 4);
+
+    // --- TUBERIA (op 17/18/19): 1:1 DOS trigger_func_op17/18/19 (tiles.c) ---
+    // El trigger s'aplica al tile on es troba el jugador (columna del centre,
+    // fila dels peus). Si el jugador puja amb força (vy < -2 px/frame) el
+    // trigger li dona un impuls cap amunt (vy -= 3) i posa yacc = -3 (el
+    // motor fa la gravetat invertida: s_pipe_up). Tambe l'alinea
+    // horitzontalment: (xpos & ~15) + 7 (op17) / +17 (op18) / -1 (op19).
+    // (El DOS treballa en 16 px per tile i nosaltres en 8: les correccions
+    // d'X es multipliquen per 4 (subpixels per pixel DOS).)
+    s_pipe_up = 0;
+    {
+        const u8* tp = b5_trig_ptr(col, row);
+        u8 op = tp ? tp[2] : 255;
+        if (op == 17 || op == 18 || op == 19) {
+            if (s_vy < -2 * SUB) {
+                s_vy = (i16)(s_vy - 3 * SUB);
+                s_pipe_up = 1;
+                s_px8 = (i16)((s_px8 & ~63) +
+                               (op == 17 ? 28 : (op == 18 ? 68 : -4)));
+            }
+        }
+    }
 
     // --- Triggers d'ítems: vinils (+1/-10), interrogants (?), cors, 1-Up, guitarra i meta ---
     b5_check_bonus_triggers(col, row, px, py, crouch);

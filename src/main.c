@@ -186,7 +186,12 @@ u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
     }
     op = get_trig_byte(col, row, 2);
     if (op == 0xFF) return 0;
-    if (op == 20 || op == 21 || op == 27 || op == 28) return 1;
+    // 1:1 DOS: el SOSTRE el decideix l'OP del trigger, no el "type". Les ops
+    // 0/2/3/20/21/27/28/29 són les de plataforma (trigger_func_opX: el
+    // jugador s'hi recoloca a sobre). A L1 només hi ha 20/21/27/28; a L2
+    // hi ha 29 (64 tiles del terra), 0, 2 i 3.
+    if (op == 0 || op == 2 || op == 3 || op == 20 || op == 21 || op == 27 ||
+        op == 28 || op == 29) return 1;
     if (vy >= 0) {
         if (op == 14 || op == 15) return !crouch;
         if (op >= 31 && op <= 39) return 1;
@@ -587,8 +592,15 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                 s_ground_elevator = -1;
             } else {
                 if (!s_on_ground) {
-                    s_vy = (i16)(s_vy + GRAV);
+                    // TUBERIA (op 17/18/19): el DOS posa yacc = -3 al trigger,
+                    // o sea el jugador continua pujant (gravetat invertida).
+                    if (s_pipe_up) {
+                        s_vy = (i16)(s_vy - GRAV);
+                    } else {
+                        s_vy = (i16)(s_vy + GRAV);
+                    }
                     if (s_vy > VY_MAX) s_vy = VY_MAX;
+                    if (s_vy < -VY_MAX) s_vy = -VY_MAX;
                 } else {
                     s_vy = 0;
                 }

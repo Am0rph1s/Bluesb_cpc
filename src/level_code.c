@@ -35,7 +35,7 @@ extern u16 g_moving_sprite;
 extern u8  g_moving_span;
 extern u8  g_moving_rows;
 extern u8  g_moving_spr_skip;
-extern MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
+extern MovingElevator g_mag_elevators[MAG_MOVER_COUNT];
 
 // Destinacio VRAM dels blits (aqui viu: el draw i el restore son els seus
 // unics usuaris, i el Banc 1 no pot veure la _DATA del resident).

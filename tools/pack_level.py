@@ -69,6 +69,21 @@ def build_level_pkg(level_idx=0, out_dir=None):
             # Nota: a Magasin slots 19..23 tenen les coordenades exactes del mapa Mode 0:
             elevators.append((slot, dos_x, dos_y))
 
+    # PREMSES (op11): objectes amb level_objtypes[type] == 12. Al DOS
+    # (objects.c object_func_op11) puja 40 passos, baixa 40 i reescriu els
+    # tiles que deixa al pas: el jugador hi puja. Coordenades: X centrat
+    # (DOS 320 -> CPC 160, horitzontal 2:1) i Y als peus (vertical 1:1).
+    obj_types = arrays["level_objtypes"]
+    presses = []
+    for slot, obj_kind in enumerate(level_data):
+        if obj_kind < len(obj_types) and obj_types[obj_kind] == 12:
+            dos_x = xpos_arr[slot]
+            dos_y = ypos_arr[slot]
+            presses.append((slot, dos_x >> 1, dos_y, dos_x >> 4))
+    press_x = [p[1] for p in presses]
+    press_y = [p[2] for p in presses]
+    press_col = [p[3] for p in presses]
+
     # Coordenades exactes Mode 0 dels 5 ascensors de Magasin (slots 19..23)
     if level_idx == 0:
         elev_x = [760, 808, 760, 808, 304]
@@ -229,6 +244,8 @@ def build_level_pkg(level_idx=0, out_dir=None):
         "",
         f"#define LEVEL_ELEVATOR_COUNT {len(elev_x)}",
         f"#define LEVEL_ELEVATOR_STORAGE {elev_storage}",
+        f"#define LEVEL_PRESS_COUNT {len(press_x)}",
+        f"#define LEVEL_PRESS_STORAGE {max(1, len(press_x))}",
         f"#define LEVEL_INST_COL      {inst_col}",
         f"#define LEVEL_INST_ROW      {inst_row}",
         f"#define LEVEL_INST_TILE     {inst_tile}",
@@ -242,6 +259,15 @@ def build_level_pkg(level_idx=0, out_dir=None):
         + " };",
         "static const u8 s_bank_map_col[LEVEL_ELEVATOR_STORAGE] = { "
         + (", ".join(str(c) for c in elev_col) if elev_col else "0")
+        + " };",
+        "static const i16 s_bank_press_x[LEVEL_PRESS_STORAGE] = { "
+        + (", ".join(str(x) for x in press_x) if press_x else "0")
+        + " };",
+        "static const i16 s_bank_press_y[LEVEL_PRESS_STORAGE] = { "
+        + (", ".join(str(y) for y in press_y) if press_y else "0")
+        + " };",
+        "static const u8 s_bank_press_map_col[LEVEL_PRESS_STORAGE] = { "
+        + (", ".join(str(c) for c in press_col) if press_col else "0")
         + " };",
         "",
         "// Taula unificada de 6 fases (MCM de 3 i 2) per a totes les animacions de tiles del nivell",

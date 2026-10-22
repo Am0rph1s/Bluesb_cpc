@@ -23,6 +23,8 @@
 
 #define LEVEL_ELEVATOR_COUNT 5
 #define LEVEL_ELEVATOR_STORAGE 5
+#define LEVEL_PRESS_COUNT 0
+#define LEVEL_PRESS_STORAGE 1
 #define LEVEL_INST_COL      0
 #define LEVEL_INST_ROW      0
 #define LEVEL_INST_TILE     0
@@ -31,6 +33,9 @@
 static const i16 s_bank_start_x[LEVEL_ELEVATOR_STORAGE] = { 760, 808, 760, 808, 304 };
 static const i16 s_bank_start_y[LEVEL_ELEVATOR_STORAGE] = { 384, 464, 592, 736, 784 };
 static const u8 s_bank_map_col[LEVEL_ELEVATOR_STORAGE] = { 95, 101, 95, 101, 38 };
+static const i16 s_bank_press_x[LEVEL_PRESS_STORAGE] = { 0 };
+static const i16 s_bank_press_y[LEVEL_PRESS_STORAGE] = { 0 };
+static const u8 s_bank_press_map_col[LEVEL_PRESS_STORAGE] = { 0 };
 
 // Taula unificada de 6 fases (MCM de 3 i 2) per a totes les animacions de tiles del nivell
 #define LEVEL_ANIM_SEQ_COUNT 7

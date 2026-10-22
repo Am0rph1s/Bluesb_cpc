@@ -1,9 +1,16 @@
-﻿#ifndef MOVING_H
+#ifndef MOVING_H
 #define MOVING_H
 
 #include "cpctelera.h"
 
 #define MAG_ELEVATOR_COUNT 5
+// Premses (op11, nivells 2-6): van al mateix array que els ascensors,
+// a partir de MAG_ELEVATOR_COUNT. Al DOS (objects.c object_func_op11) puja
+// 2 px/frame i baixa 4 px/frame, amb 40 passos d'espera a cada extrem, i
+// el jugador hi puja damunt.
+#define MAG_PRESS_COUNT 3
+#define PRESS_OBJECT_H 30   // level_obj_h[22] del DOS (al�ada de l'objecte)
+#define MAG_MOVER_COUNT (MAG_ELEVATOR_COUNT + MAG_PRESS_COUNT)
 #define ELEVATOR_W_BYTES 8
 #define ELEVATOR_H 14
 #define ELEVATOR_OBJECT_H 14
@@ -30,14 +37,14 @@ typedef struct {
 #define ELEVATOR_BG_BASE 0x7200
 #define elevator_bg_ptr(idx, page) ((u8*)(ELEVATOR_BG_BASE + (((u16)(idx) << 1) + (page)) * ELEVATOR_BG_SIZE))
 
-extern MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
+extern MovingElevator g_mag_elevators[MAG_MOVER_COUNT];
 
 // Estat compartit resident (llegit/escribible des del Banc 5):
 extern u8 s_conveyor_phase;
 extern u8 s_conveyor_tick;
 extern u8 s_page_conveyor_phase[2];
 
-// Estat del jugador i cÃ mera resident (Bloc 0), actualitzat des del Banc 5:
+// Estat del jugador i càmera resident (Bloc 0), actualitzat des del Banc 5:
 extern u16 g_cam_x4;
 extern u16 g_cam_row;
 extern i16 s_px8, s_py8;
@@ -57,7 +64,7 @@ extern u8  s_anim_idx, s_anim_timer;
 extern u8  s_rep_n;
 extern u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
 
-// Estat d'Ã­tems, bonus i malus (actualitzat al Banc 5):
+// Estat d'ítems, bonus i malus (actualitzat al Banc 5):
 extern u8  g_vinyls_count;
 extern u8  g_hearts_count;
 extern u8  g_lives_count;
@@ -66,11 +73,14 @@ extern u8  g_level_complete;
 extern u8  g_checkpoint;
 extern u8  g_enemy_decomp_cnt;   // diagnostic: descompressions de cela d'enemic (cache miss)
 extern u8  s_dance_timer;
+// Tuberia (op 17/18/19 del DOS): 1 = el jugador esta dins del trigger i puja
+// amb for�a -> la gravetat s'inverteix (DOS: yacc = -3).
+extern u8  s_pipe_up;
 
 void carry_abort(void);
 void moving_popup_restore(u8 page);
 
-// Bloc de parÃ metres per crides bankades amb args/retorn (CP-2.2).
+// Bloc de paràmetres per crides bankades amb args/retorn (CP-2.2).
 extern u16 bc_a, bc_b, bc_c, bc_d, bc_e;
 extern i16 bc_r;
 
@@ -112,3 +122,5 @@ u8 enemy_probe_turn(u8 acol, u8 lcol, u8 r_feet, u8 r_floor, u8 r_head, u8 bit, 
 u8 enemy_probe_floor(u8 c1, u8 c2, u8 trow);
 
 #endif
+
+

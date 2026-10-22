@@ -18,7 +18,10 @@
 
 // Slots fixos de la taula de salts del Banc 5: a moving.h (font unica).
 
-MovingElevator g_mag_elevators[MAG_ELEVATOR_COUNT];
+MovingElevator g_mag_elevators[MAG_MOVER_COUNT];
+
+// Estat de la tuberia (vegeu moving.h).
+u8 s_pipe_up;
 
 // Bloc de paràmetres resident per crides bankades (CP-2.2).
 u16 bc_a, bc_b, bc_c, bc_d, bc_e;
@@ -104,7 +107,7 @@ u8 enemy_check_crate_hit(i16 cx, i16 cy, i16 cvx) {
 
 void enemy_room_exit(i16 px, i16 py) {
     u8 i;
-    for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
+    for (i = 0; i < MAG_MOVER_COUNT; i++) {
         g_mag_elevators[i].drawn[0] = 0;
         g_mag_elevators[i].drawn[1] = 0;
     }
@@ -195,3 +198,5 @@ u8 fdc_load_file(u8 home_bank, const DiskFileDesc* d, u8 bk, void* ad) {
     *(volatile u8*)0xBE0A |= 0x80;
     return FDC_BANK_ENTRY(home_bank, (const DiskFileDesc*)file_d, bk, ad);
 }
+
+

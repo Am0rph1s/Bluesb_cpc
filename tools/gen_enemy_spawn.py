@@ -3,11 +3,13 @@
 tools/blues_dos/bb/staticres.c.
 
 Nomes es converteixen els tipus que el motor C6 pot tractar:
-  type 12 -> policia (kind 4), walk 5/6, aim 1
-  type 13 -> walker  (kind 18), walk 7/8
-  type 14 -> cambrera(kind 17), walk 9/10, throw 2
-  type 21 -> cambrera(kind 17), walk 11/12, throw 15
-Els tipus 11 (sprite de 48 px) i 22 (objecte) queden fora de la taula.
+  type 11 -> static  (kind 22): op7 no hi ha case al switch DOS -> no es mou
+  type 12 -> walker  (kind 18, op1): walk 1/2, atac 3
+  type 13 -> llançador (kind 21, op7): walk 4/5, llançament 6
+  type 14 -> walker  (kind 17, op10): walk 7/8, llançament 9
+  type 21 -> walker  (kind 17, op10): walk 10/11, llançament 12
+El tipus 22 (premsa hidràulica, op11) queda fora: és un objecte mòbil
+vertical de 37 px i va en un subsistema propi.
 
 Us:
   py -3 tools/gen_enemy_spawn.py --level 1 --out obj/lvl1/enemy_spawn.h
@@ -27,10 +29,11 @@ MAX_OBJECTS = 41
 
 # type DOS -> (kind CPC, vx, base_cell, aim_cell, throw_cell)
 SPAWN_TYPES = {
-    12: (4, 24, 5, 1, 15),    # policia (home del paquet)
-    13: (18, 24, 7, 14, 15),  # walker (dona cistella)
-    14: (17, 24, 9, 14, 2),   # cambrera (llenca)
-    21: (17, 24, 11, 14, 15), # cambrera (uniforme)
+    11: (22, 0, 0, 0, 0),    # estatic (op7 sense case al DOS)
+    12: (18, 24, 1, 3, 3),   # walker op1 (xmaxvelocity 40)
+    13: (21, 32, 4, 6, 6),   # llançador op7 (xmaxvelocity 32)
+    14: (17, 20, 7, 9, 9),   # op10
+    21: (17, 20, 10, 12, 12),  # op10
 }
 
 

@@ -127,26 +127,29 @@ Després: de-hardcodejar `src/enemy.c` (C6, encara usa
 - L2 ja té frames/spawns propis (vegeu Fase 3.4); queden tipus 11/22 i la
   fidelitat fina de les animacions. Sense commit.
 
-## Fase 3.4: enemics L2 (primer pas, verificat visualment)
+## Fase 3.4: enemics L2 (frames i spawns del DOS)
 
-- `tools/gen_enemy2_frames.py`: genera `assets/bbdata/ENEMI2.BIN` (16 celes
-  de 512 B) des de `ENEMI2.SQV` (35 frames). Celes: 1 tret tipus 12, 2
-  llançament tipus 14, 5/6 walk tipus 12, 7/8 walk tipus 13, 9/10 walk tipus
-  14, 11/12 walk tipus 21, 13 projectils L1, 15 llançament tipus 21.
-- `tools/gen_enemy_spawn.py`: genera `obj/lvl1/enemy_spawn.h` des de
-  `staticres.c` (`level_data`/`level_xpos_ent`/`level_ypos_ent`), amb la
-  conversió DOS peus -> CPC top (`x/2-8`, `y-32`).
-- `src/enemy.c`: `Spawn` té `aim_cell`/`throw_cell`; la taula L1 queda
-  intacta sota `#if LEVEL_ID == 0` i L2 inclou el header generat. `build.py`
-  tria `ENEMI<n>.BIN` i regenera el header de spawn per nivell.
-- Mapatge actual L2: tipus 12 -> kind 4 (policia), 13 -> kind 18 (walker),
-  14/21 -> kind 17 (cambrera). 15 walkers actius.
-- VERIFICAT: build/DSK verd, L1 boot OK, transició mapa -> L2 i enemic visible
-  a la zona de `x=248` (`scratch/l2_enemy.png`). L1 conserva els seus spawns i
-  frames.
-- PENDENT: tipus 11 (sprite de 48 px) i tipus 22 (objecte) no entren a
-  l'atlas de 16 px; tipus 13/21 són aproximacions de comportament i cal
-  contrastar les seqüències exactes d'animació DOS. Sense commit.
+- `tools/dump_level_sprites.py` (nou): extreu un PNG per tipus d'objecte
+  llegint `animframes_059d` + `level_objtypes` de `staticres.c` (frame del
+  nivell = index - SPRITES_COUNT=146). Sortida a `scratch/sprites_l2/`.
+- `tools/gen_enemy2_frames.py`: atlas L2 de 16 celes amb els frames exactes del
+  DOS (tipus 11 idle, 12 walk+atac, 13 walk+llançament, 14 i 21 walk+llançament,
+  projectils). Retalla al bbox del contingut (les teles de 48 px del SQV
+  només tenen 32-33 px de dibuix) i limita a 32x32 (cel·la de 16x32 CPC).
+- `tools/gen_enemy_spawn.py`: 16 walkers de L2 (tipus 11,12,13,14,21) amb les
+  coordonades del DOS convertides (x/2-8, y-32).
+- `src/enemy.c`: kinds nous **21 = op7** (llançador: rang ydist<=10,
+  |xdist|<80, gira amb tile type 12) i **22 = estatic** (tipus 11: op7 no te
+  case al switch del DOS -> no es mou, pero cau al terra). Helper `en2_fall()`
+  per compartir la gravetat/snap.
+- Mapes DOS dels tipus de L2: 11 -> op7 (default, estatic), 12 -> op1 (walker),
+  13 -> op7 (llança), 14 i 21 -> op10, 22 -> op11 (premsa hidràulica, objecte
+  mòbil vertical de 37 px, encara pendent).
+- VERIFICAT: build/DSK verd, L1 boot OK, L2 mostra els enemics (home del
+  paquet al capdamunt de la plataforma).
+- PENDENT: tipus 22 (premsa) com a objecte mòbil; sprite del projectil del
+  llançador (grab type 6 del DOS, ara es fa servir la bala); el retall d'1 px
+  dels frames de 33 px. Sense commit.
 
 ## Trampes conegudes (no repetir)
 

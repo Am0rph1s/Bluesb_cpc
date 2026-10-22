@@ -216,7 +216,10 @@ void en2_init(void) {
         e->y8 = sp->y8;
         e->dir = (sp->vx == 0) ? -1 : 1;
         e->vy = 0;
-        e->on_ground = (sp->kind == 8 || sp->kind == 19 || sp->kind == 17 || sp->vx == 0) ? 1 : 0;
+        // El tipus 22 (estatic, tipus 11 de L2) ha de CAURE al terra: no neix
+        // flotant com els altres estatics (vx == 0).
+        e->on_ground = (sp->kind == 8 || sp->kind == 19 || sp->kind == 17 ||
+                        (sp->vx == 0 && sp->kind != 22)) ? 1 : 0;
         e->tick = 0;
         e->shoot_timer = 0;
         e->dead = 0;
@@ -228,6 +231,43 @@ void en2_init(void) {
     s_proj.cooldown = 0;
     s_proj.drawn_row_count[0] = 0;
     s_proj.drawn_row_count[1] = 0;
+}
+
+// Y: gravetat + snap al terra (mateix que en Jake, alcada 32). Retorna la
+// nova y en pixels. Es treu del bucle per poder-lo reutilitzar pels enemics
+// estatics (tipus 11 de L2), que no es mouen en X pero si que cauen.
+static i16 en2_fall(Enemy* e, i16 y) {
+    if (!e->on_ground) {
+        i16 prev_feet = (i16)(y + ENEMY_HT);
+        i16 feet;
+        u8 trow;
+        e->vy = (i16)(e->vy + ENEMY_GRAV);
+        if (e->vy > ENEMY_VYMAX) e->vy = ENEMY_VYMAX;
+        e->y8 = (i16)(e->y8 + e->vy);
+        y = (i16)(e->y8 >> 3);
+        feet = (i16)(y + ENEMY_HT);
+        trow = (u8)(feet >> 4);
+        if (trow < LEVEL_MAP_H) {
+            // Columna del CENTRE (xpos16 a DOS), no les del cos.
+            u16 cc = (u16)((e->x + 8) >> 3);
+            i16 surf = (i16)(trow << 4);
+            if (is_floor_solid(cc, trow, 0, 0) &&
+                prev_feet <= (surf + 8) && feet >= surf) {
+                e->y8 = (i16)((surf - ENEMY_HT) << 3);
+                e->vy = 0;
+                e->on_ground = 1;
+            }
+        }
+    } else if ((e->tick & 3) == 0) {
+        u8 trow = (u8)((y + ENEMY_HT) >> 4);
+        if (trow < LEVEL_MAP_H) {
+            u16 cc = (u16)((e->x + 8) >> 3);
+            if (!is_floor_solid(cc, trow, 0, 0)) {
+                e->on_ground = 0;
+            }
+        }
+    }
+    return y;
 }
 
 void en2_update(void) {
@@ -261,20 +301,25 @@ void en2_update(void) {
 
         y = (i16)(e->y8 >> 3);
 
-        if (sp->kind == 4 || sp->kind == 17) {
-            // 1:1 DOS object_func_op2 (policia) i op10 (cambrera). Distancies
-            // de DOS (level.c do_level_update_object_bounds):
+        if (sp->kind == 4 || sp->kind == 17 || sp->kind == 21) {
+            // 1:1 DOS object_func_op2 (policia), op10 (cambrera) i op7
+            // (llançador de L2). Distancies de DOS (level.c
+            // do_level_update_object_bounds):
             //   player_xdist = centre_jugador - centre_objecte
             //   player_ydist = peus_jugador - peus_objecte
-            //   policia:  player_ydist <= 20 && |player_xdist| < TILEMAP_SCREEN_W/4 = 80
-            //   cambrera: player_ydist <= 10 && |player_xdist| < TILEMAP_SCREEN_W/2 = 160
-            // (el DOS no posa limit inferior a ydist; direction_ud > -60 es
+            //   policia  (op2): player_ydist <= 20 && |player_xdist| < 80
+            //   cambrera (op10): player_ydist <= 10 && |player_xdist| < 160
+            //   llançador(op7): player_ydist <= 10 && |player_xdist| < 80
+            // (el DOS no posa limit inferior a ydist; direction_ud > -30 es
             // sempre cert per a un walker de terra -> s'omet.)
             i16 dy = jake_y - y;               // cap-cap = peus-peus (mateixa alcada)
             i16 dx_jake = jake_x - e->x;
             i16 abs_dx = (dx_jake >= 0) ? dx_jake : -dx_jake;
             u8 is_cop = (sp->kind == 4);
-            if (dy <= (is_cop ? 20 : 10) && abs_dx < (is_cop ? 80 : 160)) {
+            u8 is_throw = (sp->kind == 21);
+            i16 max_y = is_cop ? 20 : 10;
+            i16 max_x = is_cop ? 80 : (is_throw ? 80 : 160);
+            if (dy <= max_y && abs_dx < max_x) {
                 e->dir = (dx_jake >= 0) ? 1 : -1;
                 // 1:1 DOS: en rang de tir es PARA (direction_lr = 0) i fa la
                 // pose d'accio; el projectil es crea a l'inici de la sequencia.
@@ -296,6 +341,10 @@ void en2_update(void) {
                     i16 sx = (i16)(e->x + 8 + ((e->dir > 0) ? 16 : -16));
                     i16 sy = (i16)(y + 8);
                     i16 sgn = (e->dir > 0) ? 1 : -1;
+                    // El llançador (op7) al DOS llança l'objecte "grab_type 6"
+                    // (sprite que encara no tenim); fem servir la bala, que es
+                    // la mateixa arithmetica (cas default de
+                    // do_level_update_projectile).
                     en2_spawn_proj(is_cop ? 4 : 9, is_cop ? 6 : 11, is_cop ? 13 : 19,
                                    sx, sy, (i16)(sgn * 64), 0, 24);
                 }
@@ -356,7 +405,11 @@ void en2_update(void) {
                 u16 pcol = (u16)(ccol + (e->dir > 0 ? 2 : -2));
                 u16 acol = (u16)((nx + (e->dir > 0 ? 12 : 2)) >> 3);
                 u8 bit = (u8)(e->dir > 0 ? 1 : 2);
-                if (tile_type(pcol, frow) == 1 || tile_type(pcol, brow) == 1 ||
+                // op7 (llançador de L2): al DOS gira quan el tile DAVANT es
+                // de tipus 12 (no pas aire com a op0/op8).
+                u8 hit12 = (sp->kind == 21) &&
+                    (tile_type(pcol, frow) == 12 || tile_type(pcol, brow) == 12);
+                if (hit12 || tile_type(pcol, frow) == 1 || tile_type(pcol, brow) == 1 ||
                     (tile_flags(acol, brow) & bit) ||
                     (tile_flags(acol, c2row) & bit)) {
 e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
@@ -365,36 +418,13 @@ e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
                 }
             }
             // Y: gravetat + snap (mateix que en Jake, alcada 32)
-            if (!e->on_ground) {
-                i16 prev_feet = (i16)(y + ENEMY_HT);
-                i16 feet;
-                u8 trow;
-                e->vy = (i16)(e->vy + ENEMY_GRAV);
-                if (e->vy > ENEMY_VYMAX) e->vy = ENEMY_VYMAX;
-                e->y8 = (i16)(e->y8 + e->vy);
-                y = (i16)(e->y8 >> 3);
-                feet = (i16)(y + ENEMY_HT);
-                trow = (u8)(feet >> 4);
-                if (trow < LEVEL_MAP_H) {
-                    // Columna del CENTRE (xpos16 a DOS), no les del cos.
-                    u16 cc = (u16)((e->x + 8) >> 3);
-                    i16 surf = (i16)(trow << 4);
-                    if (is_floor_solid(cc, trow, 0, 0) &&
-                        prev_feet <= (surf + 8) && feet >= surf) {
-                        e->y8 = (i16)((surf - ENEMY_HT) << 3);
-                        e->vy = 0;
-                        e->on_ground = 1;
-                    }
-                }
-            } else if ((e->tick & 3) == 0) {
-                u8 trow = (u8)((y + ENEMY_HT) >> 4);
-                if (trow < LEVEL_MAP_H) {
-                    u16 cc = (u16)((e->x + 8) >> 3);
-                    if (!is_floor_solid(cc, trow, 0, 0)) {
-                        e->on_ground = 0;
-                    }
-                }
-            }
+            y = en2_fall(e, y);
+        }
+
+        // Tipus 11 de L2: op7 NO te case al switch del DOS (default) -> l'objecte
+        // no es mou ni mira el jugador, pero ha de caure al terra (gravetat).
+        if (sp->kind == 22) {
+            y = en2_fall(e, y);
         }
 
         // Triggers de projectil (ou, bala, plat):
@@ -522,8 +552,8 @@ void en2_draw(void) {
             u8 step = (e->dead || sp->kind == 8 || sp->vx == 0) ? 0 : (u8)((e->tick >> 2) & 1);
             u8 cell = (u8)(sp->base_cell + step);
             if (e->shoot_timer) {
-                if (sp->kind == 4) cell = sp->aim_cell;          // pose de tret
-                else if (sp->kind == 17) cell = sp->throw_cell;  // pose de llançament
+                if (sp->kind == 4) cell = sp->aim_cell;              // pose de tret
+                else if (sp->kind == 17 || sp->kind == 21) cell = sp->throw_cell;  // llançament
             }
             const u8* src = en2_cell(cell);
             if (e->dir < 0) {

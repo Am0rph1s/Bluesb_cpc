@@ -1130,7 +1130,7 @@ def build_music(force):
     # Escriuen a VRAM => han de viure a la RAM 1 i cridar-se amb 0xC0. Com que
     # son comuns a tots els nivells, van a MUSBANK (0x4C10, despres del player)
     # i no al bloc de codi del nivell.
-    hb_base, hb_data = 0x4C10, 0x4F40
+    hb_base, hb_data = 0x4C10, 0x4F90
     hb_src = os.path.join(PROJ, "src", "hud_bank.c")
     hb_rel = os.path.join(obj, "hud_bank.rel")
     hb_headers = [os.path.join(PROJ, n) for n in
@@ -1160,7 +1160,8 @@ def build_music(force):
         if m:
             hb_syms[m.group(1)] = hb_base + int(m.group(2), 16)
     need_hud = {"_hud_init_o": "_hud_init_b", "_hud_render_o": "_hud_render_b",
-                "_gameover_o": "_gameover_banner_b"}
+                "_gameover_o": "_gameover_banner_b",
+                "_acid_hurt_o": "_acid_hurt_b"}
     if any(k not in hb_syms for k in need_hud.values()):
         print("\n[FATAL] HUD: simbols no trobats (%s)" % sorted(hb_syms))
         sys.exit(1)

@@ -25,6 +25,9 @@
 #define LEVEL_ELEVATOR_STORAGE 5
 #define LEVEL_PRESS_COUNT 0
 #define LEVEL_PRESS_STORAGE 1
+#define LEVEL_HAS_ACID 0
+#define LEVEL_HAS_BALLOON 1
+#define LEVEL_HAS_UMBRELLA 1
 #define LEVEL_INST_COL      0
 #define LEVEL_INST_ROW      0
 #define LEVEL_INST_TILE     0
@@ -37,28 +40,21 @@ static const i16 s_bank_press_x[LEVEL_PRESS_STORAGE] = { 0 };
 static const i16 s_bank_press_y[LEVEL_PRESS_STORAGE] = { 0 };
 static const u8 s_bank_press_map_col[LEVEL_PRESS_STORAGE] = { 0 };
 
-// Taula unificada de 6 fases (MCM de 3 i 2) per a totes les animacions de tiles del nivell
+// Seqüències EXACTES 1:1 DOS en pla (sense MCM6): cada b4 cicla amb
+// el seu propi període (2/3/4/20 frames × tick de 4 game-frames).
+// Índex: tile = s_anim_data[s_anim_off[seq] + s_anim_phase[seq]].
+// s_anim_len porta sentinella 0 (bucle sense comptador).
 #define LEVEL_ANIM_SEQ_COUNT 7
-static const u8 s_level_anim_seqs[LEVEL_ANIM_SEQ_COUNT][6] = {
-    { 229, 228, 227, 229, 228, 227 }, // seq 0 (DOS b4=29)
-    { 216, 217, 218, 216, 217, 218 }, // seq 1 (DOS b4=30)
-    { 224, 225, 226, 224, 225, 226 }, // seq 2 (DOS b4=31)
-    { 215, 214, 213, 215, 214, 213 }, // seq 3 (DOS b4=32)
-    { 130, 188, 130, 188, 130, 188 }, // seq 4 (DOS b4=76)
-    { 148, 198, 148, 198, 148, 198 }, // seq 5 (DOS b4=77)
-    { 163, 223, 163, 223, 163, 223 }, // seq 6 (DOS b4=78)
-};
+#define LEVEL_ANIM_DATA_LEN 18
+static const u8 s_anim_data[LEVEL_ANIM_DATA_LEN] = { 230, 229, 228, 217, 218, 219, 225, 226, 227, 216, 215, 214, 130, 189, 148, 199, 164, 224 };
+static const u8 s_anim_off[LEVEL_ANIM_SEQ_COUNT] = { 0, 3, 6, 9, 12, 14, 16 };
+static const u8 s_anim_len[LEVEL_ANIM_SEQ_COUNT + 1] = { 3, 3, 3, 3, 2, 2, 2, 0 };
 
-typedef struct {
-    u8 row;
-    u8 col_start;
-    u8 col_end;
-    u8 seq;
-} LevelAnimSpan;
+// Trams animats: (row, col_ini, col_fi, seq). Tipus AnimSpan de moving.h.
 
 #define LEVEL_ANIM_SPAN_COUNT 18
 #define LEVEL_ANIM_SPAN_STORAGE 18
-static const LevelAnimSpan s_level_anim_spans[LEVEL_ANIM_SPAN_STORAGE] = {
+static const AnimSpan s_level_anim_spans[LEVEL_ANIM_SPAN_STORAGE] = {
     { 30,  46,  46, 6 }, // row 30, cols 46..46 (DOS b4=78)
     { 30,  48,  56, 4 }, // row 30, cols 48..56 (DOS b4=76)
     { 30,  58,  58, 5 }, // row 30, cols 58..58 (DOS b4=77)

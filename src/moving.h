@@ -76,6 +76,19 @@ extern u8 s_dance_timer;
 extern u8 s_pipe_up; // Tuberia (op 17/18/19 del DOS): 1 = el jugador esta dins
                      // del trigger i puja amb forca -> gravetat invertida (DOS: yacc = -3).
 
+// Tram animat del tilemap (row, col_ini, col_fi, seq). El defineix moving.h
+// (no level_pkg.h) perquè el tick resident hi accedeix per bc_*.
+// El tick en deriva base=(row<<7)+col (un sol shift, barat respecte
+// duplicar la taula: el C5 va just per als 6 nivells).
+typedef struct {
+    u8 row;
+    u8 col_start;
+    u8 col_end;
+    u8 seq;
+} AnimSpan;
+// Tick d'anims: actualitza MAP_MUT amb C5 mapejat (cridat des del Banc 5).
+void anim_tick_c5(void);
+
 void carry_abort(void);
 void acid_hurt(i16 vy); // dany d'àcid kind=10 (resident, per estalviar C5)
 void moving_popup_restore(u8 page);

@@ -257,20 +257,15 @@ static void b5_update_entities_and_spans(void) {
     }
 #endif
 
-    if (++s_conveyor_tick >= 4) {
-        u8 s;
-        const LevelAnimSpan* sp = s_level_anim_spans;
-        s_conveyor_tick = 0;
-        if (++s_conveyor_phase >= 6) {
-            s_conveyor_phase = 0;
-        }
-        for (s = 0; s < LEVEL_ANIM_SPAN_COUNT; s++, sp++) {
-            u8 tile = s_level_anim_seqs[sp->seq][s_conveyor_phase];
-            u8* dst = &MAP_MUT[((u16)sp->row << 7) + sp->col_start];
-            u8 n = (u8)(sp->col_end - sp->col_start + 1);
-            while (n--) *dst++ = tile;
-        }
-    }
+    // Tick d'anims 1:1 DOS al resident (C5 ple): seqüències exactes amb el
+    // seu propi període (2/3/4/20). bc_a=tick, bc_b=n, bc_c=data,
+    // bc_d=offs, bc_e=lens. El repintat de sota usa el mateix indexat.
+    bc_a = (u16)s_level_anim_spans;
+    bc_b = LEVEL_ANIM_SPAN_COUNT;
+    bc_c = (u16)s_anim_data;
+    bc_d = (u16)s_anim_off;
+    bc_e = (u16)s_anim_len;
+    anim_tick_c5();
 
     if (s_popup_timer) {
         s_popup_timer--;
@@ -515,13 +510,19 @@ void moving_bank_conveyor(void) {
     u8 page = (u8)bc_a;
     u8 s, c;
 
-    // 1. Repintar spans animats visibles (cintes + superfície d'aigua + vores)
+    // 1. Repintar spans animats visibles (cintes + àcid + aigua + vores).
+    // Mateix indexat que el tick (stamp mod len per resta; vegeu anim_tick_c5).
     if (page <= 1 && s_page_conveyor_phase[page] != s_conveyor_phase) {
-        const LevelAnimSpan* sp = s_level_anim_spans;
+        const AnimSpan* sp = s_level_anim_spans;
         for (s = 0; s < LEVEL_ANIM_SPAN_COUNT; s++, sp++) {
             u8 tile;
+            u8 qq, L, p;
             if ((u16)(((u16)sp->row << 1) - g_cam_row + 1) >= 21) continue;
-            tile = s_level_anim_seqs[sp->seq][s_conveyor_phase];
+            qq = sp->seq;
+            L = s_anim_len[qq];
+            p = s_conveyor_phase;
+            while (p >= L) p -= L;
+            tile = s_anim_data[s_anim_off[qq] + p];
             for (c = sp->col_start; c <= sp->col_end; c++) {
                 if ((u16)(((u16)c << 1) - g_cam_x4 + 1) >= 41) continue;
                 render_tile_world(tile, c, sp->row, g_cam_x4, g_cam_row);

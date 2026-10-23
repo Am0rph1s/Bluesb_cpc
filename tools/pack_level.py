@@ -21,19 +21,22 @@ PROJ = os.path.dirname(HERE)
 LEVEL_NAMES = ["magasin", "ent", "prison", "egou", "ville", "concert"]
 
 # Seqüències d'animació de tiles de DOS (level_tilesdata_1e8c a staticres.c)
-# indexades pel byte 4 de TRIG.BIN (op_table2). Les d'àcid inclouen el buit
-# (90/10) perquè el dany segueix el tile ACTUAL (MAP_MUT): quan el raig
-# mostra el buit no hi ha b6 àcid i es pot passar (1:1 DOS).
+# indexades pel byte 4 de TRIG.BIN (op_table2). LONGITUD EXACTA 1:1 DOS
+# (no MCM6): el raig d'àcid fa 20 frames (10 on + 10 off = cicle 80 loops;
+# a 25 fps són 3,2 s amb finestres d'1,6 s, com els 2,67 s del DOS a 30 Hz).
+# Truncar a 6 donava cicles de 24 loops (0,96 s) sense finestra útil.
 DOS_ANIM_SEQS = {
-    19: [147, 146, 167, 146],  # level_tiledata_1cce: bassa àcid (4 frames)
-    24: [134, 135, 136],  # level_tiledata_1cea: bassa àcid (3 frames)
-    25: [137, 138, 139],  # level_tiledata_1cef: bassa àcid (3 frames)
+    19: [147, 146, 167, 146],  # level_tiledata_1cce (4 frames; 167 = buit b6=255)
+    24: [134, 135, 136],  # level_tiledata_1cea (3 frames)
+    25: [137, 138, 139],  # level_tiledata_1cef (3 frames)
     29: [253, 252, 251],  # level_tiledata_1d1c: corró cinta dreta
     30: [240, 241, 242],  # level_tiledata_1d21: corró cinta esquerra
     31: [248, 249, 250],  # level_tiledata_1d26: cos cinta dreta
     32: [239, 238, 237],  # level_tiledata_1d2b: cos cinta esquerra
-    59: [44, 45, 90, 44, 45, 90],  # level_tiledata_1dcf (20: 10 on + 10 off): 3 on + 3 off
-    60: [46, 47, 10, 38, 10, 10],  # level_tiledata_1de5 (20: ~11 on + 9 off): on/off
+    59: [44, 45, 45, 44, 45, 44, 45, 44, 45, 44,
+         90, 90, 90, 90, 90, 90, 90, 90, 90, 90],  # level_tiledata_1dcf (20: 10 on + 10 off b6=255)
+    60: [10, 46, 47, 38, 47, 38, 46, 47, 38, 46, 38,
+         10, 10, 10, 10, 10, 10, 10, 10, 10],  # level_tiledata_1de5 (20: 11 on + 9 off)
     76: [131, 199],       # level_tiledata_1e48: superfície d'aigua (peixeres)
     77: [149, 217],       # level_tiledata_1e4c: vora dreta peixera
     78: [170, 247],       # level_tiledata_1e50: vora esquerra peixera
@@ -288,30 +291,39 @@ def build_level_pkg(level_idx=0, out_dir=None):
         + (", ".join(str(c) for c in press_col) if press_col else "0")
         + " };",
         "",
-        "// Taula unificada de 6 fases (MCM de 3 i 2) per a totes les animacions de tiles del nivell",
+        "// Seqüències EXACTES 1:1 DOS en pla (sense MCM6): cada b4 cicla amb",
+        "// el seu propi període (2/3/4/20 frames × tick de 4 game-frames).",
+        "// Índex: tile = s_anim_data[s_anim_off[seq] + s_anim_phase[seq]].",
+        "// s_anim_len porta sentinella 0 (bucle sense comptador).",
         f"#define LEVEL_ANIM_SEQ_COUNT {len(used_b4)}",
-        "static const u8 s_level_anim_seqs[LEVEL_ANIM_SEQ_COUNT][6] = {",
+        f"#define LEVEL_ANIM_DATA_LEN {sum(len(DOS_ANIM_SEQS[b4]) for b4 in used_b4)}",
     ]
+    assert len(used_b4) <= 64, "massa seqs (span.seq és u8)"
+    flat, offs, lens = [], [], []
     for b4 in used_b4:
         seq = [remap[t] for t in DOS_ANIM_SEQS[b4]]
-        seq6 = [seq[i % len(seq)] for i in range(6)]
-        lines.append(
-            "    { "
-            + ", ".join(f"{t:3d}" for t in seq6)
-            + f" }}, // seq {b4_to_seq[b4]} (DOS b4={b4})"
-        )
-    lines.append("};")
+        offs.append(len(flat))
+        lens.append(len(seq))
+        flat.extend(seq)
+    assert len(flat) <= 255, "s_anim_data no cap en índex u8"
+    lines.append(
+        "static const u8 s_anim_data[LEVEL_ANIM_DATA_LEN] = { "
+        + ", ".join(str(t) for t in flat) + " };"
+    )
+    lines.append(
+        "static const u8 s_anim_off[LEVEL_ANIM_SEQ_COUNT] = { "
+        + ", ".join(str(o) for o in offs) + " };"
+    )
+    lines.append(
+        "static const u8 s_anim_len[LEVEL_ANIM_SEQ_COUNT + 1] = { "
+        + ", ".join(str(l) for l in lens) + ", 0 };"
+    )
     lines.append("")
-    lines.append("typedef struct {")
-    lines.append("    u8 row;")
-    lines.append("    u8 col_start;")
-    lines.append("    u8 col_end;")
-    lines.append("    u8 seq;")
-    lines.append("} LevelAnimSpan;")
+    lines.append("// Trams animats: (row, col_ini, col_fi, seq). Tipus AnimSpan de moving.h.")
     lines.append("")
     lines.append(f"#define LEVEL_ANIM_SPAN_COUNT {len(spans)}")
     lines.append(f"#define LEVEL_ANIM_SPAN_STORAGE {span_storage}")
-    lines.append("static const LevelAnimSpan s_level_anim_spans[LEVEL_ANIM_SPAN_STORAGE] = {")
+    lines.append("static const AnimSpan s_level_anim_spans[LEVEL_ANIM_SPAN_STORAGE] = {")
     for r, c0, c1, seq_idx, b4 in spans:
         lines.append(
             f"    {{ {r:2d}, {c0:3d}, {c1:3d}, {seq_idx} }}, // row {r}, cols {c0}..{c1} (DOS b4={b4})"

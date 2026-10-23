@@ -433,21 +433,12 @@ void carry_abort(void) {
 }
 
 // 1:1 DOS tiles.c:907-919 + level.c:1583-1593 (kind=10, b6=2/3/4): l'àcid
-// sempre fa mal (-1 cor, invuln 75, rebot). Viu al resident perquè el C5
-// d'L2 va ple (marge 0); el Banc 5 només hi crida.
+// sempre fa mal (-1 cor, invuln 75, rebot). Cos a hud_bank.c (C1 compartit,
+// amb marge); aquí només el wrapper (el resident també va just).
+extern void acid_hurt_o(void);
 void acid_hurt(i16 vy) {
-    if (s_invuln_timer || s_dying_timer) return;
-    if (g_hearts_count > 0) g_hearts_count--;
-    s_invuln_timer = 75;
-    s_vy = vy;
-    s_on_ground = 0;
-    if (g_hearts_count == 0) {
-        s_dying_timer = 64;
-        s_dazed_timer = 0;
-        s_invuln_timer = 255;
-    } else {
-        s_dazed_timer = 20;
-    }
+    bc_a = (u16)vy;
+    call_banked(0xC0, (void*)acid_hurt_o);
 }
 
 static u8 anim_step(u8 speed, u8 max_idx) {

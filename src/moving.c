@@ -31,6 +31,8 @@ u8 s_conveyor_phase;
 u8 s_conveyor_tick;
 u8 s_page_conveyor_phase[2];
 
+void moving_init(void) { call_banked(0xC5, BC_INIT); }
+
 u8 g_vinyls_count;
 u8 g_hearts_count;
 u8 g_lives_count;
@@ -40,9 +42,41 @@ u8 g_checkpoint;
 u8 g_enemy_decomp_cnt;
 u8 s_dance_timer;
 
-void moving_init(void) { call_banked(0xC5, BC_INIT); }
-
 void moving_update(void) { call_banked(0xC5, BC_UPDATE); }
+
+// Tick d'anims 1:1 DOS (level.c:385-387: cada 4 game-loops avança 1 pas
+// cada seqüència segons la SEVA longitud 2/3/4/20; cicle raig = 80 loops
+// = 3,2 s a 25 fps, com els 2,67 s del DOS a 30 Hz). Viu al resident
+// perquè el C5 va ple. C5 mapejat (cridat des del Banc 5).
+// bc_a=tick_spans, bc_b=n, bc_c=data, bc_d=offs, bc_e=lens (sentinella 0).
+// Sense array de fases: índex = stamp mod len per resta (len<=20, barat;
+// el salt de fase cada 256 stamps és d'1 frame i invisible).
+void anim_tick_c5(void) {
+    if (++s_conveyor_tick >= 4) {
+        const u8* lens = (const u8*)bc_e;
+        const AnimSpan* sp = (const AnimSpan*)bc_a;
+        const u8* data = (const u8*)bc_c;
+        const u8* offs = (const u8*)bc_d;
+        u8 n = (u8)bc_b, s;
+        u8* map = (u8*)0x4000;
+        u8 st;
+        s_conveyor_tick = 0;
+        st = ++s_conveyor_phase; // segell per al repintat (moving_bank_conveyor)
+        for (s = 0; s < n; s++, sp++) {
+            u8 L = lens[sp->seq];
+            u8 p = st;
+            u8 tile;
+            u8 c;
+            while (p >= L) p -= L;
+            tile = data[offs[sp->seq] + p];
+            {
+                u8* dst = &map[((u16)sp->row << 7) + sp->col_start];
+                u8 c = (u8)(sp->col_end - sp->col_start + 1);
+                while (c--) *dst++ = tile;
+            }
+        }
+    }
+}
 
 // 1:1 DOS init_level(): reinicia el MON (plataformes, fases, instrument)
 // sense tocar els comptadors. Es crida al reinici per mort.

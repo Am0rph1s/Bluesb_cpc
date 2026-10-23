@@ -24,6 +24,12 @@ extern const u8 s_hud_strips[39][24];
 extern void hud_blit_col(const u8* strip24, u16 ma20);
 extern u16 g_vram_start;
 extern u8 g_has_instrument;
+// Dany d'àcid kind=10 (tiles.c:907-919 + level.c:1583-1593). Viu aquí (C1
+// compartit, amb marge) perquè el resident va just; el C5 el crida via el
+// wrapper resident acid_hurt() (mateix patró que hud_render_b: vy per bc_a).
+extern u8 s_invuln_timer;
+extern u8 s_dying_timer;
+extern u8 s_dazed_timer;
 
 static u8 s_hud_layout[PLAY_CHARS];
 static u8 s_hud_lives[2], s_hud_vinyls[2], s_hud_hearts[2], s_hud_inst[2];
@@ -122,5 +128,24 @@ void gameover_banner_b(void) {
             cpct_memcpy(dst2, src + bytes1, (u16)(40 - bytes1));
         }
         src += 40;
+    }
+}
+
+// Dany d'àcid kind=10, b6=2/3/4 (1:1 DOS tiles.c:907-919: yfriction 14/10/5,
+// xvelocity=-100, special_anim=22 + SOUND_11; level.c:1583-1593: -1 cor,
+// blinking_counter=75). vy = -yfric*4 (enemy.c:685: 12 -> -48).
+void acid_hurt_b(void) {
+    i16 vy = (i16)bc_a;
+    if (s_invuln_timer || s_dying_timer) return;
+    if (g_hearts_count > 0) g_hearts_count--;
+    s_invuln_timer = 75;
+    s_vy = vy;
+    s_on_ground = 0;
+    if (g_hearts_count == 0) {
+        s_dying_timer = 64;
+        s_dazed_timer = 0;
+        s_invuln_timer = 255;
+    } else {
+        s_dazed_timer = 20;
     }
 }

@@ -758,7 +758,11 @@ def build_enemybank(force, level_idx=None):
     im[0:len(table)] = table
     im[EN_BLOCKS - 0x4000:EN_BLOCKS - 0x4000 + len(blocks)] = blocks
     # Taula de restauracio de tiles (pack_level.py): [n u16][n x (col,row,tile)]
-    rt_path = os.path.join(PROJ, "assets", "bbdata", "RESTORE0.BIN")
+    # 1:1 DOS: cada nivell restaura els SEUS consumibles en morir (game.c:344
+    # rellegeix el paquet del nivell). Abans sempre s'incrustava RESTORE0 (L1)
+    # i morir a L2+ corrompia el mapa amb tiles d'L1. Ara es per nivell.
+    rt_lvl = 0 if level_idx is None else level_idx
+    rt_path = os.path.join(PROJ, "assets", "bbdata", "RESTORE%d.BIN" % rt_lvl)
     rt = open(rt_path, "rb").read()
     EN_RESTORE = 0x4B00
     if EN_BLOCKS + len(blocks) > EN_RESTORE:

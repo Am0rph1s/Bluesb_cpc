@@ -4,8 +4,8 @@
 
 // Generat per tools/build.py. NO EDITAR.
 #define GAME_START 0x1286
-#define GAME_LEN 15257
-#define GAME_CRC 0x28C0
+#define GAME_LEN 15258
+#define GAME_CRC 0x9E27
 #define FDC_LEN 913
 #define CRC_FDC 0x0ADB
 #define FRONT_LEN 2448
@@ -24,7 +24,7 @@ static const u8 g_game_chs[64] = {
     0x03,0xC6,0x03,0xC7,0x03,0xC8,0x03,0xC9,0x04,0xC1,0x04,0xC2,
     0x04,0xC3,0x04,0xC4,
 };
-static const DiskFileDesc g_file_game = { 15385, 32, g_game_chs };
+static const DiskFileDesc g_file_game = { 15386, 32, g_game_chs };
 static const u8 g_fdc_chs[4] = {
     0x04,0xC5,0x04,0xC6,
 };

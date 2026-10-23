@@ -722,6 +722,10 @@ volatile u8 g_player_choice; // 0=Jake, 1=Elwood (l'escriu el FRONT al
 volatile u8 g_map_level; // 0..5 (el GAME l'escriu abans del mapa; el FRONT
                     // hi pinta sticker nota + ruta statica DOS via EQU)
 static u8 g_front_map_only; // 1 = tornar al FRONT per la transicio de mapa
+// 1:1 DOS (level.c init_level): en completar un nivell es conserven vides,
+// cors i discos (nomes es reinicien a l'entrada del nivell 0 o en morir);
+// l'instrument si que es reinicia (data5F = 0).
+static u8 g_keep_counters; // 1 = la propera carrega conserva comptadors
 u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
                     // primer mus_init: evita Play sobre C1 buit (reboot).
 
@@ -907,6 +911,7 @@ static void load_front_bank(void) {
 }
 
 void main(void) {
+    u8 sv_lives, sv_hearts, sv_vinyls, sv_keep;
     cpct_memset((void*)CRT_DATA_START, 0, CRT_DATA_LEN);
     g_bank = 0xC0;
     cpct_memcpy((void*)CRT_IDATA_DST, (void*)CRT_IDATA_SRC, CRT_IDATA_LEN);
@@ -948,8 +953,19 @@ void main(void) {
     // (video_init + LUT d'hflip + neteja de les dues pagines ja els fa
     //  load_level_packages(), que tambe s'usa al reinici per mort.)
 
-    // Inicialitza posició d'inici, càmera i entitats des del paquet de nivell (Banc 5)
+    // Inicialitza posició d'inici, càmera i entitats des del paquet de nivell (Banc 5).
+    // Si venim d'una transicio de nivell completat, moving_init() reseteja els
+    // comptadors i els restaurem aqui (1:1 DOS: init_level nomes els toca a
+    // l'entrada del nivell 0 o en morir; l'instrument queda a 0, com al DOS).
+    sv_lives = g_lives_count; sv_hearts = g_hearts_count; sv_vinyls = g_vinyls_count;
+    sv_keep = g_keep_counters;
+    g_keep_counters = 0;
     moving_init();
+    if (sv_keep) {
+        g_lives_count = sv_lives;
+        g_hearts_count = sv_hearts;
+        g_vinyls_count = sv_vinyls;
+    }
     // Walkers C6: init runtime (slot 3) post-carrega (sense crt0 al banc,
     // els inicialitzadors statics no arriben; vist 10/26).
     enemy_init();
@@ -1289,9 +1305,13 @@ void main(void) {
                 s_back_page = 1;
                 g_vram_base_hi = 0x80;
                 g_front_map_only = 1;
+                g_keep_counters = 1;   // el nivell seguent hereta comptadors
                 break;
             }
         }
     }
     }
 }
+
+
+

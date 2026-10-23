@@ -9,7 +9,7 @@
 // 2 px/frame i baixa 4 px/frame, amb 40 passos d'espera a cada extrem, i
 // el jugador hi puja damunt.
 #define MAG_PRESS_COUNT 3
-#define PRESS_OBJECT_H 30   // level_obj_h[22] del DOS (alçada de l'objecte)
+#define PRESS_OBJECT_H 30   // level_obj_h[22] del DOS (alï¿½ada de l'objecte)
 #define MAG_MOVER_COUNT (MAG_ELEVATOR_COUNT + MAG_PRESS_COUNT)
 #define ELEVATOR_W_BYTES 8
 #define ELEVATOR_H 14
@@ -72,10 +72,9 @@ extern u8  g_has_instrument;
 extern u8  g_level_complete;
 extern u8  g_checkpoint;
 extern u8  g_enemy_decomp_cnt;   // diagnostic: descompressions de cela d'enemic (cache miss)
-extern u8  s_dance_timer;
-// Tuberia (op 17/18/19 del DOS): 1 = el jugador esta dins del trigger i puja
-// amb força -> la gravetat s'inverteix (DOS: yacc = -3).
-extern u8  s_pipe_up;
+extern u8 s_dance_timer;
+extern u8 s_pipe_up; // Tuberia (op 17/18/19 del DOS): 1 = el jugador esta dins
+                     // del trigger i puja amb forca -> gravetat invertida (DOS: yacc = -3).
 
 void carry_abort(void);
 void moving_popup_restore(u8 page);

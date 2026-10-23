@@ -484,6 +484,12 @@ void moving_bank_conveyor(void) {
     }
 
     // 3. Reixes de primer pla dirigides pel TRIG compacte (avt 12..17)
+    // 1:1 DOS level.c:2062 (foreground_tile_num -> sprite FG de l'AVT del
+    // nivell). La LUT procedural actual (_grate_lut) és la reixa d'L1
+    // (AVTMAG); a L2+ els mateixos índexs són altres gràfics (AVTENT...).
+    // Fins tenir FG real per nivell, només L1 l'activa: a L2 no hi ha cap
+    // reixa i pintar-hi la d'L1 és inventar.
+#if LEVEL_ID == 0
     {
         u16 px = (u16)(s_px8 >> 3);
         u16 py = (u16)(s_py8 >> 3);
@@ -497,6 +503,9 @@ void moving_bank_conveyor(void) {
             g_grate_enable = 0;
         }
     }
+#else
+    g_grate_enable = 0;
+#endif
 
     // 4. Dibuixar sprite emergent (popup -10, -20, +50) si està actiu i visible
     if (s_popup_timer && page <= 1) {

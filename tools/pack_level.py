@@ -164,7 +164,10 @@ def build_level_pkg(level_idx=0, out_dir=None):
     used_b6 = sorted(set(trig_bin[t * 10 + 6] for t in range(256) if trig_bin[t * 10 + 6] != 255))
     # L'àcid (kind=10, b6=2/3/4) es gestiona per b6 directe a moving_bank
     # (dany segueix MAP_MUT) i no cal entrada a s_level_trig3: estalvia C5.
-    trig_b6 = [b6 for b6 in used_b6 if list(arrays[names6[b6]])[1] in (11, 12)]
+    # I només els b6 presents al mapa+sales (p. ex. b6=27 no hi és a L2).
+    b6_in_level = set(trig_bin[t * 10 + 6] for t in set(map_bin) | set(rooms_bin))
+    trig_b6 = [b6 for b6 in used_b6
+               if b6 in b6_in_level and list(arrays[names6[b6]])[1] in (11, 12)]
     b6_to_idx = {b6: i for i, b6 in enumerate(trig_b6)}
     b6_lut = [b6_to_idx.get(b6, 0xFF) for b6 in range(64)]
 

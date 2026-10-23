@@ -119,34 +119,40 @@ void moving_bank_init(void) {
 
 void moving_bank_find(void) {
     u8 i;
-    const MovingElevator* e = g_mag_elevators;
     if ((i16)bc_d < 0) { bc_r = -1; return; }
 
+    // Cada família parteix de la SEVA base (l'e continuat de l'original
+    // fallava amb ELEVATOR_COUNT=0: a L2 mirava els slots 0..2 buits en
+    // comptes de les premses 5..7 i no s'hi podia aterrar).
 #if LEVEL_ELEVATOR_COUNT > 0
-    for (i = 0; i < LEVEL_ELEVATOR_COUNT; i++, e++) {
-        if ((u16)(e->center_x - bc_a + 8) < 33) {
-            i16 surface = (i16)(e->y - ELEVATOR_OBJECT_H);
-            if ((i16)bc_b <= (i16)(surface + 8) && (i16)bc_c >= surface) {
-                *(i16*)bc_e = (i16)(surface - 30);
-                bc_r = i;
-                return;
+    {
+        const MovingElevator* e = g_mag_elevators;
+        for (i = 0; i < LEVEL_ELEVATOR_COUNT; i++, e++) {
+            if ((u16)(e->center_x - bc_a + 8) < 33) {
+                i16 surface = (i16)(e->y - ELEVATOR_OBJECT_H);
+                if ((i16)bc_b <= (i16)(surface + 8) && (i16)bc_c >= surface) {
+                    *(i16*)bc_e = (i16)(surface - 30);
+                    bc_r = i;
+                    return;
+                }
             }
         }
     }
-#else
-    e += LEVEL_ELEVATOR_COUNT;
 #endif
 
     // Premses (op11): la superficie on el jugador hi puja es el cap de
     // l'objecte (level_obj_h[22] = 30 al DOS).
 #if LEVEL_PRESS_COUNT > 0
-    for (i = 0; i < LEVEL_PRESS_COUNT; i++, e++) {
-        if ((u16)(e->center_x - bc_a + 8) < 33) {
-            i16 surface = (i16)(e->y - PRESS_OBJECT_H);
-            if ((i16)bc_b <= (i16)(surface + 8) && (i16)bc_c >= surface) {
-                *(i16*)bc_e = (i16)(surface - 30);
-                bc_r = (i8)(MAG_ELEVATOR_COUNT + i);
-                return;
+    {
+        const MovingElevator* e = &g_mag_elevators[MAG_ELEVATOR_COUNT];
+        for (i = 0; i < LEVEL_PRESS_COUNT; i++, e++) {
+            if ((u16)(e->center_x - bc_a + 8) < 33) {
+                i16 surface = (i16)(e->y - PRESS_OBJECT_H);
+                if ((i16)bc_b <= (i16)(surface + 8) && (i16)bc_c >= surface) {
+                    *(i16*)bc_e = (i16)(surface - 30);
+                    bc_r = (i8)(MAG_ELEVATOR_COUNT + i);
+                    return;
+                }
             }
         }
     }

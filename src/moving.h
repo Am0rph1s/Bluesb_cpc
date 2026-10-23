@@ -73,13 +73,11 @@ extern u8  g_level_complete;
 extern u8  g_checkpoint;
 extern u8  g_enemy_decomp_cnt;   // diagnostic: descompressions de cela d'enemic (cache miss)
 extern u8 s_dance_timer;
-extern u8 s_invuln_timer; // 1:1 DOS blinking_counter (75 frames)
-extern u8 s_dying_timer;
-extern u8 s_dazed_timer;
 extern u8 s_pipe_up; // Tuberia (op 17/18/19 del DOS): 1 = el jugador esta dins
                      // del trigger i puja amb forca -> gravetat invertida (DOS: yacc = -3).
 
 void carry_abort(void);
+void acid_hurt(i16 vy); // dany d'àcid kind=10 (resident, per estalviar C5)
 void moving_popup_restore(u8 page);
 
 // Bloc de paràmetres per crides bankades amb args/retorn (CP-2.2).

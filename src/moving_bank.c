@@ -64,6 +64,7 @@ void moving_bank_respawn(void) {
     s_conveyor_tick = 0;
     s_page_conveyor_phase[0] = s_page_conveyor_phase[1] = 0xFF;
 
+#if LEVEL_ELEVATOR_COUNT > 0
     for (i = 0; i < LEVEL_ELEVATOR_COUNT; i++) {
         MovingElevator* e = &g_mag_elevators[i];
         e->center_x = s_bank_start_x[i];
@@ -76,12 +77,14 @@ void moving_bank_respawn(void) {
         e->frame = 0;
         e->drawn[0] = e->drawn[1] = 0;
     }
+#endif
 
     // Premses (op11): van despres dels ascensors al mateix array. El DOS
     // (objects.c object_func_op11) inicialitza elevator_direction = -1 i
     // moving_direction = 0 -> puja fins que hi ha un tile de tipus 10 quatre
     // files per damunt, espera 40 passos, baixa fins que hi ha un tile de
     // tipus 10 dues files per sota i torna a pujar.
+#if LEVEL_PRESS_COUNT > 0
     for (i = 0; i < LEVEL_PRESS_COUNT; i++) {
         MovingElevator* e = &g_mag_elevators[MAG_ELEVATOR_COUNT + i];
         e->center_x = s_bank_press_x[i];
@@ -94,6 +97,7 @@ void moving_bank_respawn(void) {
         e->frame = 0;
         e->drawn[0] = e->drawn[1] = 0;
     }
+#endif
 }
 
 void moving_bank_init(void) {
@@ -118,6 +122,7 @@ void moving_bank_find(void) {
     const MovingElevator* e = g_mag_elevators;
     if ((i16)bc_d < 0) { bc_r = -1; return; }
 
+#if LEVEL_ELEVATOR_COUNT > 0
     for (i = 0; i < LEVEL_ELEVATOR_COUNT; i++, e++) {
         if ((u16)(e->center_x - bc_a + 8) < 33) {
             i16 surface = (i16)(e->y - ELEVATOR_OBJECT_H);
@@ -128,9 +133,13 @@ void moving_bank_find(void) {
             }
         }
     }
+#else
+    e += LEVEL_ELEVATOR_COUNT;
+#endif
 
     // Premses (op11): la superficie on el jugador hi puja es el cap de
     // l'objecte (level_obj_h[22] = 30 al DOS).
+#if LEVEL_PRESS_COUNT > 0
     for (i = 0; i < LEVEL_PRESS_COUNT; i++, e++) {
         if ((u16)(e->center_x - bc_a + 8) < 33) {
             i16 surface = (i16)(e->y - PRESS_OBJECT_H);
@@ -141,23 +150,49 @@ void moving_bank_find(void) {
             }
         }
     }
+#endif
     bc_r = -1;
 }
 
 static void b5_update_entities_and_spans(void) {
     u8 i;
+    // 1:1 DOS: ascensors (op4, puja 3/2 px, gaps 4/1, wait 33) i premses
+    // (op11, puja 2 / baixa 4 px, gaps 4/2, wait 40). Una branca per nivell
+    // (C5 d'L2 anava ple): sense paràmetres ni branques en temps d'execució.
+#if LEVEL_ELEVATOR_COUNT == 0 && LEVEL_PRESS_COUNT > 0
+    // Només premses (L2).
+    for (i = 0; i < LEVEL_PRESS_COUNT; i++) {
+        MovingElevator* e = &g_mag_elevators[MAG_ELEVATOR_COUNT + i];
+        u8 row;
+        e->delta_y = 0;
+        if (e->wait < 40) { e->wait++; continue; }
+        row = (u8)(e->y >> 4);
+        if (e->direction < 0) {
+            if (row >= 4 && b5_tile_type(e->map_col, (u8)(row - 4)) == 10) {
+                e->direction = 1;
+                e->wait = 1;
+                continue;
+            }
+            e->y = (i16)(e->y - 2);
+            e->delta_y = -2;
+        } else {
+            if (b5_tile_type(e->map_col, (u8)(row + 2)) == 10) {
+                e->direction = -1;
+                e->wait = 1;
+                continue;
+            }
+            e->y = (i16)(e->y + 4);
+            e->delta_y = 4;
+        }
+    }
+#elif LEVEL_PRESS_COUNT == 0 && LEVEL_ELEVATOR_COUNT > 0
+    // Només ascensors (L1).
     for (i = 0; i < LEVEL_ELEVATOR_COUNT; i++) {
         MovingElevator* e = &g_mag_elevators[i];
         u8 row, step;
-
         e->delta_y = 0;
         e->frame = 0;
-
-        if (e->wait < ELEVATOR_WAIT) {
-            e->wait++;
-            continue;
-        }
-
+        if (e->wait < ELEVATOR_WAIT) { e->wait++; continue; }
         row = (u8)(e->y >> 4);
         step = (((e->anim_tick & 7) < 3) ? 3 : 2);
         if (e->direction < 0) {
@@ -177,45 +212,44 @@ static void b5_update_entities_and_spans(void) {
             e->y = (i16)(e->y + step);
             e->delta_y = (i8)step;
         }
-
-        // (criteri Amiga: sense frame de motor, no hi ha swap aqui)
         e->anim_tick++;
     }
-
-    // --- Premses (op11): 1:1 DOS object_func_op11 (objects.c) ---
-    // Espera 40 passos; puja 2 px/frame fins que hi ha un tile de tipus 10
-    // quatre files per damunt (ypos16 - 4); espera 40; baixa 4 px/frame fins
-    // que hi ha un tile de tipus 10 dues files per sota (ypos16 + 2).
-    for (i = 0; i < LEVEL_PRESS_COUNT; i++) {
-        MovingElevator* e = &g_mag_elevators[MAG_ELEVATOR_COUNT + i];
-        u8 row;
-
+#else
+    // Nivells futurs amb tots dos: cos compartit amb paràmetres.
+    for (i = 0; i < LEVEL_ELEVATOR_COUNT + LEVEL_PRESS_COUNT; i++) {
+        MovingElevator* e;
+        u8 is_press, wait_max, up_step, down_step, gap_up, gap_down, row, step;
+        is_press = (i >= LEVEL_ELEVATOR_COUNT);
+        e = is_press ? &g_mag_elevators[MAG_ELEVATOR_COUNT + (u8)(i - LEVEL_ELEVATOR_COUNT)] : &g_mag_elevators[i];
+        wait_max = is_press ? 40 : ELEVATOR_WAIT;
+        gap_up = 4;
+        gap_down = is_press ? 2 : 1;
         e->delta_y = 0;
+        if (!is_press) e->frame = 0;
+        if (e->wait < wait_max) { e->wait++; continue; }
         row = (u8)(e->y >> 4);
-
-        if (e->wait < 40) {
-            e->wait++;
-            continue;
-        }
-
+        if (is_press) { up_step = 2; down_step = 4; }
+        else { step = (((e->anim_tick & 7) < 3) ? 3 : 2); up_step = step; down_step = step; }
         if (e->direction < 0) {
-            if (row >= 4 && b5_tile_type(e->map_col, (u8)(row - 4)) == 10) {
+            if (row >= gap_up && b5_tile_type(e->map_col, (u8)(row - gap_up)) == 10) {
                 e->direction = 1;
                 e->wait = 1;
                 continue;
             }
-            e->y = (i16)(e->y - 2);
-            e->delta_y = -2;
+            e->y = (i16)(e->y - up_step);
+            e->delta_y = (i8)-(i8)up_step;
         } else {
-            if (b5_tile_type(e->map_col, (u8)(row + 2)) == 10) {
+            if (b5_tile_type(e->map_col, (u8)(row + gap_down)) == 10) {
                 e->direction = -1;
                 e->wait = 1;
                 continue;
             }
-            e->y = (i16)(e->y + 4);
-            e->delta_y = 4;
+            e->y = (i16)(e->y + down_step);
+            e->delta_y = (i8)down_step;
         }
+        if (!is_press) e->anim_tick++;
     }
+#endif
 
     if (++s_conveyor_tick >= 4) {
         u8 s;
@@ -252,24 +286,15 @@ static void b5_check_bonus_triggers(u8 col, u8 row, i16 px, i16 py, u8 crouch) {
         b6 = tp[TP_B6];
     }
     // 1:1 DOS tiles.c:907-919 + level.c:1583-1593 (kind=10, b6=2/3/4):
-    // l'àcid sempre fa mal (-1 cor, invuln 75, rebot yfric 14/10/5).
-    // No és on/off: la intermitència és només visual (anim cada 4 loops).
+    // l'àcid sempre fa mal. La intermitència és només visual (anim cada 4
+    // loops); el dany segueix el tile ACTUAL del mapa (MAP_MUT), així quan
+    // el raig mostra el buit (90/10) no hi ha b6 àcid i es pot passar.
+#if LEVEL_HAS_ACID
     if (b6 == 2 || b6 == 3 || b6 == 4) {
-        if (s_invuln_timer || s_dying_timer) return;
-        if (g_hearts_count > 0) g_hearts_count--;
-        s_invuln_timer = 75;
-        // Rebot 1:1 DOS yfriction (enemy.c:685: 12 -> -48, o sigui x4):
-        s_vy = (b6 == 2) ? -56 : (b6 == 3) ? -40 : -20;
-        s_on_ground = 0;
-        if (g_hearts_count == 0) {
-            s_dying_timer = 64;
-            s_dazed_timer = 0;
-            s_invuln_timer = 255;
-        } else {
-            s_dazed_timer = 20;
-        }
+        acid_hurt((b6 == 2) ? -56 : (b6 == 3) ? -40 : -20);
         return;
     }
+#endif
     if (b6 >= 64) return;
     idx = s_b6_to_trig3[b6];
     if (idx == 0xFF) return;
@@ -417,17 +442,28 @@ void moving_bank_update(void) {
     }
 
     // --- Grab / release d'objectes del mapa (globus=8, paraigua=9, caixa=5) ---
-    if (!s_carry_kind && !climbing && (tt == 8 || tt == 9)) {
+#if LEVEL_HAS_BALLOON || LEVEL_HAS_UMBRELLA
+    if (!s_carry_kind && !climbing &&
+#if LEVEL_HAS_BALLOON && LEVEL_HAS_UMBRELLA
+        (tt == 8 || tt == 9)
+#elif LEVEL_HAS_BALLOON
+        (tt == 8)
+#else
+        (tt == 9)
+#endif
+        ) {
         b5_world_reset_tile(col, row);
         if (row > 0) b5_world_reset_tile(col, (u8)(row - 1));
         s_carry_kind = (tt == 8) ? 2 : 8;
     }
+#endif
     if (grab && !s_grab_prev && !climbing) {
         if (s_carry_kind == 1 && !s_carry_state) {
             s_carry_x = (g_face == 0) ? (i16)(s_px8 + 8 * SUB) : (i16)s_px8;
             s_carry_y = (i16)(s_py8 - 6 * SUB);
             s_carry_vx = (g_face == 0) ? 96 : -96;
             s_carry_state = 1;
+#if LEVEL_HAS_BALLOON
         } else if (s_carry_kind == 2) {
             if (!s_carry_state) {
                 s_carry_x = s_px8;
@@ -435,11 +471,14 @@ void moving_bank_update(void) {
                 s_carry_state = 1;
                 s_vy = 0;
             }
+#endif
+#if LEVEL_HAS_UMBRELLA
         } else if (s_carry_kind == 8) {
             // Deixar anar el paraigües: NO abortem el blit (sprite_abort
             // nomes neteja els flags i deixaria el sprite a pantalla).
             // El restore normal del frame seguent torna el fons correcte.
             s_carry_kind = 0;
+#endif
         } else if (!s_carry_kind && s_on_ground) {
             u8 crate_row = row;
             if (b5_tile_type(col, crate_row) != 5 && row > 0 && b5_tile_type(col, (u8)(row - 1)) == 5) {
@@ -486,6 +525,7 @@ void moving_bank_conveyor(void) {
     }
 
     // 2. Globus: vol lliure i POP només en tocar sostre dur real (op == 20..28) o sortida
+#if LEVEL_HAS_BALLOON
     if (s_carry_kind == 2) {
         if (s_carry_state == 1) {
             s_carry_y = (i16)(s_carry_y - 32); // ascens lliure ràpid (4 px/frame)
@@ -504,6 +544,7 @@ void moving_bank_conveyor(void) {
             }
         }
     }
+#endif
 
     // 3. Reixes de primer pla dirigides pel TRIG compacte (avt 12..17)
     // 1:1 DOS level.c:2062 (foreground_tile_num -> sprite FG de l'AVT del

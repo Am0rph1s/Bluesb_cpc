@@ -21,17 +21,19 @@ PROJ = os.path.dirname(HERE)
 LEVEL_NAMES = ["magasin", "ent", "prison", "egou", "ville", "concert"]
 
 # Seqüències d'animació de tiles de DOS (level_tilesdata_1e8c a staticres.c)
-# indexades pel byte 4 de TRIG.BIN (op_table2):
+# indexades pel byte 4 de TRIG.BIN (op_table2). Les d'àcid inclouen el buit
+# (90/10) perquè el dany segueix el tile ACTUAL (MAP_MUT): quan el raig
+# mostra el buit no hi ha b6 àcid i es pot passar (1:1 DOS).
 DOS_ANIM_SEQS = {
-    19: [147, 146, 167, 146],  # level_tiledata_1cce: bassa àcid 146 (4 frames)
+    19: [147, 146, 167, 146],  # level_tiledata_1cce: bassa àcid (4 frames)
     24: [134, 135, 136],  # level_tiledata_1cea: bassa àcid (3 frames)
     25: [137, 138, 139],  # level_tiledata_1cef: bassa àcid (3 frames)
     29: [253, 252, 251],  # level_tiledata_1d1c: corró cinta dreta
     30: [240, 241, 242],  # level_tiledata_1d21: corró cinta esquerra
     31: [248, 249, 250],  # level_tiledata_1d26: cos cinta dreta
     32: [239, 238, 237],  # level_tiledata_1d2b: cos cinta esquerra
-    59: [44, 45, 45, 44, 45, 44],  # level_tiledata_1dcf (20 frames, 1:1 = 10x44/45 + 10x90): 6 primers per MCM6
-    60: [10, 46, 47, 38, 47, 38],  # level_tiledata_1de5 (20 frames): 6 primers per MCM6
+    59: [44, 45, 90, 44, 45, 90],  # level_tiledata_1dcf (20: 10 on + 10 off): 3 on + 3 off
+    60: [46, 47, 10, 38, 10, 10],  # level_tiledata_1de5 (20: ~11 on + 9 off): on/off
     76: [131, 199],       # level_tiledata_1e48: superfície d'aigua (peixeres)
     77: [149, 217],       # level_tiledata_1e4c: vora dreta peixera
     78: [170, 247],       # level_tiledata_1e50: vora esquerra peixera
@@ -131,7 +133,11 @@ def build_level_pkg(level_idx=0, out_dir=None):
     rooms_bin = open(rooms_path, "rb").read() if os.path.exists(rooms_path) else b""
     tileset_full = open(tileset_path, "rb").read()
 
-    used_b4 = sorted(DOS_ANIM_SEQS.keys())
+    # Només les seqs realment presents al mapa (1:1 DOS: op_table2 per tile).
+    # Abans s'empaquetaven totes (12) a tots els nivells i el C5 d'L2
+    # desbordava (marge 0 -> FATAL 0x80A2). Ara L1=7, L2=àcid.
+    present_b4 = sorted({trig_bin[t * 10 + 4] for t in set(map_bin) | set(rooms_bin)} & set(DOS_ANIM_SEQS.keys()))
+    used_b4 = present_b4
     b4_to_seq = {b4: i for i, b4 in enumerate(used_b4)}
 
     spans = []
@@ -156,23 +162,24 @@ def build_level_pkg(level_idx=0, out_dir=None):
     names4b = [x.strip() for x in m4b.group(1).split(",") if x.strip() and x.strip() != "0"]
 
     used_b6 = sorted(set(trig_bin[t * 10 + 6] for t in range(256) if trig_bin[t * 10 + 6] != 255))
-    b6_to_idx = {b6: i for i, b6 in enumerate(used_b6)}
+    # L'àcid (kind=10, b6=2/3/4) es gestiona per b6 directe a moving_bank
+    # (dany segueix MAP_MUT) i no cal entrada a s_level_trig3: estalvia C5.
+    trig_b6 = [b6 for b6 in used_b6 if list(arrays[names6[b6]])[1] in (11, 12)]
+    b6_to_idx = {b6: i for i, b6 in enumerate(trig_b6)}
     b6_lut = [b6_to_idx.get(b6, 0xFF) for b6 in range(64)]
 
     trig_entries = []
-    for b6 in used_b6:
+    for b6 in trig_b6:
         p = list(arrays[names6[b6]])
-        if p[1] in (11, 12):
-            p2 = p[2]
-            b4 = trig_bin[p2 * 10 + 4]
-            final_bg = p2
-            if 128 <= b4 < 255:
-                final_bg = arrays[names4b[b4 - 128]][-1]
-            # (kind=p[1], bg_tile, add_vinyls=p[3], sub_vinyls=p[4], add_heart=p[5],
-            #  special_anim=p[6], instrument=p[7], exit_flag=p[8], popup_or_chk=p[9], add_life=p[10], b6)
-            trig_entries.append((p[1], final_bg, p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], b6))
-        else:
-            trig_entries.append((p[1], p[2], p[3], p[4], p[5], 0, 0, 0, 0, 0, b6))
+        # trig_b6 ja filtra kind 11/12 (l'àcid va per b6 directe).
+        p2 = p[2]
+        b4 = trig_bin[p2 * 10 + 4]
+        final_bg = p2
+        if 128 <= b4 < 255:
+            final_bg = arrays[names4b[b4 - 128]][-1]
+        # (kind=p[1], bg_tile, add_vinyls=p[3], sub_vinyls=p[4], add_heart=p[5],
+        #  special_anim=p[6], instrument=p[7], exit_flag=p[8], popup_or_chk=p[9], add_life=p[10], b6)
+        trig_entries.append((p[1], final_bg, p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], b6))
 
     # L'instrument col·leccionable obligatori viu exclusivament a la sala secreta (ROOMS0.BIN).
     # Al mapa principal no hi ha d'aparèixer duplicat.
@@ -251,6 +258,9 @@ def build_level_pkg(level_idx=0, out_dir=None):
         f"#define LEVEL_ELEVATOR_STORAGE {elev_storage}",
         f"#define LEVEL_PRESS_COUNT {len(press_x)}",
         f"#define LEVEL_PRESS_STORAGE {max(1, len(press_x))}",
+        f"#define LEVEL_HAS_ACID {(1 if any((t in (2, 3, 4)) for t in set(trig_bin[x * 10 + 6] for x in set(map_bin))) else 0)}",
+        f"#define LEVEL_HAS_BALLOON {(1 if any((trig_bin[x * 10] == 8) for x in set(map_bin)) else 0)}",
+        f"#define LEVEL_HAS_UMBRELLA {(1 if any((trig_bin[x * 10] == 9) for x in set(map_bin)) else 0)}",
         f"#define LEVEL_INST_COL      {inst_col}",
         f"#define LEVEL_INST_ROW      {inst_row}",
         f"#define LEVEL_INST_TILE     {inst_tile}",

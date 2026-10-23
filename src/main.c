@@ -924,12 +924,12 @@ void main(void) {
     g_map_level = 0;
     g_front_map_only = 0;
     // Drecera de test (no afecta el joc normal): si en arrencar es manté
-    // premut el '2', se salta splash/select i s'entra directe al nivell 2
-    // via el mapa (FRONT_MAP). Per provar L2 sense acabar L1.
+    // premut el '2', el FRONT mostra el mapa amb la ruta de l'L2 i s'hi
+    // entra directe. Cal passar per FRONT_RUN perquè és qui carrega MUSBANK
+    // (front.c:466); FRONT_MAP sol el pressuposa carregat i peta en fred.
     cpct_scanKeyboard_f();
     if (cpct_isKeyPressed(Key_2)) {
         g_map_level = 1;
-        g_front_map_only = 1;
     }
     while (1) {
         {

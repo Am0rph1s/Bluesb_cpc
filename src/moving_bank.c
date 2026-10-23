@@ -258,7 +258,7 @@ static void b5_update_entities_and_spans(void) {
 #endif
 
     // Tick d'anims 1:1 DOS al resident (C5 ple): seqüències exactes amb el
-    // seu propi període (2/3/4/20). bc_a=tick, bc_b=n, bc_c=data,
+    // seu propi període (2/3/4/20). bc_a=spans, bc_b=n, bc_c=data,
     // bc_d=offs, bc_e=lens. El repintat de sota usa el mateix indexat.
     bc_a = (u16)s_level_anim_spans;
     bc_b = LEVEL_ANIM_SPAN_COUNT;

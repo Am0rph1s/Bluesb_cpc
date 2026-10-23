@@ -251,6 +251,25 @@ static void b5_check_bonus_triggers(u8 col, u8 row, i16 px, i16 py, u8 crouch) {
         if (!tp) return;
         b6 = tp[TP_B6];
     }
+    // 1:1 DOS tiles.c:907-919 + level.c:1583-1593 (kind=10, b6=2/3/4):
+    // l'àcid sempre fa mal (-1 cor, invuln 75, rebot yfric 14/10/5).
+    // No és on/off: la intermitència és només visual (anim cada 4 loops).
+    if (b6 == 2 || b6 == 3 || b6 == 4) {
+        if (s_invuln_timer || s_dying_timer) return;
+        if (g_hearts_count > 0) g_hearts_count--;
+        s_invuln_timer = 75;
+        // Rebot 1:1 DOS yfriction (enemy.c:685: 12 -> -48, o sigui x4):
+        s_vy = (b6 == 2) ? -56 : (b6 == 3) ? -40 : -20;
+        s_on_ground = 0;
+        if (g_hearts_count == 0) {
+            s_dying_timer = 64;
+            s_dazed_timer = 0;
+            s_invuln_timer = 255;
+        } else {
+            s_dazed_timer = 20;
+        }
+        return;
+    }
     if (b6 >= 64) return;
     idx = s_b6_to_trig3[b6];
     if (idx == 0xFF) return;
@@ -373,7 +392,10 @@ void moving_bank_update(void) {
     }
     if (tt == 7 || tt == 11) {
         climbing = (tt == 7) ? 1 : 2;
-        if (s_carry_kind) carry_abort();
+        // 1:1 DOS level.c:504-506: a l'escala només cauen globus (grab_type 2)
+        // i paraigua (grab_type 8); la caixa (grab_type 0) es queda al cap
+        // i puja/baixa amb anim 24/4. Abans s'esborrava sempre.
+        if (s_carry_kind == 2 || s_carry_kind == 8) carry_abort();
         if (tt == 7) {
             if (s_climb_prev != 1) {
                 px = (i16)(((u16)col << 3) - 4);

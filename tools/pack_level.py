@@ -23,10 +23,15 @@ LEVEL_NAMES = ["magasin", "ent", "prison", "egou", "ville", "concert"]
 # Seqüències d'animació de tiles de DOS (level_tilesdata_1e8c a staticres.c)
 # indexades pel byte 4 de TRIG.BIN (op_table2):
 DOS_ANIM_SEQS = {
+    19: [147, 146, 167, 146],  # level_tiledata_1cce: bassa àcid 146 (4 frames)
+    24: [134, 135, 136],  # level_tiledata_1cea: bassa àcid (3 frames)
+    25: [137, 138, 139],  # level_tiledata_1cef: bassa àcid (3 frames)
     29: [253, 252, 251],  # level_tiledata_1d1c: corró cinta dreta
     30: [240, 241, 242],  # level_tiledata_1d21: corró cinta esquerra
     31: [248, 249, 250],  # level_tiledata_1d26: cos cinta dreta
     32: [239, 238, 237],  # level_tiledata_1d2b: cos cinta esquerra
+    59: [44, 45, 45, 44, 45, 44],  # level_tiledata_1dcf (20 frames, 1:1 = 10x44/45 + 10x90): 6 primers per MCM6
+    60: [10, 46, 47, 38, 47, 38],  # level_tiledata_1de5 (20 frames): 6 primers per MCM6
     76: [131, 199],       # level_tiledata_1e48: superfície d'aigua (peixeres)
     77: [149, 217],       # level_tiledata_1e4c: vora dreta peixera
     78: [170, 247],       # level_tiledata_1e50: vora esquerra peixera

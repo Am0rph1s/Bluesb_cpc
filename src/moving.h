@@ -73,6 +73,9 @@ extern u8  g_level_complete;
 extern u8  g_checkpoint;
 extern u8  g_enemy_decomp_cnt;   // diagnostic: descompressions de cela d'enemic (cache miss)
 extern u8 s_dance_timer;
+extern u8 s_invuln_timer; // 1:1 DOS blinking_counter (75 frames)
+extern u8 s_dying_timer;
+extern u8 s_dazed_timer;
 extern u8 s_pipe_up; // Tuberia (op 17/18/19 del DOS): 1 = el jugador esta dins
                      // del trigger i puja amb forca -> gravetat invertida (DOS: yacc = -3).
 

@@ -922,6 +922,15 @@ void main(void) {
     fdc_load_file(0xC0, 0, 0, 0);
 
     g_map_level = 0;
+    g_front_map_only = 0;
+    // Drecera de test (no afecta el joc normal): si en arrencar es manté
+    // premut el '2', se salta splash/select i s'entra directe al nivell 2
+    // via el mapa (FRONT_MAP). Per provar L2 sense acabar L1.
+    cpct_scanKeyboard_f();
+    if (cpct_isKeyPressed(Key_2)) {
+        g_map_level = 1;
+        g_front_map_only = 1;
+    }
     while (1) {
         {
             u8 prev = bank_set(0xC4);
@@ -1177,8 +1186,16 @@ void main(void) {
                     g_cam_row += d;
                     move_y = (i8)d;
                 } else if (sy < DEAD_T && g_cam_row > 0) {
-                    g_cam_row--;
-                    move_y = -1;
+                    // 1:1 DOS: simètric a la baixada (fins a 2 files/frame).
+                    // Abans només pujava 1 fila/frame i la tuberia (op17/18/19,
+                    // tiles.c:305-333, sense scroll propi) no deixava veure
+                    // l'obrer de dalt abans d'entrar-hi. Sense auto-scroll ni
+                    // congelar l'obrer (el DOS no ho fa: level.c:1861-1864).
+                    u16 d = ((u16)(DEAD_T - sy) + 7) >> 3;
+                    if (d > 2) d = 2;
+                    if (d > g_cam_row) d = g_cam_row;
+                    g_cam_row -= (u16)d;
+                    move_y = (i8)(-(i8)d);
                 }
             }
             {

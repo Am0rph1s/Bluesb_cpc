@@ -1157,7 +1157,7 @@ void main(void) {
         }
 
         // 2. Pas de física genèrica de col·lisió sòlida al motor resident
-        player_physics_step(bc_r, s_climb_prev, jump, crouch);
+        player_physics_step(g_belt_push, s_climb_prev, jump, crouch);
 
         // 3. Càmera i deadzone
         {

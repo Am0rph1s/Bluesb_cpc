@@ -370,6 +370,7 @@ void moving_bank_update(void) {
         s_dance_timer--;
         s_vx = 0;
         bc_r = 0;
+        g_belt_push = 0;
         return;
     }
 
@@ -403,6 +404,7 @@ void moving_bank_update(void) {
     if (s_dance_timer) {
         s_vx = 0;
         bc_r = 0;
+        g_belt_push = 0;
         return;
     }
 
@@ -510,6 +512,7 @@ void moving_bank_update(void) {
     }
     // Fora de terra: mantenir l'ultim push (DOS unk1C persisteix).
     s_climb_prev = climbing;
+    g_belt_push = belt_push;
     bc_r = belt_push;
 }
 

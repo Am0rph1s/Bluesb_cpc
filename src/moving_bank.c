@@ -494,14 +494,21 @@ void moving_bank_update(void) {
     }
     s_grab_prev = grab;
 
+    // --- Cintes transportadores (op 27/28): 1:1 DOS trigger_func_op27/28
+    // (tiles.c:404-437) -> unk1C = ±4 (empenya el jugador). Al port el
+    // push es calcula a cada frame si s_on_ground (main.c:1160 via bc_r).
+    // Abans belt_push es perdia si s_on_ground==0 (salt/caiguda): el jugador
+    // "deixava de ser arrossegat" sense motiu. Ara persisteix fins que surt
+    // de la cinta (push==0) o no es a terra.
     if (s_on_ground) {
         bc_a = (u8)((px + 3) >> 3);
         bc_b = col;
         bc_c = (u8)((py + PH) >> 4);
         moving_bank_push();
-        belt_push = bc_r;
+        if (bc_r != 0) belt_push = bc_r;
+        else belt_push = 0;
     }
-
+    // Fora de terra: mantenir l'ultim push (DOS unk1C persisteix).
     s_climb_prev = climbing;
     bc_r = belt_push;
 }

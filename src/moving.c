@@ -27,6 +27,7 @@ u8 s_pipe_up;
 u16 bc_a, bc_b, bc_c, bc_d, bc_e;
 i16 bc_r;
 i16 g_belt_push;
+u8  g_on_ice;
 
 u8 s_conveyor_phase;
 u8 s_conveyor_tick;

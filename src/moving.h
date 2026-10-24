@@ -97,6 +97,7 @@ void moving_popup_restore(u8 page);
 extern u16 bc_a, bc_b, bc_c, bc_d, bc_e;
 extern i16 bc_r;
 extern i16 g_belt_push; // push de cinta del frame (propi: bc_r el trepitgen els enemics)
+extern u8  g_on_ice;    // 1 si el jugador es a terra sobre gel (op=30 o rampes 32..35)
 
 // Slots fixos de la taula de salts del Banc 5 (engine/bank5_table.s).
 // Font unica (abans duplicats a moving.c): 0x6E00+3k per sempre.

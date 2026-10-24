@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 pack_level.py - Empaquetador de dades de nivell per a Blues Brothers CPC (Banc 5)
 =================================================================================
@@ -27,12 +27,19 @@ LEVEL_NAMES = ["magasin", "ent", "prison", "egou", "ville", "concert"]
 # Truncar a 6 donava cicles de 24 loops (0,96 s) sense finestra útil.
 DOS_ANIM_SEQS = {
     19: [147, 146, 167, 146],  # level_tiledata_1cce (4 frames; 167 = buit b6=255)
-    24: [134, 135, 136],  # level_tiledata_1cea (3 frames)
-    25: [137, 138, 139],  # level_tiledata_1cef (3 frames)
-    29: [253, 252, 251],  # level_tiledata_1d1c: corró cinta dreta
-    30: [240, 241, 242],  # level_tiledata_1d21: corró cinta esquerra
-    31: [248, 249, 250],  # level_tiledata_1d26: cos cinta dreta
-    32: [239, 238, 237],  # level_tiledata_1d2b: cos cinta esquerra
+    20: [133, 132, 131],  # level_tiledata_1cd4: cinta dreta L2 (cap/cua)
+    21: [143, 144, 145],  # level_tiledata_1cd9: cinta esquerra L2 (cap/cua)
+    22: [128, 129, 130, 140],  # level_tiledata_1cde: cinta esquerra L2 (cos)
+    23: [221, 220, 219, 218],  # level_tiledata_1ce4: cinta dreta L2 (cos)
+    24: [134, 135, 136],  # level_tiledata_1cea: trituradores / dents 1 (3 frames)
+    25: [137, 138, 139],  # level_tiledata_1cef: trituradores / dents 2 (3 frames)
+    26: [188, 190, 192],  # level_tiledata_1cf4: panell / llums L2 (3 frames)
+    27: [189, 191, 193],  # level_tiledata_1cf9: panell / llums L2 (3 frames)
+    28: [194, 195],       # level_tiledata_1cfe: panell / llums L2 (2 frames)
+    29: [253, 252, 251],  # level_tiledata_1d1c: corró cinta dreta L1
+    30: [240, 241, 242],  # level_tiledata_1d21: corró cinta esquerra L1
+    31: [248, 249, 250],  # level_tiledata_1d26: cos cinta dreta L1
+    32: [239, 238, 237],  # level_tiledata_1d2b: cos cinta esquerra L1
     59: [44, 45, 45, 44, 45, 44, 45, 44, 45, 44,
          90, 90, 90, 90, 90, 90, 90, 90, 90, 90],  # level_tiledata_1dcf (20: 10 on + 10 off b6=255)
     60: [10, 46, 47, 38, 47, 38, 46, 47, 38, 46, 38,

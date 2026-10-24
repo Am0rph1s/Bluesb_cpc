@@ -194,7 +194,7 @@ u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
         op == 28 || op == 29) return 1;
     if (vy >= 0) {
         if (op == 14 || op == 15) return !crouch;
-        if (op >= 31 && op <= 39) return 1;
+        if (op >= 30 && op <= 39) return 1;
     }
     return 0;
 }
@@ -1046,11 +1046,12 @@ void main(void) {
         // Acceleració horitzontal
         {
             i16 max_spd = s_on_ground ? SPEED_MAX : SPEED_AIR;
-            if (move > 0)      { s_vx = (i16)(s_vx + MOVE_ACC); if (s_vx >  max_spd) s_vx =  max_spd; }
-            else if (move < 0) { s_vx = (i16)(s_vx - MOVE_ACC); if (s_vx < -max_spd) s_vx = -max_spd; }
+            u8 acc = (s_on_ground && g_on_ice) ? 2 : MOVE_ACC;
+            if (move > 0)      { s_vx = (i16)(s_vx + acc); if (s_vx >  max_spd) s_vx =  max_spd; }
+            else if (move < 0) { s_vx = (i16)(s_vx - acc); if (s_vx < -max_spd) s_vx = -max_spd; }
             else {
-                if (s_vx > 0) { s_vx = (i16)(s_vx - MOVE_ACC); if (s_vx < 0) s_vx = 0; }
-                else if (s_vx < 0) { s_vx = (i16)(s_vx + MOVE_ACC); if (s_vx > 0) s_vx = 0; }
+                if (s_vx > 0) { s_vx = (i16)(s_vx - acc); if (s_vx < 0) s_vx = 0; }
+                else if (s_vx < 0) { s_vx = (i16)(s_vx + acc); if (s_vx > 0) s_vx = 0; }
             }
         }
 

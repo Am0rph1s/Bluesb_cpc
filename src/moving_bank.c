@@ -509,6 +509,8 @@ void moving_bank_update(void) {
         moving_bank_push();
         if (bc_r != 0) belt_push = bc_r;
         else belt_push = 0;
+    } else {
+        g_on_ice = 0;
     }
     // Fora de terra: mantenir l'ultim push (DOS unk1C persisteix).
     s_climb_prev = climbing;
@@ -522,7 +524,20 @@ void moving_bank_conveyor(void) {
 
     // 1. Repintar spans animats visibles (cintes + àcid + aigua + vores).
     // Mateix indexat que el tick (stamp mod len per resta; vegeu anim_tick_c5).
-    if (page <= 1 && s_page_conveyor_phase[page] != s_conveyor_phase) {
+    u8 cur_phase = s_conveyor_phase;
+    u8 need_redraw = 0;
+    if (page == 0) {
+        if (s_page_conveyor_phase[0] != cur_phase) {
+            s_page_conveyor_phase[0] = cur_phase;
+            need_redraw = 1;
+        }
+    } else if (page == 1) {
+        if (s_page_conveyor_phase[1] != cur_phase) {
+            s_page_conveyor_phase[1] = cur_phase;
+            need_redraw = 1;
+        }
+    }
+    if (need_redraw) {
         const AnimSpan* sp = s_level_anim_spans;
         for (s = 0; s < LEVEL_ANIM_SPAN_COUNT; s++, sp++) {
             u8 tile;
@@ -530,7 +545,7 @@ void moving_bank_conveyor(void) {
             if ((u16)(((u16)sp->row << 1) - g_cam_row + 1) >= 21) continue;
             qq = sp->seq;
             L = s_anim_len[qq];
-            p = s_conveyor_phase;
+            p = cur_phase;
             while (p >= L) p -= L;
             tile = s_anim_data[s_anim_off[qq] + p];
             for (c = sp->col_start; c <= sp->col_end; c++) {
@@ -538,7 +553,6 @@ void moving_bank_conveyor(void) {
                 render_tile_world(tile, c, sp->row, g_cam_x4, g_cam_row);
             }
         }
-        s_page_conveyor_phase[page] = s_conveyor_phase;
     }
 
     // 2. Globus: vol lliure i POP només en tocar sostre dur real (op == 20..28) o sortida

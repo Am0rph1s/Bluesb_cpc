@@ -255,29 +255,74 @@ _moving_bank_push::
     inc     de
     ld      a, (de)
     ld      c, a                ;; C = op1
+
+    ;; 1. Deteccio de gel (op=30 o rampes 32..35)
+    ld      a, b
+    cp      #30
+    jr      z, ice_on$
+    cp      #32
+    jr      c, chk_c$
+    cp      #36
+    jr      c, ice_on$
+chk_c$:
+    ld      a, c
+    cp      #30
+    jr      z, ice_on$
+    cp      #32
+    jr      c, ice_off$
+    cp      #36
+    jr      c, ice_on$
+ice_off$:
+    xor     a
+    jr      ice_set$
+ice_on$:
+    ld      a, #1
+ice_set$:
+    ld      (_g_on_ice), a
+
+    ;; 2. Arrossegament de cintes (op 27/28) i lliscament de rampes (32..35)
     ld      hl, #0
     ld      a, b
     cp      #27
-    jr      z, 1$
+    jr      z, push_r$
+    cp      #34
+    jr      z, push_r$
+    cp      #35
+    jr      z, push_r$
     ld      a, c
     cp      #27
-    jr      nz, 2$
-1$:
+    jr      z, push_r$
+    cp      #34
+    jr      z, push_r$
+    cp      #35
+    jr      nz, chk_l$
+push_r$:
     ld      hl, #16
-2$:
+chk_l$:
     ld      a, b
     cp      #28
-    jr      z, 3$
+    jr      z, push_l$
+    cp      #32
+    jr      z, push_l$
+    cp      #33
+    jr      z, push_l$
     ld      a, c
     cp      #28
-    jr      nz, 4$
-3$:
+    jr      z, push_l$
+    cp      #32
+    jr      z, push_l$
+    cp      #33
+    jr      nz, push_done$
+push_l$:
     ld      de, #-16
     add     hl, de
-4$:
+push_done$:
     ld      (_bc_r), hl
     ret
 push_zero$:
     ld      hl, #0
     ld      (_bc_r), hl
+    xor     a
+    ld      (_g_on_ice), a
     ret
+

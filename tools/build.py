@@ -101,10 +101,10 @@ BANK5_BASE = 0x6E00
 #   0x5000 musica | 0x6000 HUD | 0x6400 habitacions | 0x6800 portes
 #   0x6860 taula de restauracio | 0x6900 parametres | 0x6934 codi
 #   0x6E20 frame de l'ascensor | 0x7000 buffers de fons | 0x7500 dades
-LC1_CODE_BASE    = 0x6934
-LC1_FRAMES_BASE  = 0x6E20
-LC1_BG_BASE      = 0x7000
-LC1_DATA_BASE    = 0x7500
+LC1_CODE_BASE    = 0x6950
+LC1_DATA_BASE    = 0x6DC0
+LC1_FRAMES_BASE  = 0x6E00
+LC1_BG_BASE      = 0x7200
 LC1_ELEV_BG_SIZE = 1120   # 2 pagines x 5 ascensors x 112 B
 LC1_GAMEOVER_BASE = 0x5800
 BANK5_MAXLEN = 0x1200   # finestra: CODE + pad zeros fins fi _DATA (0x7E07);

@@ -12,8 +12,8 @@
 #include "level_params.h"
 
 // --- Dades del mateix Banc 1 --------------------------------------------
-#define LC_FRAMES_BASE  ((const u8*)0x6E20)   // ELEV.BIN o PRESS.BIN
-#define LC_BG_BASE      ((u8*)0x7000)         // buffers de fons
+#define LC_FRAMES_BASE  ((const u8*)0x6E00)   // ELEV.BIN o PRESS.BIN
+#define LC_BG_BASE      ((u8*)0x7200)         // buffers de fons
 
 // Globals del resident (RAM baixa: visibles des de qualsevol banc)
 extern u16 g_moving_dst;

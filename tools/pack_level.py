@@ -503,7 +503,7 @@ def build_level_pkg(level_idx=0, out_dir=None):
     # trig_off=69, code_exc_off=71 (sizeof=73). El blob ha de coincidir-hi.
     prm += bytes(((room_floor_row & 0xFF),))            # room_row_last
     prm += struct.pack("<H", 0x67E8)                   # trig_off (el build el reescriu)
-    prm += struct.pack("<H", 0x6934)                   # code_exc_off (el build el reescriu)
+    prm += struct.pack("<H", 0x6950)                   # code_exc_off (el build el reescriu)
     assert len(prm) == 73, len(prm)
     parm_path = os.path.join(PROJ, "assets", "bbdata", "LEVELPARM%d.BIN" % level_idx)
     with open(parm_path, "wb") as f:

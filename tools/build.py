@@ -1665,7 +1665,7 @@ LVLPARM_CODE_EXC = 71                  # offset del camp code_exc_off dins el bl
 LEVELS = [
     dict(id=0, tag="L1", song="main", doors=23, has_code=True, has_elev=True,
          has_rooms=True),
-    dict(id=1, tag="L2", song="main", doors=0, has_code=False, has_elev=False,
+    dict(id=1, tag="L2", song="main", doors=0, has_code=True, has_elev=True,
          has_rooms=False),
 ]
 
@@ -1748,7 +1748,7 @@ def build_level_packages(force=False):
         mus_src = os.path.join(obj, "MUSMAIN.BIN" if lid == 0 else "MUSMAIN_%d.BIN" % lid)
         code_src = os.path.join(obj, "LEVELCODE_%d.BIN" % lid)
         code_data_src = os.path.join(obj, "LEVELDATA_%d.BIN" % lid)
-        elev_src = os.path.join(PROJ, "assets", "bbdata", "ELEV.BIN")
+        elev_src = os.path.join(PROJ, "assets", "bbdata", "PRESS.BIN" if lid == 1 else "ELEV.BIN")
         en_src = os.path.join(obj, "ENEMI_%d.BIN" % lid)
 
         world_dst = os.path.join(obj, tag + "WORLD.PAK")
@@ -2002,6 +2002,7 @@ def main():
         build_bank(force, 0)  # Banc 5 per nivell
         build_bank(force, 1)
         build_levelcode(force, 0)  # Banc 1: codi del nivell (ascensors)
+        build_levelcode(force, 1)  # Banc 1: codi del nivell (premses)
         build_enemybank(force, 0)  # Banc C3 (walkers; reutilitza bank_equ.rel)
         build_enemybank(force, 1)
         build_level_bundles(force)  # JAKE / ELWOOD (Banc C7)

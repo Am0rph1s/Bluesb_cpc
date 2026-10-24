@@ -3,9 +3,9 @@
 #include "fdc.h"
 
 // Generat per tools/build.py. NO EDITAR.
-#define GAME_START 0x1377
+#define GAME_START 0x137B
 #define GAME_LEN 15261
-#define GAME_CRC 0xE231
+#define GAME_CRC 0x5658
 #define FDC_LEN 913
 #define CRC_FDC 0x0ADB
 #define FRONT_LEN 2448

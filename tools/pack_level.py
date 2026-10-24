@@ -473,12 +473,17 @@ def build_level_pkg(level_idx=0, out_dir=None):
     room_pos = [int(x.strip(), 0) for x in mpos.group(1).split(",") if x.strip()]
     r0 = room_pos[level_idx] if level_idx < len(room_pos) else 0
     room_total_cols = 20 * room_count
-    room_floor_row = r0 + 9
-    room_cam_row = r0 * 2
+    if room_count == 0:
+        r0 = 255
+        room_floor_row = 255
+        room_cam_row = 0
+    else:
+        room_floor_row = r0 + 9
+        room_cam_row = r0 * 2
     prm += bytes((room_count, 20, 10))        # habitacions, columnes, files
     prm += bytes((r0, room_floor_row, room_total_cols, room_cam_row))
     prm += bytes((tile_vinyl_c, tile_instr_c, tile_empty_c))  # vinil, instrument, buit (compactes)
-    prm += bytes((5, level_idx))              # nombre d'ascensors, id del nivell
+    prm += bytes(((len(press_x) if level_idx == 1 else len(elev_x)), level_idx)) # nombre d'ascensors / premses, id del nivell
     # Offsets de fila dins el mapa de les habitacions (el resident no ha de
     # multiplicar: multiplicar 16 bits costa codi).
     prm += b"".join(struct.pack("<H", r * room_total_cols) for r in range(10))

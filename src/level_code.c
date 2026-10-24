@@ -1,20 +1,9 @@
 // ============================================================
-// level_code.c - Els ASCENSORS del nivell, al Banc 1 (C1)
+// level_code.c - Els MECANISMES del nivell (ascensors / premses), al Banc 1 (C1)
 // ------------------------------------------------------------
-// Els ascensors son un objecte DEL NIVELL (el DOS nomes els te al nivell 1:
-// el tipus 7 de level_objtypes), aixi que el seu codi no ha de viure al
-// Bloc 0 resident, que ha de ser el motor generic.
-//
-// Aquest module s'enllaça dins el Banc 1, al mateix paquet que la musica,
-// el HUD i les habitacions:
-//   0x5000 musica, 0x6000 HUD, 0x6400 habitacions, 0x6800 portes,
-//   0x6860 taula de restauracio de les habitacions, 0x6900 parametres,
-//   0x6934 AQUEST CODI, 0x6E20 frame de l'ascensor, 0x7000 buffers de fons.
-//
-// COMPATIBILITAT: un codi bancat no pot commutar de banc (en commutar, el
-// seu propi codi a 0x4000-0x7FFF desapareix). Aquest module, per tant, NO
-// fa bank_set(): el Banc 1 ja ha de estar mapejat. Pot cridar codi RESIDENT
-// (RAM baixa 0x0100-0x3880, sempre visible) i llegir els seus propis datos.
+// Nivell 1: 5 ascensors (tipus 7, ENEMI1.SQV f0, 16x14 px = 8 bytes x 14 línies).
+// Nivell 2: 3 premses hidràuliques (tipus 22, ENEMI2.SQV f33, 24x33 px = 12 bytes x 33 línies).
+// Ambdós comparteixen el Banc 1 (C1:0x6E20 per al frame i C1:0x7000 per als buffers de fons).
 // ============================================================
 #include "cpctelera.h"
 #include "bank.h"
@@ -23,10 +12,8 @@
 #include "level_params.h"
 
 // --- Dades del mateix Banc 1 --------------------------------------------
-#define LC_ELEV_FRAMES  ((const u8*)0x6E20)   // ELEV.BIN: frame unic (14 files)
-#define LC_ELEV_BG      ((u8*)0x7000)         // buffers de fons (2 pagines x 5)
-
-// --- Codi resident cridat des d'aqui (declarat a moving.h) --------------
+#define LC_FRAMES_BASE  ((const u8*)0x6E20)   // ELEV.BIN o PRESS.BIN
+#define LC_BG_BASE      ((u8*)0x7000)         // buffers de fons
 
 // Globals del resident (RAM baixa: visibles des de qualsevol banc)
 extern u16 g_moving_dst;
@@ -37,28 +24,27 @@ extern u8  g_moving_rows;
 extern u8  g_moving_spr_skip;
 extern MovingElevator g_mag_elevators[MAG_MOVER_COUNT];
 
-// Destinacio VRAM dels blits (aqui viu: el draw i el restore son els seus
-// unics usuaris, i el Banc 1 no pot veure la _DATA del resident).
-static u16 s_elev_dst[2][MAG_ELEVATOR_COUNT];
+static u16 s_mover_dst[2][MAG_ELEVATOR_COUNT];
 extern LevelParams s_lv;          // parametres del nivell (RAM baixa)
 
-#define LC_ELEV_BG_SIZE (ELEVATOR_W_BYTES * ELEVATOR_H)
+#define LC_ELEV_BG_SIZE  (ELEVATOR_W_BYTES * ELEVATOR_H)  // 8 * 14 = 112
+#define LC_PRESS_BG_SIZE (12 * 33)                         // 12 * 33 = 396
 
-// ============================================================
-// void lc_elev_restore_c(void)
-//   Restaura el fons dels ascensors (LIFO, com els enemics).
-//   bc_a = page
-// ============================================================
 void lc_elev_restore_c(void) {
     u8 page = (u8)bc_a;
+    u8 is_press = (s_lv.level_id == 1);
+    u8 count = is_press ? 3 : MAG_ELEVATOR_COUNT;
+    u8 mover_base = is_press ? MAG_ELEVATOR_COUNT : 0;
+    u16 bg_size = is_press ? LC_PRESS_BG_SIZE : LC_ELEV_BG_SIZE;
     u8 i;
+
     if (page > 1) return;
-    for (i = MAG_ELEVATOR_COUNT; i > 0; i--) {
+    for (i = count; i > 0; i--) {
         u8 idx = (u8)(i - 1);
-        MovingElevator* e = &g_mag_elevators[idx];
+        MovingElevator* e = &g_mag_elevators[mover_base + idx];
         if (!e->drawn[page]) continue;
-        g_moving_dst = s_elev_dst[page][idx];
-        g_moving_background = (u16)(LC_ELEV_BG + (u16)idx * 2u * LC_ELEV_BG_SIZE + (u16)page * LC_ELEV_BG_SIZE);
+        g_moving_dst = s_mover_dst[page][idx];
+        g_moving_background = (u16)(LC_BG_BASE + (u16)idx * 2u * bg_size + (u16)page * bg_size);
         g_moving_span = e->drawn_byte_count[page];
         g_moving_rows = e->drawn_row_count[page];
         moving_restore_box();
@@ -66,34 +52,41 @@ void lc_elev_restore_c(void) {
     }
 }
 
-// ============================================================
-// void lc_elev_draw_c(void)
-//   Dibuixa els ascensors visibles al backbuffer.
-//   bc_a = page, bc_b = cam_x4, bc_c = cam_row
-// ============================================================
 void lc_elev_draw_c(void) {
     u8 page = (u8)bc_a;
     u16 cam_x4 = bc_b;
     u16 cam_row = bc_c;
+    u8 is_press = (s_lv.level_id == 1);
+    u8 count = is_press ? 3 : MAG_ELEVATOR_COUNT;
+    u8 mover_base = is_press ? MAG_ELEVATOR_COUNT : 0;
+    u16 bg_size = is_press ? LC_PRESS_BG_SIZE : LC_ELEV_BG_SIZE;
+    u8 spr_w_bytes = is_press ? 12 : ELEVATOR_W_BYTES;
+    u8 spr_w_px = (u8)(spr_w_bytes << 1);
+    u8 spr_half_w = (u8)(spr_w_bytes);
+    u8 spr_h = is_press ? 33 : ELEVATOR_H;
+    u8 spr_stride_bytes = (u8)(spr_w_bytes << 1); // 16 per elev, 24 per press (inv_mask + data)
     u8 i;
     i16 view_x = (i16)(cam_x4 << 2);
     i16 view_y = (i16)(cam_row << 3);
+
     if (page > 1) return;
 
-    for (i = 0; i < MAG_ELEVATOR_COUNT; i++) {
-        MovingElevator* e = &g_mag_elevators[i];
+    for (i = 0; i < count; i++) {
+        MovingElevator* e = &g_mag_elevators[mover_base + i];
         i16 world_x, world_y, clip_x0, clip_x1, clip_y0, clip_y1;
         u8 start_byte, byte_count, start_row, row_count;
-        if (i >= s_lv.elev_count) break;   // el nivell diu quants n'hi ha
+
+        if (i >= s_lv.elev_count) break;
         if (e->drawn[page]) continue;
-        world_x = (i16)(e->center_x - ELEVATOR_SPR_HALF_W);
-        world_y = (i16)(e->y - ELEVATOR_OBJECT_H);
+
+        world_x = (i16)(e->center_x - spr_half_w);
+        world_y = (i16)(e->y - (is_press ? PRESS_OBJECT_H : ELEVATOR_OBJECT_H));
         clip_x0 = world_x > view_x ? world_x : view_x;
-        clip_x1 = world_x + ELEVATOR_SPR_WIDTH_PX < view_x + 160 ?
-                  (i16)(world_x + ELEVATOR_SPR_WIDTH_PX) : (i16)(view_x + 160);
+        clip_x1 = (i16)(world_x + spr_w_px) < (i16)(view_x + 160) ?
+                  (i16)(world_x + spr_w_px) : (i16)(view_x + 160);
         clip_y0 = world_y > view_y ? world_y : view_y;
-        clip_y1 = world_y + ELEVATOR_H < view_y + 160 ?
-                  (i16)(world_y + ELEVATOR_H) : (i16)(view_y + 160);
+        clip_y1 = (i16)(world_y + spr_h) < (i16)(view_y + 160) ?
+                  (i16)(world_y + spr_h) : (i16)(view_y + 160);
         if (clip_x0 >= clip_x1 || clip_y0 >= clip_y1) continue;
 
         start_byte = (u8)((clip_x0 - world_x) >> 1);
@@ -103,12 +96,12 @@ void lc_elev_draw_c(void) {
         if (!byte_count || !row_count) continue;
 
         g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
-        s_elev_dst[page][i] = g_moving_dst;
-        g_moving_background = (u16)(LC_ELEV_BG + (u16)i * 2u * LC_ELEV_BG_SIZE + (u16)page * LC_ELEV_BG_SIZE);
-        g_moving_sprite = (u16)(LC_ELEV_FRAMES + ((u16)start_row << 4) + (start_byte << 1));
+        s_mover_dst[page][i] = g_moving_dst;
+        g_moving_background = (u16)(LC_BG_BASE + (u16)i * 2u * bg_size + (u16)page * bg_size);
+        g_moving_sprite = (u16)(LC_FRAMES_BASE + ((u16)start_row * (u16)spr_stride_bytes) + (start_byte << 1));
         g_moving_span = byte_count;
         g_moving_rows = row_count;
-        g_moving_spr_skip = (u8)(16 - (byte_count << 1));
+        g_moving_spr_skip = (u8)(spr_stride_bytes - (byte_count << 1));
         moving_blit_box();
 
         e->drawn_byte_count[page] = byte_count;

@@ -1,5 +1,7 @@
 # Regles del Projecte Blues Brothers CPC
 
+> **Punt d'entrada obligatori**: Per reprendre el projecte o canviar de sessió, consulta abans que res el document unificat [`docs/HANDOFF.md`](docs/HANDOFF.md).
+
 ## REGLES OBLIGATÒRIES DE DISSENY I IMPLEMENTACIÓ
 
 ### 1. PROHIBIT INVENTAR MECÀNIQUES O COMPORTAMENTS

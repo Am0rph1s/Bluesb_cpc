@@ -802,14 +802,17 @@ static u8 load_level_file(u8 lvl, u8 typ) {
     if (lvl >= LVLCHS_N) lvl = LVLCHS_N - 1;
     typ_stride = (typ == 0) ? 0 : ((typ == 1) ? 56 : 88);
     prev = bank_set(0xC1);
-    e = (const u8*)(0x4000u + 4u + (u16)(lvl * 3u + typ) * 5u);
+    if (*(const u8*)0x7C00u != 'L') {
+        cpct_memcpy((void*)0x7C00u, (const void*)0x5D00u, 814u);
+    }
+    e = (const u8*)(0x7C00u + 4u + (u16)(lvl * 3u + typ) * 5u);
     n = e[2];
     if (!n) { bank_restore(prev); return 0; }
     s_lvl_desc.ondisk_bytes = (u16)e[0] | ((u16)e[1] << 8);
     s_lvl_desc.sector_count = n;
     s_lvl_desc.chs_table = s_chs_buf;
     crc = (u16)e[3] | ((u16)e[4] << 8);
-    chs = (const u8*)(0x4000u + LVLCHS_POOL_OFF +
+    chs = (const u8*)(0x7C00u + LVLCHS_POOL_OFF +
                       (u16)lvl * LVLCHS_LEVEL_STRIDE + typ_stride);
     cpct_memcpy(s_chs_buf, chs, (u16)n * 2u);
     bank_restore(prev);

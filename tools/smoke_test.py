@@ -136,16 +136,18 @@ def check_dsk():
                 mb_raw = bytes(m_data[128:])
                 break
 
-    if mb_raw and mb_raw[:2] == b"LV":
-        n_lvl = mb_raw[3]
+    LVLCHS_MB_OFF = 0x1D00
+    if mb_raw and len(mb_raw) >= LVLCHS_MB_OFF + 4 and mb_raw[LVLCHS_MB_OFF:LVLCHS_MB_OFF + 2] == b"LV":
+        lv_raw = mb_raw[LVLCHS_MB_OFF:]
+        n_lvl = lv_raw[3]
         for lvl in range(n_lvl):
             for typ, suffix in ((0, "WORLD"), (1, "ENEMI")):
                 off = 4 + (lvl * 3 + typ) * 5
-                ondisk, sec, crc = struct.unpack("<HBH", mb_raw[off:off+5])
+                ondisk, sec, crc = struct.unpack("<HBH", lv_raw[off:off+5])
                 if sec == 0:
                     continue
                 pool_off = 4 + n_lvl * 3 * 5 + lvl * (56 + 32 + 32) + (0 if typ == 0 else (56 if typ == 1 else 88))
-                chs_bytes = mb_raw[pool_off:pool_off + sec * 2]
+                chs_bytes = lv_raw[pool_off:pool_off + sec * 2]
                 chs = list(zip(chs_bytes[0::2], chs_bytes[1::2]))
                 data = bytearray()
                 for t, sid in chs:
@@ -249,9 +251,10 @@ class Zrcp:
         self.cmd("send-keys-string 40 %s" % text, wait=0.15)
 
     def shot(self, path):
+        path = os.path.abspath(path)
         if os.path.exists(path):
             os.remove(path)
-        self.cmd("save-screen %s" % path, wait=0.5)
+        self.cmd("save-screen %s" % path.replace("\\", "/"), wait=0.5)
         return os.path.exists(path)
 
 

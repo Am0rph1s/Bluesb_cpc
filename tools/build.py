@@ -1210,7 +1210,9 @@ def build_music(force):
     if not os.path.exists(ext_hud) or open(ext_hud).read() != ext_hud_txt:
         open(ext_hud, "w").write(ext_hud_txt)
 
-    # MUSBANK = player + HUD/GAMEOVER + pad fins slot + intro.
+    # MUSBANK = player + HUD/GAMEOVER + pad fins slot + intro + pad fins 0x1D00 + LVLCHS (814 B).
+    LVLCHS_MB_OFF = 0x1D00
+    LVLCHS_LEN = 814
     mbin = os.path.join(obj, "MUSBANK.BIN")
     pdata = open(pbin, "rb").read()
     idata = open(songs["intro"][0], "rb").read()
@@ -1218,7 +1220,15 @@ def build_music(force):
     pad1 = hb_base - (MUS_PLAYER_BASE + len(pdata))
     pad2 = MUS_SONG_SLOT - (hb_base + len(hdata))
     assert pad1 >= 0 and pad2 >= 0, (pad1, pad2)
-    open(mbin, "wb").write(pdata + bytes(pad1) + hdata + bytes(pad2) + idata)
+    mb_prefix = pdata + bytes(pad1) + hdata + bytes(pad2) + idata
+    assert len(mb_prefix) <= LVLCHS_MB_OFF, (len(mb_prefix), LVLCHS_MB_OFF)
+    mb_prefix += bytes(LVLCHS_MB_OFF - len(mb_prefix))
+    old_tail = bytes(LVLCHS_LEN)
+    if os.path.exists(mbin):
+        old_mb = open(mbin, "rb").read()
+        if len(old_mb) == LVLCHS_MB_OFF + LVLCHS_LEN:
+            old_tail = old_mb[LVLCHS_MB_OFF:]
+    open(mbin, "wb").write(mb_prefix + old_tail)
     # MUSMAIN = imatge C1 variable de cada nivell (canco + HUD + GAMEOVER +
     # portes + restore). El codi i els frames els afegeix build_level_packages.
     mainbin = build_c1_pre(0, songs["main"][0])
@@ -1891,11 +1901,15 @@ def package(starter_path, starter_start, game_path):
     lvl_payload += lvl_pool
     assert len(lvl_payload) == 814, len(lvl_payload)
 
-    # Incrustar LVLCHS a MUSBANK.BIN a offset 0 (0x4000) i re-gravar al DSK
+    # Incrustar LVLCHS a MUSBANK.BIN a offset 0x1D00 (C1:0x5D00, despres de song_intro)
+    # sense trepitjar player_akg (0x4000..0x4C00), hud_bank (0x4C10..0x4FA0) ni song_intro (0x5000..0x5C12).
+    # En arrencar el primer nivell, load_level_file el copia a C1:0x7C00..0x7F2D (zona permanent lliure).
+    LVLCHS_MB_OFF = 0x1D00
     obj_dir = os.path.join(PROJ, "obj")
     mbin_path = os.path.join(obj_dir, "MUSBANK.BIN")
     mbin_data = bytearray(open(mbin_path, "rb").read())
-    mbin_data[0:len(lvl_payload)] = lvl_payload
+    assert len(mbin_data) == LVLCHS_MB_OFF + len(lvl_payload), (len(mbin_data), LVLCHS_MB_OFF + len(lvl_payload))
+    mbin_data[LVLCHS_MB_OFF:LVLCHS_MB_OFF + len(lvl_payload)] = lvl_payload
     open(mbin_path, "wb").write(bytes(mbin_data))
 
     # Actualitzar les dades de MUSBANK dins la imatge del DSK

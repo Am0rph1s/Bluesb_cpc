@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 import time
+import struct
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJ = os.path.dirname(HERE)
@@ -92,9 +93,7 @@ def check_dsk():
     crcs = parse_defines(dt)
     crcs.update(parse_defines(st))
 
-    files = [("l1world", "CRC_L1WORLD"), ("l1enemi", "CRC_L1ENEMI"),
-             ("l2world", "CRC_L2WORLD"), ("l2enemi", "CRC_L2ENEMI"),
-             ("jake", "CRC_JAKE"), ("elwood", "CRC_ELWOOD"),
+    files = [("jake", "CRC_JAKE"), ("elwood", "CRC_ELWOOD"),
              ("front", "CRC_FRONT"), ("game", "GAME_CRC")]
 
     dsk = DskPatcher(DSK)
@@ -119,6 +118,47 @@ def check_dsk():
     if "BLUESB.BIN" not in names or "GAME.BIN" not in names:
         print("  [KO] el cataleg no te BLUESB.BIN / GAME.BIN")
         ok = False
+
+    # Validacio de nivells via taula LVLCHS de MUSBANK
+    mb_raw = None
+    for i in range(64):
+        e = cat[i * 32:(i + 1) * 32]
+        if e[0] == 0x00:
+            nm = bytes(e[1:9]).decode("latin1").strip()
+            ex = bytes(e[9:12]).decode("latin1").strip()
+            if nm == "MUSBANK" and ex == "BIN":
+                mb_blocs = [b for b in e[16:32] if b]
+                m_data = bytearray()
+                for b in mb_blocs:
+                    for t, sid in dsk.bloc_to_ts(b):
+                        s = dsk.read_sector(t, sid)
+                        if s: m_data += s
+                mb_raw = bytes(m_data[128:])
+                break
+
+    if mb_raw and mb_raw[:2] == b"LV":
+        n_lvl = mb_raw[3]
+        for lvl in range(n_lvl):
+            for typ, suffix in ((0, "WORLD"), (1, "ENEMI")):
+                off = 4 + (lvl * 3 + typ) * 5
+                ondisk, sec, crc = struct.unpack("<HBH", mb_raw[off:off+5])
+                if sec == 0:
+                    continue
+                pool_off = 4 + n_lvl * 3 * 5 + lvl * (56 + 32 + 32) + (0 if typ == 0 else (56 if typ == 1 else 88))
+                chs_bytes = mb_raw[pool_off:pool_off + sec * 2]
+                chs = list(zip(chs_bytes[0::2], chs_bytes[1::2]))
+                data = bytearray()
+                for t, sid in chs:
+                    s = dsk.read_sector(t, sid)
+                    if s: data += s
+                payload = bytes(data[128:ondisk])
+                got = crc16_ccitt(payload)
+                label = "l%d%s" % (lvl + 1, suffix.lower())
+                if got != crc:
+                    print("  [KO] %-8s CRC 0x%04X != LVLCHS 0x%04X" % (label, got, crc))
+                    ok = False
+                else:
+                    print("  [OK] %-8s %d sectors, %d B, CRC 0x%04X (LVLCHS)" % (label, sec, ondisk - 128, got))
 
     for key, crc_key in files:
         src = st if key == "game" else dt

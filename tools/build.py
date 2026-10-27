@@ -140,7 +140,11 @@ MUS_THEME1_SRC = "assets/musica_cpc/The_Blues_Brothers_Theme1_CPC.akg"
 MUS_THEME2_SRC = "assets/musica_cpc/The_Blues_Brothers_Theme2_CPC.akg"
 
 # Taules Bloc 0 justes: el GAME nomes referencia els fitxers del gameplay del nivell
-GAME_TABLE_SKIP = {"FDC", "FSPLASH", "FSELECT", "FMAP", "MUSBANK"}
+GAME_TABLE_SKIP = {"FDC", "FSPLASH", "FSELECT", "FMAP", "MUSBANK",
+                   "L1WORLD", "L1ENEMI", "L2WORLD", "L2ENEMI",
+                   "L3WORLD", "L3ENEMI", "L4WORLD", "L4ENEMI",
+                   "L5WORLD", "L5ENEMI", "L6WORLD", "L6ENEMI",
+                   "L1C1", "L2C1", "L3C1", "L4C1", "L5C1", "L6C1"}
 
 # Fitxers de dades al DSK (es carregaran per FDC raw). Ordre = ordre al disc.
 # (L'ordre de dades no afecta el boot; el BLUESB va primer via package().)
@@ -1854,6 +1858,7 @@ def package(starter_path, starter_start, game_path):
     # GAME.BIN (imatge resident completa): el carrega el starter amb reintents.
     gdata = open(game_path, "rb").read()
     gentry = add_file("GAME", "BIN", gdata, 0x0100, 0x0100, make_table=True)
+    mb_blocs = None
     for name8, ext3, path in DATA_FILES:
         data = open(path, "rb").read()
         hdr = amsdos_header(name8, ext3, 0x02, 0x0000, 0x0000, len(data))
@@ -1863,6 +1868,44 @@ def package(starter_path, starter_start, game_path):
             for (t, sid) in dsk.bloc_to_ts(b):
                 chs += [t, sid]  # parelles (track,sid): head sempre 0
         chs_map[name8] = (len(data) + 128, len(chs) // 2, chs, crc16_ccitt(data))
+        if name8 == "MUSBANK":
+            mb_blocs = blocs
+
+    # Taula de disc dels nivells (C1:0x4000 de MUSBANK). 6 nivells x (WORLD, ENEMI, C1).
+    # Format: "LV", 1, 6 + 18 x <u16 ondisk, u8 sectors, u16 crc> (94 B)
+    # + pool [6 nivells][WORLD 56 B (28 sec)][ENEMI 32 B (16 sec)][C1 32 B (16 sec)] = 720 B
+    # Total = 814 B incrustats a C1:0x4000 dins MUSBANK.BIN abans de la canco intro (0x5000).
+    lvl_payload = bytearray(b"LV\x01\x06")
+    lvl_pool = bytearray(6 * (56 + 32 + 32))
+    for lvl in range(6):
+        for typ, suffix, max_sec, stride in ((0, "WORLD", 28, 56), (1, "ENEMI", 16, 32), (2, "C1", 16, 32)):
+            name = "L%d%s" % (lvl + 1, suffix)
+            if name in chs_map:
+                obytes, scount, chs, lcrc = chs_map[name]
+                assert scount <= max_sec, (name, scount, max_sec)
+                lvl_payload += struct.pack("<HBH", obytes, scount, lcrc)
+                off = lvl * (56 + 32 + 32) + (0 if typ == 0 else (56 if typ == 1 else 88))
+                lvl_pool[off:off + len(chs)] = bytes(chs)
+            else:
+                lvl_payload += struct.pack("<HBH", 0, 0, 0)
+    lvl_payload += lvl_pool
+    assert len(lvl_payload) == 814, len(lvl_payload)
+
+    # Incrustar LVLCHS a MUSBANK.BIN a offset 0 (0x4000) i re-gravar al DSK
+    obj_dir = os.path.join(PROJ, "obj")
+    mbin_path = os.path.join(obj_dir, "MUSBANK.BIN")
+    mbin_data = bytearray(open(mbin_path, "rb").read())
+    mbin_data[0:len(lvl_payload)] = lvl_payload
+    open(mbin_path, "wb").write(bytes(mbin_data))
+
+    # Actualitzar les dades de MUSBANK dins la imatge del DSK
+    dsk_path = os.path.join(PROJ, PROGNAME + ".dsk")
+    m_raw = bytes(mbin_data)
+    m_hdr = amsdos_header("MUSBANK", "BIN", 0x02, 0x4000, 0x4000, len(m_raw))
+    if mb_blocs is not None and len(mb_blocs) > 0:
+        dsk.write_file_data(mb_blocs[0], m_hdr + m_raw)
+        chs_map["MUSBANK"] = (len(m_raw) + 128, len(chs_map["MUSBANK"][2]) // 2, chs_map["MUSBANK"][2], crc16_ccitt(m_raw))
+
     dsk.save(dsk_path)
     print("DSK: %s  (RUN\"%s\" -> starter load 0x%04X/run 0x%04X, game=%d bytes)" %
           (dsk_path, DSKNAME8, ST_LOAD, ST_RUN, len(gdata)))

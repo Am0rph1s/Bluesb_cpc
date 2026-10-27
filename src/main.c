@@ -783,6 +783,39 @@ static u8 load_package(const DiskFileDesc* f, u16 crc) {
 // tornin a apareixer: el MAPA es re-llegeix del disc.
 // Reutilitzada a l'arrencada i al reinici per mort.
 // ============================================================
+// Taula de disc dels nivells incrustada a C1:0x4000 (MUSBANK permanent).
+// Format (build.py): "LV", 1, 6 + 18 x <ondisk u16, sectors u8, crc u16>
+// + pool [6][WORLD 56 B][ENEMI 32 B][C1 32 B]. Cap CHS de nivell al resident.
+#define LVLCHS_N            6
+#define LVLCHS_POOL_OFF     (4 + LVLCHS_N * 3 * 5)
+#define LVLCHS_LEVEL_STRIDE (56 + 32 + 32)
+
+static u8 s_chs_buf[56];
+static DiskFileDesc s_lvl_desc;
+
+static u8 load_level_file(u8 lvl, u8 typ) {
+    const u8* e;
+    const u8* chs;
+    u16 crc;
+    u8 prev, n;
+    u16 typ_stride;
+    if (lvl >= LVLCHS_N) lvl = LVLCHS_N - 1;
+    typ_stride = (typ == 0) ? 0 : ((typ == 1) ? 56 : 88);
+    prev = bank_set(0xC1);
+    e = (const u8*)(0x4000u + 4u + (u16)(lvl * 3u + typ) * 5u);
+    n = e[2];
+    if (!n) { bank_restore(prev); return 0; }
+    s_lvl_desc.ondisk_bytes = (u16)e[0] | ((u16)e[1] << 8);
+    s_lvl_desc.sector_count = n;
+    s_lvl_desc.chs_table = s_chs_buf;
+    crc = (u16)e[3] | ((u16)e[4] << 8);
+    chs = (const u8*)(0x4000u + LVLCHS_POOL_OFF +
+                      (u16)lvl * LVLCHS_LEVEL_STRIDE + typ_stride);
+    cpct_memcpy(s_chs_buf, chs, (u16)n * 2u);
+    bank_restore(prev);
+    return load_package(&s_lvl_desc, crc);
+}
+
 static void load_level_packages(void) {
     // Carrega rapida i sequencial dels paquets de dades a 0x8320 (2a pagina oculta)
     // El motor FDC es mante ences durant la sequencia per evitar aturades/engegades.
@@ -805,30 +838,17 @@ static void load_level_packages(void) {
         }
     }
 
-    // 2. Mon: LnWORLD.PAK amb MANIFEST (docs/LEVEL_PACKAGE.md). El carregador
-    //    es generic: capita el header, recorre les seccions i descomprimeix
-    //    cadascuna al seu banc/adreca. Cap adreca de desti al codi.
+    // 2. Mon, C1 i Enemics: descriptors a la taula LVLCHS (C1:0x4000 de MUSBANK).
+    // El resident no te cap taula CHS de nivell: afegeix un nivell = afegeix una entrada a LVLCHS.
     {
-        static const DiskFileDesc* const s_world[2] = { &g_file_l1world, &g_file_l2world };
-        static const u16 s_world_crc[2] = { CRC_L1WORLD, CRC_L2WORLD };
         u8 lvl = g_map_level;
-        if (lvl > 1) lvl = 1;   // Fase 4: ampliar la taula
-        if (!load_package(s_world[lvl], s_world_crc[lvl])) {
+        if (lvl >= LVLCHS_N) lvl = LVLCHS_N - 1;
+        if (!load_level_file(lvl, 0)) {
             cpct_setBorder(0x42); while (1) { }
         }
-        // Parametres del nivell (geometria, tiles, start, checkpoint...). Viuen
-        // a la imatge de C1; la Fase 3 en treura l'offset del manifest.
+        // Parametres del nivell (geometria, tiles, start, checkpoint...)
         level_params_load();
-    }
-
-
-    // 3. Enemics: LnENEMI amb manifest -> Banc C6:0x4000
-    {
-        static const DiskFileDesc* const s_enemi[2] = { &g_file_l1enemi, &g_file_l2enemi };
-        static const u16 s_enemi_crc[2] = { CRC_L1ENEMI, CRC_L2ENEMI };
-        u8 lvl = g_map_level;
-        if (lvl > 1) lvl = 1;   // Fase 4: ampliar la taula
-        if (!load_package(s_enemi[lvl], s_enemi_crc[lvl])) {
+        if (!load_level_file(lvl, 1)) {
             cpct_setBorder(0x43); while (1) { }
         }
     }

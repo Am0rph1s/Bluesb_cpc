@@ -5,16 +5,29 @@ definitiva**; és l'estat real de la feina i dels intents fets.
 
 ## 1. Estat estable actual
 
-- Branca `master`: **`04e47ae`**.
-- `bluesb.dsk` del projecte principal: **base estable**.
-- Verificat visualment amb ZEsarUX:
-  - splash de The Blues Brothers;
-  - select;
-  - mapa;
-  - **L1 jugable** (Jake, HUD, nivell).
-- `test_gameover_banner_and_splash.py` passa, però **no valida les imatges**;
-  les captures `gameover_04_level1_live` poden ser el splash o el mapa.
-  No serveix com a prova que L1 hagi carregat.
+- Branca: **`fix-c1-l3-unlock`** (`13e6e0c`).
+- `bluesb.dsk` del projecte principal: **arrencada 100% reparada i verificada**.
+- Verificat amb `tools/smoke_test.py` i inspecció visual:
+  - splash de The Blues Brothers amb so intacte;
+  - select (Jake / Elwood);
+  - mapa de ciutat;
+  - **L1 jugable** (Jake, HUD, ascensor, carrets i enemics a `smoke_level.png`).
+- Memòria resident: `_CODE` a `0x0100..0x3837` (**73 B de marge** fins a `_DATA` a `0x3880`).
+- Taules CHS de disc: 100% alliberades de `_CODE` i allotjades a `C1:0x7C00`.
+
+## 1.1 Resolució de la fallada d'arrencada (27/10/2026)
+
+L'error pel qual el joc havia deixat d'arrencar i feia un salt immediat a Locomotive BASIC provenia de:
+1. **Sobreescriptura de `player_akg.bin` a `C1:0x4000`**: En un commit previ es va estampar `LVLCHS` (814 B) a l'offset 0 de `MUSBANK.BIN`, destruint els vectors d'inicialització del reproductor d'àudio (`_akg_init` a `0x4009`). En cridar `mus_init()` des de `front.c`, el Z80 executava les dades com a instruccions i saltava a `0x0000` (reset a BASIC).
+2. **Desbordament de blocs DSK a `package()`**: `build_music()` creava `MUSBANK.BIN` amb 7.187 B (8 blocs), i després `package()` n'afegia 814 B més (passant a 9 blocs) escrivint directament sobre el primer bloc de `FSELECT.ZX0`.
+3. **Mala interpretació d'adreces a ZEsarUX**: Com que l'emulador estava a Locomotive BASIC, el PC corria el bucle del cursor a la Lower ROM (`0x1BD9..0x1E9D`), cosa que es confonia amb funcions del joc resident. A més, `read-memory` de ZRCP requereix adreces en format decimal (`%d`).
+
+**Solució adoptada permanent**:
+- `LVLCHS` s'empaqueta a l'offset `0x1D00` de `MUSBANK.BIN` (`C1:0x5D00`, darrere `song_intro.bin`).
+- `MUSBANK.BIN` reserva els 8.238 B (9 blocs) des del principi a `build_music()`.
+- A l'arrencada del nivell 1, `main.c` copia `LVLCHS` de `0x5D00` a **`C1:0x7C00..0x7F2D`**.
+- La zona `C1:0x7C00..0x7FFF` (1.024 B) queda protegida permanentment per sobre de la còpia mestra de `FDC.BIN` (`0x7800..0x7BFF`), sense cap risc de solapament amb els paquets de món `L*WORLD.PAK` (< `0x7780`).
+
 
 ## 2. On és el WIP
 

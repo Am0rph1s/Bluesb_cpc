@@ -26,3 +26,16 @@
   - `cpc_y = dos_y - h_dos`
 * Mai calcular fent simplement `dos_x / 2` ni moure coordenades manualment sense comprovar `staticres.c`.
 
+### 5. REGLES CRÍTIQUES DE MEMÒRIA I LAYOUT DE DISC (MUSBANK, C1 I FDC)
+* **MUSBANK.BIN a C1:0x4000**:
+  - L'inici `0x4000..0x4C00` conté el reproductor de so **`player_akg.bin`** (`_akg_init = 0x4009`, `_akg_play = 0x40CE`, `_akg_stop = 0x40BC`). **MAI s'hi ha d'escriure cap dada ni taula**, ja que corrompre `0x4009` fa que `mus_init()` salti a dades invàlides i reinicii al Locomotive BASIC.
+  - El fitxer té la mida completa reservada des de `build_music()` (8.238 B / 9 blocs DSK). Mai ampliar-lo a `package()` sobrepassant els blocs AMSDOS prèviament reservats, o `dsk.write_file_data()` desbordarà el fitxer següent (`FSELECT.ZX0`).
+* **Taules de sectors dels nivells (`LVLCHS`, 814 bytes)**:
+  - Resideixen a l'offset `0x1D00` de `MUSBANK.BIN` (`C1:0x5D00`, darrere `song_intro.bin`).
+  - Durant la càrrega del primer nivell, `main.c` (`load_level_file`) copia `LVLCHS` a **`C1:0x7C00..0x7F2D`**.
+  - Aquesta zona (`0x7C00..0x7FFF`, 1.024 B) és l'única lliure permanent de RAM 1 per sobre de la còpia mestra de `FDC.BIN` (`0x7800..0x7BFF`) i mai és sobreescrita per cap paquet de nivell ni rutina resident.
+* **Depuració amb ZEsarUX ZRCP**:
+  - L'ordre `read-memory <addr> <len>` del port ZRCP utilitza un parser decimal (`atoi`). Si s'hi envia una adreça en hexadecimal sense format decimal (`read-memory 3C46 1`), ZEsarUX interpreta l'adreça `3` i llegeix la RST 0. Utilitzar **sempre `%d`** per a les adreces de memòria.
+  - Després d'un crash a Locomotive BASIC, `PC` estarà a la Lower ROM (`0x1BD9..0x1E9D`); no confondre adreces de la ROM amb funcions del joc resident.
+
+

@@ -46,9 +46,9 @@ static const u8 s_bank_press_map_col[LEVEL_PRESS_STORAGE] = { 0 };
 // s_anim_len porta sentinella 0 (bucle sense comptador).
 #define LEVEL_ANIM_SEQ_COUNT 7
 #define LEVEL_ANIM_DATA_LEN 18
-static const u8 s_anim_data[LEVEL_ANIM_DATA_LEN] = { 236, 235, 234, 223, 224, 225, 231, 232, 233, 222, 221, 220, 130, 192, 148, 202, 164, 230 };
-static const u8 s_anim_off[LEVEL_ANIM_SEQ_COUNT] = { 0, 3, 6, 9, 12, 14, 16 };
-static const u8 s_anim_len[LEVEL_ANIM_SEQ_COUNT + 1] = { 3, 3, 3, 3, 2, 2, 2, 0 };
+static const u8 s_anim_data[18] = { 236, 235, 234, 223, 224, 225, 231, 232, 233, 222, 221, 220, 130, 192, 148, 202, 164, 230 };
+static const u8 s_anim_off[7] = { 0, 3, 6, 9, 12, 14, 16 };
+static const u8 s_anim_len[8] = { 3, 3, 3, 3, 2, 2, 2, 0 };
 
 // Trams animats: (row, col_ini, col_fi, seq). Tipus AnimSpan de moving.h.
 

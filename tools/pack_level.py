@@ -217,9 +217,18 @@ def build_level_pkg(level_idx=0, out_dir=None):
     tileset_c = b"".join(tileset_full[t * 64:(t + 1) * 64] for t in tile_order)
     map_c = bytes(remap[t] for t in map_bin)
     rooms_c = bytes(remap[t] for t in rooms_bin)
-    trig_c = b"".join(bytes((trig_bin[t * 10], trig_bin[t * 10 + 1],
-                            trig_bin[t * 10 + 2], trig_bin[t * 10 + 6],
-                            trig_bin[t * 10 + 9])) for t in tile_order)
+    # TRIG compacte (5 B): type, flags|data5<<2, op, b6, avt.
+    # El byte 5 original (DOS triggers_get_tile_data, nomes 0/1) s'empaca al
+    # bit 2 de flags perque el runtime pugui implementar unk2E (ajupiment).
+    # Els bits 0/1 son parets i el bit 2 no xoca amb cap comprovacio &1/&2.
+    trig_c = []
+    for t in tile_order:
+        b1, b5 = trig_bin[t * 10 + 1], trig_bin[t * 10 + 5]
+        assert b5 in (0, 1), "TRIG tile %d: byte5=%d (nomes 0/1)" % (t, b5)
+        trig_c.append(bytes((trig_bin[t * 10], b1 | (b5 << 2),
+                             trig_bin[t * 10 + 2], trig_bin[t * 10 + 6],
+                             trig_bin[t * 10 + 9])))
+    trig_c = b"".join(trig_c)
     trig_entries = [
         (k, remap[bg], av, sv, ah, sa, inst, ex, pop, al, b6)
         for (k, bg, av, sv, ah, sa, inst, ex, pop, al, b6) in trig_entries
@@ -313,17 +322,22 @@ def build_level_pkg(level_idx=0, out_dir=None):
         lens.append(len(seq))
         flat.extend(seq)
     assert len(flat) <= 255, "s_anim_data no cap en índex u8"
+    data_storage = max(1, len(flat))
+    seq_storage = max(1, len(used_b4))
     lines.append(
-        "static const u8 s_anim_data[LEVEL_ANIM_DATA_LEN] = { "
-        + ", ".join(str(t) for t in flat) + " };"
+        "static const u8 s_anim_data[%d] = { %s };" % (
+            data_storage,
+            ", ".join(str(t) for t in flat) if flat else "0")
     )
     lines.append(
-        "static const u8 s_anim_off[LEVEL_ANIM_SEQ_COUNT] = { "
-        + ", ".join(str(o) for o in offs) + " };"
+        "static const u8 s_anim_off[%d] = { %s };" % (
+            seq_storage,
+            ", ".join(str(o) for o in offs) if offs else "0")
     )
     lines.append(
-        "static const u8 s_anim_len[LEVEL_ANIM_SEQ_COUNT + 1] = { "
-        + ", ".join(str(l) for l in lens) + ", 0 };"
+        "static const u8 s_anim_len[%d] = { %s };" % (
+            seq_storage + 1,
+            (", ".join(str(l) for l in lens) + ", 0") if lens else "0")
     )
     lines.append("")
     lines.append("// Trams animats: (row, col_ini, col_fi, seq). Tipus AnimSpan de moving.h.")
@@ -500,11 +514,14 @@ def build_level_pkg(level_idx=0, out_dir=None):
     # Valors derivats perque el resident NO faci matematiques de 16 bits:
     prm += struct.pack("<HHH", map_w * 8, map_w * 2, max(0, map_w * 2 - 20))
     # NOTA: SDCC empaqueta LevelParams sense alineacio: room_row_last=68,
-    # trig_off=69, code_exc_off=71 (sizeof=73). El blob ha de coincidir-hi.
+    # trig_off=69, code_exc_off=71, hud_off=73, gameover_off=75 (sizeof=77).
+    # El blob ha de coincidir-hi. Els camps d'adreces C1 els reescriu build.py
+    # segons el layout variable de cada nivell; aqui van valors de llegat.
     prm += bytes(((room_floor_row & 0xFF),))            # room_row_last
     prm += struct.pack("<H", 0x67E8)                   # trig_off (el build el reescriu)
     prm += struct.pack("<H", 0x6950)                   # code_exc_off (el build el reescriu)
-    assert len(prm) == 73, len(prm)
+    prm += struct.pack("<HH", 0x6000, 0x5AB0)           # hud_off, gameover_off
+    assert len(prm) == 77, len(prm)
     parm_path = os.path.join(PROJ, "assets", "bbdata", "LEVELPARM%d.BIN" % level_idx)
     with open(parm_path, "wb") as f:
         f.write(bytes(prm))

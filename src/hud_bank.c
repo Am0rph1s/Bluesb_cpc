@@ -18,9 +18,7 @@
 #include "level_params.h"
 
 #define PLAY_CHARS 40
-#define GAMEOVER_PTR ((const u8*)0x5800)
 
-extern const u8 s_hud_strips[39][24];
 extern void hud_blit_col(const u8* strip24, u16 ma20);
 extern u16 g_vram_start;
 extern u8 g_has_instrument;
@@ -98,10 +96,13 @@ void hud_render_b(void) {
         s_hud_layout[(u8)(25 + (i << 1))] = (u8)(sb + 1);
     }
 
-    ma = (u16)((g_vram_start + 800) & 0x03FF);
-    for (cx = 0; cx < PLAY_CHARS; cx++) {
-        hud_blit_col(s_hud_strips[s_hud_layout[cx]], ma);
-        ma = (u16)((ma + 1) & 0x03FF);
+    {
+        const u8* strips = (const u8*)(u16)s_lv.hud_off;
+        ma = (u16)((g_vram_start + 800) & 0x03FF);
+        for (cx = 0; cx < PLAY_CHARS; cx++) {
+            hud_blit_col(strips + (u16)s_hud_layout[cx] * 24u, ma);
+            ma = (u16)((ma + 1) & 0x03FF);
+        }
     }
 }
 
@@ -109,7 +110,7 @@ void hud_render_b(void) {
 void gameover_banner_b(void) {
     u8 page = (u8)bc_a;
     u16 vram_base = (page == 0) ? 0xC000 : 0x8000;
-    const u8* src = GAMEOVER_PTR;
+    const u8* src = (const u8*)(u16)s_lv.gameover_off;
     u8 y;
     for (y = 0; y < 34; y++) {
         u8 r_char = (u8)(10 + (y >> 3));

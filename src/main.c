@@ -128,17 +128,17 @@ void start(void) {
 }
 
 // --- Parametres del NIVELL (runtime; venen del paquet) -------------------
-// El bloc sencer del paquet (C1:0x6900) es copia aqui i s'hi accedeix
+// El bloc sencer del paquet (C1:0x7680) es copia aqui i s'hi accedeix
 // amb les macros de level_params.h: cap constant del nivell 1 al Bloc 0
 // i cap cost de codi extra per llegir-los.
 LevelParams s_lv;
 
 void level_params_load(void) {
-    // El bloc de parametres del nivell es llegeix del paquet (Banc C1:0x6900)
+    // El bloc de parametres del nivell es llegeix del paquet (Banc C1:0x7680)
     // i es queda al resident: la part u8 (geometria, tiles, mides) es usa a
     // cada frame; els valors de 16 bits (start, checkpoint, camera) tambe.
     u8 prev = bank_set(0xC1);
-    cpct_memcpy(&s_lv, (const void*)0x6900, sizeof(LevelParams));
+    cpct_memcpy(&s_lv, (const void*)0x7680, sizeof(LevelParams));
     bank_restore(prev);
 }
 
@@ -821,12 +821,6 @@ static void load_level_packages(void) {
         level_params_load();
     }
 
-    // 2b. GAMEOVER: fitxer comu (decisio 2), una seccio -> C1:0x5800
-    {
-        if (!load_package(&g_file_gameover, CRC_GAMEOVER)) {
-            cpct_setBorder(0x44); while (1) { }
-        }
-    }
 
     // 3. Enemics: LnENEMI amb manifest -> Banc C6:0x4000
     {

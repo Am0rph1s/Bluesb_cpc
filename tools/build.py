@@ -95,18 +95,14 @@ ENEMY_C_HEADERS = {
 # --- Banc 5 (CP-2.2): lògica moving.* a 0x6E00; slots fixos 0x6E00+3k
 # (han de coincidir amb engine/bank5_table.s; build_bank() ho verifica).
 BANK5_BASE = 0x6E00
-# Banc 1 (C1): el codi del NIVELL (ascensors) dins el mateix paquet que la
-# musica, el HUD i les habitacions. Layout dins la part del Banc 1 (es
-# descomprimeix a 0x5000):
-#   0x5000 musica | 0x6000 HUD | 0x6400 habitacions | 0x6800 portes
-#   0x6860 taula de restauracio | 0x6900 parametres | 0x6934 codi
-#   0x6E20 frame de l'ascensor | 0x7000 buffers de fons | 0x7500 dades
-LC1_CODE_BASE    = 0x6950
-LC1_DATA_BASE    = 0x6DC0
-LC1_FRAMES_BASE  = 0x6E00
-LC1_BG_BASE      = 0x7200
+# Layout C1 VARIABLE per nivell (blindat per sota de 0x7800 per no tocar FDC.BIN a C0:0x7800):
+# canco + HUD + GAMEOVER + portes + restore + codi + frames + buffers BG.
+# Parametres a C1:0x7680 (77 B), dades BSS a 0x7700 (20 B). Tot < 0x7780.
+LC1_FRAMES_BASE  = 0x6900
+LC1_BG_BASE      = 0x6D00
+LC1_PARAMS_BASE  = 0x7680
+LC1_DATA_BASE    = 0x7700
 LC1_ELEV_BG_SIZE = 1120   # 2 pagines x 5 ascensors x 112 B
-LC1_GAMEOVER_BASE = 0x5800
 BANK5_MAXLEN = 0x1200   # finestra: CODE + pad zeros fins fi _DATA (0x7E07);
                         # el banc físic dona fins 0x7FFF, de sobres.
 BANK_C_SOURCES = ["src/moving_bank.c"]
@@ -140,6 +136,8 @@ MUS_SONG_SLOT = 0x5000
 MUS_PLAYER_SRC = "tools/akg/PlayerAkg.asm"
 MUS_INTRO_SRC = "assets/musica_cpc/The_Blues_Brothers_Intro_CPC.akg"
 MUS_MAIN_SRC = "assets/musica_cpc/The_Blues_Brothers_CPC.akg"
+MUS_THEME1_SRC = "assets/musica_cpc/The_Blues_Brothers_Theme1_CPC.akg"
+MUS_THEME2_SRC = "assets/musica_cpc/The_Blues_Brothers_Theme2_CPC.akg"
 
 # Taules Bloc 0 justes: el GAME nomes referencia els fitxers del gameplay del nivell
 GAME_TABLE_SKIP = {"FDC", "FSPLASH", "FSELECT", "FMAP", "MUSBANK"}
@@ -163,7 +161,6 @@ DATA_FILES = [
     ("L1ENEMI", "ZX0", os.path.join(PROJ, "obj", "L1ENEMI.ZX0")),
     ("L2WORLD", "PAK", os.path.join(PROJ, "obj", "L2WORLD.PAK")),
     ("L2ENEMI", "ZX0", os.path.join(PROJ, "obj", "L2ENEMI.ZX0")),
-    ("GAMEOVER", "ZX0", os.path.join(PROJ, "obj", "GAMEOVER.ZX0")),
 ]
 
 
@@ -596,7 +593,8 @@ def build_levelcode(force, level_idx=None):
     rels.append(equ_rel)
     # Base del codi: just despres de la imatge C1 (MUSMAIN.BIN), alineada a 8.
     # Ja no es una constant: creix si la imatge creix (p. ex. parametres v2).
-    base = (0x5000 + os.path.getsize(os.path.join(obj, "MUSMAIN.BIN")) + 7) & 0xFFF8
+    mus_name = "MUSMAIN.BIN" if level_idx in (None, 0) else "MUSMAIN_%d.BIN" % level_idx
+    base = (0x5000 + os.path.getsize(os.path.join(obj, mus_name)) + 7) & 0xFFF8
     suffix = "" if level_idx is None else "_%d" % level_idx
     ihx = os.path.join(obj, "levelcode%s.ihx" % suffix)
     run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % base,
@@ -607,7 +605,7 @@ def build_levelcode(force, level_idx=None):
     if code_s is not None and (code_s + code_l) > LC1_FRAMES_BASE:
         print("\n[FATAL] El codi del nivell (Banc 1) arriba als frames!")
         sys.exit(1)
-    if data_s is not None and (data_s + data_l) > 0x7800:
+    if data_s is not None and (data_s + data_l) > 0x7780:
         print("\n[FATAL] Les dades del codi del nivell (Banc 1) no hi caben!")
         sys.exit(1)
     # El codi i les dades van en dos fitxers perqu? al paquet el codi va
@@ -1060,14 +1058,27 @@ def _hud_strips_raw():
     return bytes(hud_raw)
 
 
+def _align8(v):
+    return (v + 7) & 0xFFF8
+
+
 def build_c1_pre(level_idx, song_bin):
-    """Imatge C1 ABANS del codi/frames per a un nivell (cançó + HUD + portes
-    + restore + parametres). Per a L2 (sense codi ni frames) es la imatge
-    completa. Per a L1 no s'usa: build_music() ja la genera igual."""
+    """Imatge C1 d'un nivell ABANS del codi/frames.
+
+    Layout variable (Fase 3): canco + HUD + GAMEOVER + portes + restore.
+    Els parametres NO hi son: el build els posa sempre a C1:0x7680 (blindat < 0x7800).
+    El codi i els frames els afegeix build_level_packages() a partir d'aquesta imatge.
+    Escriu obj/MUSMAIN_<n>.BIN i obj/C1LAY<n>.BIN (manifest d'offsets).
+    """
     obj = os.path.join(PROJ, "obj")
     mdata = open(song_bin, "rb").read()
-    assert len(mdata) <= (LC1_GAMEOVER_BASE - 0x5000), len(mdata)
     hud_raw = _hud_strips_raw()
+    go_src = os.path.join(PROJ, "assets", "bbdata", "GAMEOVER.BIN")
+    if not os.path.exists(go_src):
+        import gen_gameover
+        gen_gameover.generate_gameover()
+    go_raw = open(go_src, "rb").read()
+    assert len(go_raw) == 1360, len(go_raw)
     rooms_data = open(os.path.join(PROJ, "assets", "bbdata",
                                    "ROOMSC%d.BIN" % level_idx), "rb").read()
     parm_data = open(os.path.join(PROJ, "assets", "bbdata",
@@ -1079,20 +1090,42 @@ def build_c1_pre(level_idx, song_bin):
         struct.pack("<HB", o, t) for o, t in room_restore)
     doors_data = open(os.path.join(PROJ, "assets", "bbdata",
                                    "DOORS%d.BIN" % level_idx), "rb").read()
-    pad_main = bytes(0x1000 - len(mdata))
-    pad_rooms = bytes(0x1400 - (0x1000 + len(hud_raw)))
-    pad_doors = bytes(0x1800 - (0x1400 + len(rooms_data)))
-    pad_rr = bytes(0x1860 - (0x1800 + len(doors_data)))
-    pad_parm = bytes(0x1900 - (0x1860 + len(rr_data)))
+
+    hud_off = _align8(0x5000 + len(mdata))
+    go_off = _align8(hud_off + len(hud_raw))
+    doors_off = _align8(go_off + len(go_raw))
+    restore_off = _align8(doors_off + len(doors_data))
+    content_end = restore_off + len(rr_data)
+    code_base = _align8(content_end)
+
+    data = (mdata + bytes(hud_off - (0x5000 + len(mdata))) + hud_raw +
+            bytes(go_off - (hud_off + len(hud_raw))) + go_raw +
+            bytes(doors_off - (go_off + len(go_raw))) + doors_data +
+            bytes(restore_off - (doors_off + len(doors_data))) + rr_data)
+    assert len(data) == content_end - 0x5000, (len(data), content_end)
     out = os.path.join(obj, "MUSMAIN_%d.BIN" % level_idx)
-    # Les sales viuen a C5: al forat C1 nomes hi van zeros.
-    data = (mdata + pad_main + hud_raw + pad_rooms + bytes(len(rooms_data)) +
-            pad_doors + doors_data + pad_rr + rr_data + pad_parm + parm_data)
     if not os.path.exists(out) or open(out, "rb").read() != data:
         open(out, "wb").write(data)
-    print("MUSMAIN_%d: %d B (pre-codi, canco %d B, portes %d)" %
-          (level_idx, len(data), len(mdata), len(doors_data) // 4))
+    if level_idx == 0:
+        shutil.copyfile(out, os.path.join(obj, "MUSMAIN.BIN"))
+    lay = struct.pack("<HHHHHHH", len(mdata), hud_off, go_off, doors_off,
+                      restore_off, code_base, len(data))
+    lay_path = os.path.join(obj, "C1LAY%d.BIN" % level_idx)
+    if not os.path.exists(lay_path) or open(lay_path, "rb").read() != lay:
+        open(lay_path, "wb").write(lay)
+    print("MUSMAIN_%d: %d B (canco %d, HUD 0x%04X, GAMEOVER 0x%04X, "
+          "portes 0x%04X, restore 0x%04X, codi 0x%04X)" %
+          (level_idx, len(data), len(mdata), hud_off, go_off, doors_off,
+           restore_off, code_base))
     return out
+
+
+def read_c1_layout(level_idx):
+    p = os.path.join(PROJ, "obj", "C1LAY%d.BIN" % level_idx)
+    vals = struct.unpack("<HHHHHHH", open(p, "rb").read())
+    return dict(song_len=vals[0], hud_off=vals[1], gameover_off=vals[2],
+                doors_off=vals[3], restore_off=vals[4], code_base=vals[5],
+                content_len=vals[6])
 
 
 def build_music(force):
@@ -1114,7 +1147,8 @@ def build_music(force):
         sys.exit(1)
     # Cancons (mateix conversor; cadascuna al seu .rel).
     songs = {}
-    for tag, src in (("intro", MUS_INTRO_SRC), ("main", MUS_MAIN_SRC)):
+    for tag, src in (("intro", MUS_INTRO_SRC), ("main", MUS_MAIN_SRC),
+                     ("theme1", MUS_THEME1_SRC), ("theme2", MUS_THEME2_SRC)):
         ss = akg_convert(src, "song_" + tag, force)
         srel = os.path.join(obj, "song_" + tag + ".rel")
         if force or is_stale(srel, [ss, os.path.join(PROJ, src), conv]):
@@ -1181,62 +1215,11 @@ def build_music(force):
     pad2 = MUS_SONG_SLOT - (hb_base + len(hdata))
     assert pad1 >= 0 and pad2 >= 0, (pad1, pad2)
     open(mbin, "wb").write(pdata + bytes(pad1) + hdata + bytes(pad2) + idata)
-    # MUSMAIN = tema sol + tires del HUD a offset 0x1000 (C1:0x6000).
-    mainbin = os.path.join(obj, "MUSMAIN.BIN")
-    mdata = open(songs["main"][0], "rb").read()
-    assert len(mdata) <= (LC1_GAMEOVER_BASE - 0x5000), "Tema main massa gran"
-    assert LC1_GAMEOVER_BASE + 1360 <= 0x6000, "GAMEOVER envaeix HUD"
-    hud_h = os.path.join(PROJ, "src", "hud_pkg.h")
-    hud_src = open(hud_h, "r").read()
-    m_hud = re.search(r"const u8 s_hud_strips\[39\]\[24\] = \{(.*?)\};", hud_src, re.DOTALL)
-    hud_raw = bytearray()
-    for hl in m_hud.group(1).strip().split("\n"):
-        hl_clean = re.sub(r"//.*", "", hl).strip()
-        m_r = re.search(r"\{(.*?)\}", hl_clean)
-        if m_r:
-            nums = [int(x.strip(), 16) for x in m_r.group(1).split(",") if x.strip()]
-            assert len(nums) == 24
-            hud_raw.extend(nums)
-    assert len(hud_raw) == 39 * 24
-    pad_main = bytes(0x1000 - len(mdata))
-    rooms_bin = os.path.join(PROJ, "assets", "bbdata", "ROOMSC0.BIN")
-    rooms_data = open(rooms_bin, "rb").read()
-    assert len(rooms_data) == 1000, len(rooms_data)
-    # tile_vinyl compacte (offset 9 de LEVELPARM0.BIN)
-    tile_vinyl = open(os.path.join(PROJ, "assets", "bbdata", "LEVELPARM0.BIN"),
-                      "rb").read()[9]
-    pad_rooms = bytes(0x1400 - (0x1000 + len(hud_raw)))
-    # Portes del nivell (extretes del DOS per tools/extract_level_assets.py).
-    doors_bin = os.path.join(PROJ, "assets", "bbdata", "DOORS0.BIN")
-    doors_data = open(doors_bin, "rb").read()
-    assert len(doors_data) == 92, len(doors_data)   # 23 portes (nivell 1)
-    pad_doors = bytes(0x1800 - (0x1400 + len(rooms_data)))
-    # Taula de restauracio de les HABITACIONS (C1:0x6860): els discs que
-    # hi ha dins les sales son consumibles com els del mapa (al DOS es
-    # rellegeix el paquet de nivell a cada mort). Format: [n u16] +
-    # n x (offset u16 dins ROOMS0.BIN, tile inicial u8).
-    # IMPORTANT: el tile 159 (instrument / item secret) NO s'hi inclou:
-    # l'item secret ha de persistir després de morir (1:1 DOS).
-    room_restore = []
-    for off, tile in enumerate(rooms_data):
-        if tile == tile_vinyl:
-            room_restore.append((off, tile))
-    rr_data = struct.pack("<H", len(room_restore)) + b"".join(
-        struct.pack("<HB", o, t) for o, t in room_restore)
-    pad_rr = bytes(0x1860 - (0x1800 + len(doors_data)))
-    # Parametres del nivell (geometria, tiles d'items, start, checkpoint...):
-    # van al paquet (C1:0x6900) i el resident els llegeix en carregar, de
-    # manera que al Bloc 0 no hi ha cap constant del nivell 1 compilada.
-    parm_src = os.path.join(PROJ, "assets", "bbdata", "LEVELPARM0.BIN")
-    parm_data = open(parm_src, "rb").read()
-    assert len(parm_data) == LVLPARM_SIZE, len(parm_data)
-    pad_parm = bytes(0x1900 - (0x1860 + len(rr_data)))
-    # Les SALES viuen a C5 des de la Fase 3.2: al forat C1:0x6400 nomes hi van
-    # zeros (es conserva l'adreca per no moure portes/restore/parametres).
-    open(mainbin, "wb").write(mdata + pad_main + hud_raw + pad_rooms +
-                              bytes(len(rooms_data)) +
-                              pad_doors + doors_data + pad_rr + rr_data +
-                              pad_parm + parm_data)
+    # MUSMAIN = imatge C1 variable de cada nivell (canco + HUD + GAMEOVER +
+    # portes + restore). El codi i els frames els afegeix build_level_packages.
+    mainbin = build_c1_pre(0, songs["main"][0])
+    build_c1_pre(1, songs["theme1"][0])
+    build_c1_pre(2, songs["theme2"][0])
     # EQU pel GAME (mus.s crida _akg_init/_akg_play en finestra C1).
     ext_s = os.path.join(obj, "mus_ext.s")
     need = {"_akg_init": plabels.get("PLY_AKG_Init"), "_akg_play": plabels.get("PLY_AKG_Play"),
@@ -1249,10 +1232,8 @@ def build_music(force):
     if not os.path.exists(ext_s) or open(ext_s).read() != ext_txt:
         open(ext_s, "w").write(ext_txt)
     print("MUSBANK: player %d B + intro %d B = %d B; MUSMAIN %d B; init=0x%04X play=0x%04X" %
-          (len(pdata), len(idata), os.path.getsize(mbin), len(mdata),
+          (len(pdata), len(idata), os.path.getsize(mbin), os.path.getsize(mainbin),
            need["_akg_init"], need["_akg_play"]))
-    # Pre-imatge C1 dels nivells que comparteixen la canco main (L2 de moment).
-    build_c1_pre(1, songs["main"][0])
     return mbin, mainbin
 
 
@@ -1656,16 +1637,20 @@ PAK_DESC        = 8
 PAK_SCRATCH_MAX = 0xBC00 - 0x8320      # 14.560 B: limit del carregador FDC
 # ATENCIO: SDCC empaqueta LevelParams sense alineacio (room_row_last=68,
 # trig_off=69, code_exc_off=71; sizeof=73). Els offsets ho han de reflectir.
-LVLPARM_SIZE    = 73                   # mida de LEVELPARMn.BIN (LevelParams v2)
+LVLPARM_SIZE    = 77                   # mida de LEVELPARMn.BIN (LevelParams v3)
 LVLPARM_ROOMS   = 56                   # offset del camp rooms_off dins el bloc
+LVLPARM_DOORS   = 58                   # offset del camp doors_off dins el bloc
+LVLPARM_RESTORE = 60                   # offset del camp restore_off dins el bloc
 LVLPARM_TRIG    = 69                   # offset del camp trig_off dins el bloc
 LVLPARM_CODE_EXC = 71                  # offset del camp code_exc_off dins el bloc
+LVLPARM_HUD     = 73                   # offset del camp hud_off dins el bloc
+LVLPARM_GAMEOVER = 75                  # offset del camp gameover_off dins el bloc
 
 # Fase 2.1: nomes el nivell 1. Els altres 5 s'hi afegeixen a la Fase 4.
 LEVELS = [
     dict(id=0, tag="L1", song="main", doors=23, has_code=True, has_elev=True,
          has_rooms=True),
-    dict(id=1, tag="L2", song="main", doors=0, has_code=True, has_elev=True,
+    dict(id=1, tag="L2", song="theme1", doors=0, has_code=True, has_elev=True,
          has_rooms=False),
 ]
 
@@ -1723,19 +1708,7 @@ def build_level_packages(force=False):
     obj = os.path.join(PROJ, "obj")
     from zx0pkg.zx0 import zx0_compress
 
-    # GAMEOVER comu (decisio 2): un sol fitxer, seccio -> C1:0x5800.
-    go_src = os.path.join(PROJ, "assets", "bbdata", "GAMEOVER.BIN")
-    if not os.path.exists(go_src):
-        import gen_gameover
-        gen_gameover.generate_gameover()
-    go_dst = os.path.join(obj, "GAMEOVER.ZX0")
-    go_raw = open(go_src, "rb").read()
-    assert len(go_raw) == 1360, len(go_raw)
-    if force or is_stale(go_dst, [go_src]):
-        z, _ = zx0_compress(bytes(go_raw), classic=True, quick=ZX0_QUICK)
-        write_package(go_dst, 0xFF, 0, [(0xC1, True, 0x5800, bytes(z), len(go_raw))])
-        mark_fresh(go_dst, [go_src])
-        print("PAK: GAMEOVER %d B" % os.path.getsize(go_dst))
+
 
     for lv in LEVELS:
         tag = lv["tag"]
@@ -1746,16 +1719,17 @@ def build_level_packages(force=False):
         rooms_src = os.path.join(PROJ, "assets", "bbdata", "ROOMSC%d.BIN" % lid)
         bank5_src = os.path.join(obj, "BANK5_%d.BIN" % lid)
         mus_src = os.path.join(obj, "MUSMAIN.BIN" if lid == 0 else "MUSMAIN_%d.BIN" % lid)
+        lay_src = os.path.join(obj, "C1LAY%d.BIN" % lid)
         code_src = os.path.join(obj, "LEVELCODE_%d.BIN" % lid)
         code_data_src = os.path.join(obj, "LEVELDATA_%d.BIN" % lid)
         elev_src = os.path.join(PROJ, "assets", "bbdata", "PRESS.BIN" if lid == 1 else "ELEV.BIN")
         en_src = os.path.join(obj, "ENEMI_%d.BIN" % lid)
+        parm_src = os.path.join(PROJ, "assets", "bbdata", "LEVELPARM%d.BIN" % lid)
 
         world_dst = os.path.join(obj, tag + "WORLD.PAK")
         en_dst = os.path.join(obj, tag + "ENEMI.ZX0")
         srcs = [tiles_src, map_src, trig_src, rooms_src, bank5_src, mus_src,
-                en_src, go_src,
-                os.path.join(PROJ, "assets", "bbdata", "LEVELPARM%d.BIN" % lid)]
+                lay_src, en_src, parm_src]
         if lv["has_code"]:
             srcs += [code_src, code_data_src]
         if lv["has_elev"]:
@@ -1795,18 +1769,13 @@ def build_level_packages(force=False):
                    len(trigc_raw), BANK5_BASE, len(code_raw), c5_used,
                    16384 - c5_used))
 
-            # Imatge del Banc 1: MUSMAIN.BIN + codi del nivell (a la base que el
-            # build ha calculat, guardada al parametre code_exc_off) + frames.
+            # C1: imatge MUSMAIN (canco+HUD+GAMEOVER+portes+restore) + codi + frames + params + data
+            lay = read_c1_layout(lid)
             mus_raw = open(mus_src, "rb").read()
-            code_base = ((0x5000 + len(mus_raw) + 7) & 0xFFF8
-                         if lv["has_code"] else 0)
+            assert len(mus_raw) == lay["content_len"], (len(mus_raw), lay)
+            code_base = lay["code_base"]
+            assert code_base == _align8(0x5000 + len(mus_raw)), (code_base, len(mus_raw))
             m_data = bytearray(mus_raw)
-            # Parametres (a l'offset 0x1900 de la imatge = C1:0x6900): offsets
-            # reals de sales i TRIG dins C5 + base del codi del nivell.
-            for fld, val in ((LVLPARM_ROOMS, rooms_off), (LVLPARM_TRIG, trig_off),
-                             (LVLPARM_CODE_EXC, code_base)):
-                m_data[0x1900 + fld] = val & 0xFF
-                m_data[0x1900 + fld + 1] = (val >> 8) & 0xFF
             if lv["has_code"]:
                 m_data += bytes(code_base - 0x5000 - len(m_data))
                 m_data += open(code_src, "rb").read()
@@ -1814,7 +1783,26 @@ def build_level_packages(force=False):
                 if lv["has_elev"]:
                     m_data += bytes(LC1_FRAMES_BASE - 0x5000 - len(m_data))
                     m_data += open(elev_src, "rb").read()
+            # Parametres sempre a C1:0x7680 (blindat < 0x7800 per no tocar FDC mestre a C0:0x7800)
+            m_data += bytes(LC1_PARAMS_BASE - 0x5000 - len(m_data))
+            parm = bytearray(open(parm_src, "rb").read())
+            assert len(parm) == LVLPARM_SIZE, len(parm)
+            for fld, val in ((LVLPARM_ROOMS, rooms_off), (LVLPARM_TRIG, trig_off),
+                             (LVLPARM_CODE_EXC, code_base),
+                             (LVLPARM_HUD, lay["hud_off"]),
+                             (LVLPARM_GAMEOVER, lay["gameover_off"]),
+                             (LVLPARM_DOORS, lay["doors_off"]),
+                             (LVLPARM_RESTORE, lay["restore_off"])):
+                parm[fld] = val & 0xFF
+                parm[fld + 1] = (val >> 8) & 0xFF
+            m_data += parm
+            # Dades BSS del codi del nivell (--data-loc 0x7700)
+            m_data += bytes(LC1_DATA_BASE - 0x5000 - len(m_data))
+            if lv["has_code"]:
+                m_data += open(code_data_src, "rb").read()
             m_data = bytes(m_data)
+            # Assegurar que MAI toca 0x7800!
+            assert len(m_data) <= (0x7800 - 0x5000), "C1 (len=%d, limit=0x%04X) trepitja C0:0x7800 FDC!" % (len(m_data), 0x5000 + len(m_data))
             m_zx, _ = zx0_compress(m_data, classic=True, quick=ZX0_QUICK)
 
             flags = ((1 if lv["has_code"] else 0) | (2 if lv["has_elev"] else 0) |

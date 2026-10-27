@@ -16,9 +16,10 @@
 // s_lv i hi accedeix com a camps (cap cost de codi extra).
 // ============================================================
 
-// ATENCIO: SDCC empaqueta l'struct sense alineacio (sizeof=73). Els offsets
+// ATENCIO: SDCC empaqueta l'struct sense alineacio (sizeof=77). Els offsets
 // dels camps son contractuals amb tools/pack_level.py i tools/build.py:
-// rooms_off=56, trig_off=69, code_exc_off=71. No inserir-hi camps al mig.
+// rooms_off=56, trig_off=69, code_exc_off=71, hud_off=73, gameover_off=75.
+// No inserir-hi camps al mig.
 typedef struct {
     u8  magic;
     u8  version;
@@ -59,6 +60,8 @@ typedef struct {
     u8  room_row_last;  // room_row0 + room_rows - 1 (terra de la sala)
     u16 trig_off;       // adreca del TRIG compacte (5 B/entrada) a C5
     u16 code_exc_off;   // adreca del codi d'excepcions del nivell (C1)
+    u16 hud_off;        // adreca de les tires del HUD (C1)
+    u16 gameover_off;   // adreca del banner GAME OVER (C1)
 } LevelParams;
 
 extern LevelParams s_lv;

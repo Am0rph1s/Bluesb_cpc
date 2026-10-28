@@ -1,8 +1,8 @@
 # Handoff Global — Blues Brothers CPC (Estat Actual i Guia de Continuació)
 
 > **Document unificat de referència per reprendre el desenvolupament**  
-> **Data d'actualització**: 25 d'octubre de 2026  
-> **Branques / Repo**: `master` (`7ca5c14`) a `https://github.com/Am0rph1s/Bluesb_cpc`  
+> **Data d'actualització**: 28 d'octubre de 2026  
+> **Branques / Repo**: `fix-c1-l3-unlock` (`127e306`) a `https://github.com/Am0rph1s/Bluesb_cpc`  
 > **Target**: Amstrad CPC 6128 (128 KB RAM) — Z80, Mode 0 (16 colors), SDCC 4.5.0 + sdasz80, build amb Python 3.
 
 ---
@@ -56,8 +56,10 @@ py -3 tools/smoke_test.py --skip-run      # Valida sectors DSK, CRCs i arrencada
 +---------------------------------------------------------------------------------+
 | FINESTRA BANCADA (0x4000..0x7FFF) commutada via 0x7F00                          |
 |                                                                                 |
-|  Banc C1 (0x5000..0x7FFF): Àudio + Mecanismes del nivell                        |
+|  Banc C1 (0x4000..0x7FFF): Àudio + HUD + Mecanismes del nivell                  |
 |    - 0x4000..0x4C00: Player àudio AKG (només starter/player)                    |
+|    - 0x4C10..0x4FA5: HUD blitter ASM (src/hud_bank.c, mogut de resident)       |
+|    - 0x4FA8..0x4FE1: _DATA de HUD (src/hud_bank.c)                              |
 |    - 0x5000..0x5FFF: Cançó del nivell + GAMEOVER (0x5800)                      |
 |    - 0x6000..0x63FF: Tires de renderització HUD Mode 0                          |
 |    - 0x6900..0x6948: LevelParams (73 B, struct v2)                              |
@@ -110,7 +112,22 @@ py -3 tools/smoke_test.py --skip-run      # Valida sectors DSK, CRCs i arrencada
 
 ---
 
-## 5. Taula de Paràmetres del Nivell (`LevelParams` v2, 73 bytes)
+## 5. Rendiment i Optimització del Framerate (Octubre 2026)
+
+- **Estat del motor**: Sòlid a **25 Hz** (40 ms / 2 VSYNCs) tant en repòs com en **scroll horitzontal**.
+- **Fase 1 (Completada - Commit `127e306`)**:
+  - `_hud_blit_col` i el bucle de redibuix del HUD s'han mogut del resident al Banc C1 (`src/hud_bank.c`) i reescrits en ASM directe (Mode 0, càlcul incremental de VRAM amb màscara wrap 2 KB).
+  - Ha recuperat **388 línies de raster d'espera VSYNC** durant el scroll horitzontal.
+  - Ha alliberat memòria resident a `_CODE`: el marge puja a **168 bytes lliures** (`0x0100..0x37D8`, sostre `0x3880`).
+- **Fases 2 i 3 (Pausades / Documentades)**:
+  - *Fase 2 (Render ràpid de tiles)*: Reordenació del tileset a la càrrega del nivell + blit via `POP`.
+  - *Fase 3 (Còpia front->back en caiguda / Split CRTC)*: Queda descartada a curt termini per la complexitat dels sprites superposats i sincronització de raster; només es reconsideraria si la caiguda vertical impactés el gameplay.
+- **Sincronització d'habitacions**:
+  - Les habitacions interiors corren a **25 Hz exactes** (2 VSYNCs obligatoris a `src/main.c`). La sensació de rapidesa és deguda a la càmera immòbil en pantalla de 40 caràcters i física 1:1 de DOS.
+
+---
+
+## 6. Taula de Paràmetres del Nivell (`LevelParams` v2, 73 bytes)
 
 Ubicada a `C1:0x6900` al paquet i copiada a `s_lv` a RAM resident:
 - Offset 34: `start_px` (i16), Offset 36: `start_py` (i16)
@@ -123,7 +140,7 @@ Ubicada a `C1:0x6900` al paquet i copiada a `s_lv` a RAM resident:
 
 ---
 
-## 6. Llista de Documents de Suport
+## 7. Llista de Documents de Suport
 
 - [`docs/DOS_CPC_COORDINATES.md`](file:///C:/Projects/bluesb_cpc/docs/DOS_CPC_COORDINATES.md): Fórmules de conversió de coordenades 1:1.
 - [`docs/PLA_NIVELLS_UNIVERSAL.md`](file:///C:/Projects/bluesb_cpc/docs/PLA_NIVELLS_UNIVERSAL.md): Pla d'extensió universal als 6 nivells.

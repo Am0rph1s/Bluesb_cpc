@@ -17,7 +17,7 @@
    - Mai ajustar valors a ull ni per intuïció. Per a coordenades, utilitzar la fórmula oficial:
      `cpc_x = dos_x / 2 - w_cpc / 2`, `cpc_y = dos_y - h_dos` (`docs/DOS_CPC_COORDINATES.md`).
 2. **Pressupost de memòria resident (Bloc 0: `0x0000..0x3FFF`)**:
-   - `_CODE`: `0x0100..0x3701` (**14.081 B**), amb **127 B** de marge fins a `_DATA` (`0x3880`).
+   - `_CODE`: `0x0100..0x3826` (**14.118 B**), amb **90 B** de marge fins a `_DATA` (`0x3880`).
    - `_DATA`: `0x3880..0x3CDE` (1.108 B, inclou `s_lv`). Pila lliure: ~800 B.
    - Qualsevol lògica nova no trivial s'ha de compilar en bancs superiors (C1, C4-C7), mai al resident.
 3. **Regla de commutació de maquinari**:
@@ -61,7 +61,7 @@ Són només per a depuració i no afecten el flux normal.
 ```
 +---------------------------------------------------------------------------------+
 | BLOC 0 (Resident 0x0000..0x3FFF, sempre mapejat a RAM 0)                         |
-|  - 0x0100..0x3701: _CODE del resident (motor genèric, vídeo, ISR, blit)          |
+|  - 0x0100..0x3826: _CODE del resident (motor genèric, vídeo, ISR, blit)          |
 |  - 0x3880..0x3CDE: _DATA resident (globals, s_lv, càmera, estat del jugador)     |
 |  - Pila Z80 (SP=0x3FFE)                                                          |
 +---------------------------------------------------------------------------------+
@@ -75,7 +75,7 @@ Són només per a depuració i no afecten el flux normal.
 |    - 0x7680..0x76CC: LevelParams v3 (77 B)                                       |
 |    - 0x7700: _DATA del codi d'excepcions (si n'hi ha)                            |
 |    - 0x7800..0x7BFF: còpia mestra de FDC.BIN (C0:0x7800) — PROHIBIT trepitjar    |
-|    - 0x7C00..0x7F45: LVLCHS copiada per load_level_file                          |
+|    - 0x7C00..0x7F2D: LVLCHS copiada per load_level_file                          |
 |                                                                                 |
 |  Banc C4 (0x4000..0x7FFF): Tileset compactat del nivell                          |
 |  Banc C5 (0x4000..0x7FFF): Món del nivell                                        |
@@ -102,21 +102,21 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
 
 | Nivell | Cançó | HUD | GAMEOVER | Portes | Restore | Codi exc. | Frames | BG | Params | Mida PAK |
 |---|---|---|---|---|---|---|---|---|---|---|
-| L1 | 0x5000 (1.619) | 0x5658 | 0x5A00 | 0x5F50 | 0x5FB0 | 0x5FE8 (1.135 B) | 0x6900 | 0x6D00 | 0x7680 | 13.331 B |
-| L2 | 0x5000 (2.721) | 0x5AA8 | 0x5E50 | 0x63A0 | 0x63A0 | 0x63A8 (1.135 B) | 0x6900 (PRESS 792 B) | 0x6D00 | 0x7680 | 13.249 B |
-| L3 | 0x5000 (4.670) | 0x6240 | 0x65E8 | 0x6B38 | 0x6B98 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 14.268 B |
+| L1 | 0x5000 (1.619) | 0x5658 | 0x5A00 | 0x5F50 | 0x5FB0 | 0x5FE8 (1.135 B) | 0x6900 | 0x6D00 | 0x7680 | 13.427 B |
+| L2 | 0x5000 (2.721) | 0x5AA8 | 0x5E50 | 0x63A0 | 0x63A0 | 0x63A8 (1.135 B) | 0x6900 (PRESS 792 B) | 0x6D00 | 0x7680 | 13.357 B |
+| L3 | 0x5000 (4.670) | 0x6240 | 0x65E8 | 0x6B38 | 0x6B98 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 14.051 B |
 
 - L3 **no porta codi d'excepcions**: no té ascensors ni premses encara. Això és el que fa que
-  `L3WORLD.PAK` càpiga a l'scratch (14.268 B de 14.560 B; **292 B de marge**).
+  `L3WORLD.PAK` càpiga en 28 sectors (14.051 B; **157 B de marge** sobre el límit de 14.208 B).
 - Si mai s'hi afegeix codi de mecanismes a L3, caldrà comprimir més o fer split de C1.
 
 ### 3.2 Pressupost C5 (mapa + sales + TRIG5 + codi del món)
 
 | Nivell | Mapa | Sales | TRIG5 | Codi | Total | Lliures |
 |---|---|---|---|---|---|---|
-| L1 | 9.216 | 1.000 | 1.195 | 4.428 | 15.839 | **545** |
-| L2 | 9.216 | 0 | 1.025 | 4.364 | 14.605 | 1.779 |
-| L3 | 9.216 | 1.200 | 1.065 | 3.044 | 14.525 | 1.859 |
+| L1 | 9.216 | 1.000 | 1.195 | 4.580 | 15.991 | **393** |
+| L2 | 9.216 | 0 | 1.025 | 4.516 | 14.757 | 1.627 |
+| L3 | 9.216 | 1.200 | 1.065 | 3.196 | 14.677 | 1.707 |
 
 ### 3.3 C6 (enemics)
 
@@ -149,7 +149,7 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
   3. Fidelitat fina d'animacions i tipus 22 com a objecte mòbil independent.
 
 ### Nivell 3 (`prison`) — **INTEGRAT I CARREGANT**
-- Afegit a `LEVELS` i `DATA_FILES`: `L3WORLD.PAK` (14.268 B) i `L3ENEMI.ZX0` (6.588 B).
+- Afegit a `LEVELS` i `DATA_FILES`: `L3WORLD.PAK` (14.051 B) i `L3ENEMI.ZX0` (6.676 B).
 - `pack_level.py 2 --outdir obj/lvl2` regenera tileset/mapa/sales/TRIG/restore/params.
 - Xarxa de C1 variable: Theme2 (4.670 B), HUD, GAMEOVER, 24 portes i restore de 6 sales.
 - **Verificat en emulador** (drecera `3`): `magic=0xB0`, `level_id=2`, `g_map_level=2`,
@@ -174,7 +174,7 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
 - **Fase 1 (Completada - commit `127e306`)**:
   - `_hud_blit_col` i el bucle de redibuix del HUD s'han mogut del resident al Banc C1 (`src/hud_bank.c`) i reescrits en ASM directe (Mode 0, càlcul incremental de VRAM amb màscara wrap 2 KB).
   - Ha recuperat **388 línies de raster d'espera VSYNC** durant el scroll horitzontal.
-  - Actualment `_CODE` acaba a `0x3701` (14.081 B), amb **127 B** de marge.
+  - Actualment `_CODE` acaba a `0x3826` (14.118 B), amb **90 B** de marge.
 - **Fases 2 i 3 (Pausades / Documentades)**:
   - *Fase 2 (Render ràpid de tiles)*: reordenació del tileset a la càrrega del nivell + blit via `POP`.
   - *Fase 3 (Còpia front->back en caiguda / Split CRTC)*: descartada a curt termini per complexitat de sprites superposats i sincronització de raster.
@@ -205,8 +205,11 @@ Ubicada a `C1:0x7680` al paquet i copiada a `s_lv` a RAM resident:
 ## 7. Peculiaritats conegudes (no repetir errors)
 
 - **MUSBANK.BIN** (`C1:0x4000`): el player AKG comença a `0x4009`; **mai** escriure-hi taules.
-  `LVLCHS` (838 B) viu a l'offset `0x1D00` (`C1:0x5D00`) i es copia a `C1:0x7C00..0x7F45`
-  en carregar el primer nivell. Pool: WORLD 60 B (30 sectors), ENEMI 32 B, C1 32 B per nivell.
+  `LVLCHS` (814 B) viu a l'offset `0x1D00` (`C1:0x5D00`) i es copia a `C1:0x7C00..0x7F2D`
+  en carregar el primer nivell. Pool: WORLD 56 B (28 sectors), ENEMI 32 B, C1 32 B per nivell.
+- **Límit del paquet**: 28 sectors AMSDOS = 14.336 B en disc (14.208 B de payload).
+  El FDC els llegeix sencers a l'scratch `0x8320..0xBBFF` (14.560 B); un paquet de 30
+  sectors (15.360 B) desborda l'scratch i corromp la imatge. Els asserts del build ho bloquegen.
 - **FDC mestre** a `C0:0x7800` (785 B). Cap imatge de C1 pot arribar-hi: el build ho asserta.
 - **`0xC0`/`0xC1` comparteixen RAM** a `0x4000..0x7FFF`; només canvia què es veu a `0xC000..0xFFFF`.
 - **Codi bancat**:

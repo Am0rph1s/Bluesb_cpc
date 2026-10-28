@@ -1225,9 +1225,9 @@ def build_music(force):
     if not os.path.exists(ext_hud) or open(ext_hud).read() != ext_hud_txt:
         open(ext_hud, "w").write(ext_hud_txt)
 
-    # MUSBANK = player + HUD/GAMEOVER + pad fins slot + intro + pad fins 0x1D00 + LVLCHS (838 B).
+    # MUSBANK = player + HUD/GAMEOVER + pad fins slot + intro + pad fins 0x1D00 + LVLCHS (814 B).
     LVLCHS_MB_OFF = 0x1D00
-    LVLCHS_LEN = 838
+    LVLCHS_LEN = 814
     mbin = os.path.join(obj, "MUSBANK.BIN")
     pdata = open(pbin, "rb").read()
     idata = open(songs["intro"][0], "rb").read()
@@ -1663,7 +1663,7 @@ PAK_MAGIC       = 0x42
 PAK_VERSION     = 1
 PAK_HDR         = 16
 PAK_DESC        = 8
-PAK_SCRATCH_MAX = 0xBC00 - 0x8320      # 14.560 B: limit del carregador FDC
+PAK_SCRATCH_MAX = (28 * 512) - 128    # 14.208 B: 28 sectors; el FDC en llegeix 14.336 B dins l'scratch de 14.560 B
 # ATENCIO: SDCC empaqueta LevelParams sense alineacio (room_row_last=68,
 # trig_off=69, code_exc_off=71; sizeof=73). Els offsets ho han de reflectir.
 LVLPARM_SIZE    = 77                   # mida de LEVELPARMn.BIN (LevelParams v3)
@@ -1771,7 +1771,10 @@ def build_level_packages(force=False):
 
         if force or is_stale(world_dst, srcs):
             t_raw = open(tiles_src, "rb").read()
-            t_zx, _ = zx0_compress(bytes(t_raw), classic=True, quick=ZX0_QUICK)
+            # L3: els tiles comprimeixen 321 B mes amb quick=False; cal per
+            # cabre en 28 sectors (el FDC nomes pot llegir 14.336 B a l'scratch).
+            t_zx, _ = zx0_compress(bytes(t_raw), classic=True,
+                                   quick=ZX0_QUICK if lv["id"] != 2 else False)
 
             # C5 (Fase 3.2): [mapa][sales][TRIG compacte] ... [codi del mon].
             # Tres seccions independents: el codi queda a BANK5_BASE (0x6E00)
@@ -1907,27 +1910,27 @@ def package(starter_path, starter_start, game_path):
 
     # Taula de disc dels nivells (C1:0x4000 de MUSBANK). 6 nivells x (WORLD, ENEMI, C1).
     # Format: "LV", 1, 6 + 18 x <u16 ondisk, u8 sectors, u16 crc> (94 B)
-    # + pool [6 nivells][WORLD 60 B (30 sec)][ENEMI 32 B (16 sec)][C1 32 B (16 sec)] = 744 B
-    # Total = 838 B incrustats a C1:0x4000 dins MUSBANK.BIN abans de la canco intro (0x5000).
+    # + pool [6 nivells][WORLD 56 B (28 sec)][ENEMI 32 B (16 sec)][C1 32 B (16 sec)] = 720 B
+    # Total = 814 B incrustats a C1:0x4000 dins MUSBANK.BIN abans de la canco intro (0x5000).
     lvl_payload = bytearray(b"LV\x01\x06")
-    lvl_pool = bytearray(6 * (60 + 32 + 32))
+    lvl_pool = bytearray(6 * (56 + 32 + 32))
     for lvl in range(6):
-        for typ, suffix, max_sec, stride in ((0, "WORLD", 30, 60), (1, "ENEMI", 16, 32), (2, "C1", 16, 32)):
+        for typ, suffix, max_sec, stride in ((0, "WORLD", 28, 56), (1, "ENEMI", 16, 32), (2, "C1", 16, 32)):
             name = "L%d%s" % (lvl + 1, suffix)
             if name in chs_map:
                 obytes, scount, chs, lcrc = chs_map[name]
                 assert scount <= max_sec, (name, scount, max_sec)
                 lvl_payload += struct.pack("<HBH", obytes, scount, lcrc)
-                off = lvl * (60 + 32 + 32) + (0 if typ == 0 else (60 if typ == 1 else 92))
+                off = lvl * (56 + 32 + 32) + (0 if typ == 0 else (56 if typ == 1 else 88))
                 lvl_pool[off:off + len(chs)] = bytes(chs)
             else:
                 lvl_payload += struct.pack("<HBH", 0, 0, 0)
     lvl_payload += lvl_pool
-    assert len(lvl_payload) == 838, len(lvl_payload)
+    assert len(lvl_payload) == 814, len(lvl_payload)
 
     # Incrustar LVLCHS a MUSBANK.BIN a offset 0x1D00 (C1:0x5D00, despres de song_intro)
     # sense trepitjar player_akg (0x4000..0x4C00), hud_bank (0x4C10..0x4FA0) ni song_intro (0x5000..0x5C12).
-    # En arrencar el primer nivell, load_level_file el copia a C1:0x7C00..0x7F45 (zona permanent lliure).
+    # En arrencar el primer nivell, load_level_file el copia a C1:0x7C00..0x7F2D (zona permanent lliure).
     LVLCHS_MB_OFF = 0x1D00
     obj_dir = os.path.join(PROJ, "obj")
     mbin_path = os.path.join(obj_dir, "MUSBANK.BIN")

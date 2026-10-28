@@ -672,8 +672,11 @@ void en2_check_player_hit(void) {
     for (i = 0; i < ENEMY_N; i++, e++) {
         if (e->dead) continue;
         if (en2_collide_class(s_spawn[i].kind) != 2) continue;
+        // 50 era massa generic: la rata de L3 (level_obj_h[6]=10) tocava Jake
+        // quan aquest era una fila mes amunt (taula). Amb 38 cal que les
+        // caixes es toquin de veritat.
         if ((u16)(e->x - px + 6) < 16 &&
-            (u16)((e->y8 >> 3) - py + 24) < 50) {
+            (u16)((e->y8 >> 3) - py + 24) < 38) {
             bc_r = 1;
             return;
         }

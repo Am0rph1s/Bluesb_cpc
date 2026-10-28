@@ -517,6 +517,14 @@ void moving_bank_update(void) {
 
     col = (u8)((px + 8) >> 3);
     row = (u8)((py + PH - 1) >> 4);
+    // DOS op30 i op36..39 posen unk2D=2 (acceleracio 2 en lloc de 10):
+    // gel i terra mullat de les dutxes es comporten igual. op32..35 son
+    // rampes (unk2D=0, lliscament propi) i no entren aqui.
+    {
+        const u8* fp = b5_trig_ptr(col, row);
+        u8 op = fp ? fp[2] : 255;
+        g_on_ice = (op == 30 || (op >= 36 && op <= 39)) ? 1 : 0;
+    }
 
     // --- TUBERIA (op 17/18/19): 1:1 DOS trigger_func_op17/18/19 (tiles.c) ---
     // El trigger s'aplica al tile on es troba el jugador (columna del centre,

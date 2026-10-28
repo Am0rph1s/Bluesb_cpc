@@ -102,8 +102,8 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
 
 | Nivell | Cançó | HUD | GAMEOVER | Portes | Restore | Codi exc. | Frames | BG | Params | Mida PAK |
 |---|---|---|---|---|---|---|---|---|---|---|
-| L1 | 0x5000 (1.619) | 0x5658 | 0x5A00 | 0x5F50 | 0x5FB0 | 0x5FE8 (1.135 B) | 0x6900 | 0x6D00 | 0x7680 | 13.427 B |
-| L2 | 0x5000 (2.721) | 0x5AA8 | 0x5E50 | 0x63A0 | 0x63A0 | 0x63A8 (1.135 B) | 0x6900 (PRESS 792 B) | 0x6D00 | 0x7680 | 13.357 B |
+| L1 | 0x5000 (1.619) | 0x5658 | 0x5A00 | 0x5F50 | 0x5FB0 | 0x5FE8 (1.135 B) | 0x6900 | 0x6D00 | 0x7680 | 13.401 B |
+| L2 | 0x5000 (2.721) | 0x5AA8 | 0x5E50 | 0x63A0 | 0x63A0 | 0x63A8 (1.135 B) | 0x6900 (PRESS 792 B) | 0x6D00 | 0x7680 | 13.284 B |
 | L3 | 0x5000 (4.670) | 0x6240 | 0x65E8 | 0x6B38 | 0x6B98 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 11.295 + 3.520 B |
 
 - L3 **no porta codi d'excepcions**: no té ascensors ni premses encara. Això és el que fa que
@@ -114,9 +114,9 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
 
 | Nivell | Mapa | Sales | TRIG5 | Codi | Total | Lliures |
 |---|---|---|---|---|---|---|
-| L1 | 9.216 | 1.000 | 1.195 | 4.580 | 15.991 | **393** |
-| L2 | 9.216 | 0 | 1.025 | 4.516 | 14.757 | 1.627 |
-| L3 | 9.216 | 1.200 | 1.065 | 4.450 | 15.931 | 453 |
+| L1 | 9.216 | 1.000 | 1.195 | 4.532 | 15.943 | **441** |
+| L2 | 9.216 | 0 | 1.025 | 4.364 | 14.605 | 1.779 |
+| L3 | 9.216 | 1.200 | 1.065 | 4.338 | 15.819 | 565 |
 
 ### 3.3 C6 (enemics)
 

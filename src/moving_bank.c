@@ -576,20 +576,11 @@ void moving_bank_update(void) {
     // DOS level.c do_level_fixup_object_unkA: type 6 i 7 son tots dos
     // escalables (sprite_type 3 i 2). El 7 alinea l'X al centre del tile;
     // el 6 NO, i per tant s'hi pot entrar/sortir pels costats (L3).
+    // DOS level.c do_level_fixup_object_unkA: l'escala/reixa nomes s'activa
+    // quan el tile dels PEUS es 7/6. No n'hi ha prou que el cap o el cos en
+    // toquin una: si hi ha una escala sota una altra, el Jake ha de poder
+    // caminar i saltar normalment fins que hi entra amb els peus.
     tt = b5_tile_type(col, row);
-    // Prioritat absoluta a l'escala/reixa sobre l'aigua si qualsevol part
-    // del cos en toca una.
-    if (tt != 7 && tt != 6) {
-        if (b5_tile_type(col, (u8)((py + 8) >> 4)) == 7 ||
-            b5_tile_type(col, (u8)((py + 20) >> 4)) == 7 ||
-            b5_tile_type(col, (u8)((py + PH) >> 4)) == 7) {
-            tt = 7;
-        } else if (b5_tile_type(col, (u8)((py + 8) >> 4)) == 6 ||
-                   b5_tile_type(col, (u8)((py + 20) >> 4)) == 6 ||
-                   b5_tile_type(col, (u8)((py + PH) >> 4)) == 6) {
-            tt = 6;
-        }
-    }
     if (tt == 6 || tt == 7 || tt == 11) {
         climbing = (tt == 11) ? 2 : 1;
         s_climb_t6 = (tt == 6);

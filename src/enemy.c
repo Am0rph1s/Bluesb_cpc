@@ -185,6 +185,8 @@ static const Spawn s_spawn[ENEMY_N] = {
     { 624,  768 << 3, 20, 24, 11 , 14, 15 }, // 17: Rocker 2 (2n pis dreta) [slot 15]
     {  72,  464 << 3, 20, 24, 11 , 14, 15 }, // 18: Rocker 3 (prop Bar/Restaurant) [slot 9]
     { 584,  720 << 3, 20, 24, 11 , 14, 15 }, // 19: Rocker 4 (2n pis) [slot 13]
+    { -1000, 0, 19, 0, 5, 14, 15 }, // inactiu (ENEMY_N=22)
+    { -1000, 0, 19, 0, 5, 14, 15 }, // inactiu (ENEMY_N=22)
 };
 #else
 #include "enemy_spawn.h"
@@ -403,13 +405,24 @@ void en2_update(void) {
                 u8 c2row = (u8)((y + ENEMY_HT - 2) >> 4);
                 u16 ccol = (u16)((e->x + 8) >> 3);          // centre = xpos16
                 u16 pcol = (u16)(ccol + (e->dir > 0 ? 2 : -2));
-                u16 acol = (u16)((nx + (e->dir > 0 ? 12 : 2)) >> 3);
+                // Vora de davant de l'sprite (16 px): no nomes un punt interior.
+                // Amb +12/+2 el cos s'encastava 2-3 px dins les parets i podia
+                // travessar oques estretes (reixat de L3).
+                u16 acol = (u16)((nx + (e->dir > 0 ? ENEMY_W - 1 : 0)) >> 3);
                 u8 bit = (u8)(e->dir > 0 ? 1 : 2);
                 // op7 (llançador de L2): al DOS gira quan el tile DAVANT es
                 // de tipus 12 (no pas aire com a op0/op8).
                 u8 hit12 = (sp->kind == 21) &&
                     (tile_type(pcol, frow) == 12 || tile_type(pcol, brow) == 12);
+                // Parets per op de plataforma (is_floor_solid amb vy<0): el
+                // cos sencer (cap, mig i peus-1/peus-2) no pot entrar en un
+                // tile solid, tant si el flag de paret es 0 com si no.
+                u8 hrow = (u8)((y + 8) >> 4);
+                u8 solid_side = is_floor_solid(acol, brow, -1, 0) ||
+                    is_floor_solid(acol, c2row, -1, 0) ||
+                    is_floor_solid(acol, hrow, -1, 0);
                 if (hit12 || tile_type(pcol, frow) == 1 || tile_type(pcol, brow) == 1 ||
+                    solid_side ||
                     (tile_flags(acol, brow) & bit) ||
                     (tile_flags(acol, c2row) & bit)) {
 e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)

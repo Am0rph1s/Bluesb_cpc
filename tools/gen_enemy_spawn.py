@@ -12,10 +12,12 @@ Nomes es converteixen els tipus que el motor C6 pot tractar:
     El tipus 22 (premsa hidràulica, op11) queda fora: és un objecte mòbil
     vertical de 37 px i va en un subsistema propi.
   L3:
-    type 3  -> policia (kind 4, op2): walk 0/1, tret 2
+    type 3  -> guardia amb escut (kind 18, op2 sense tret): patrulla contínua,
+               walk 0/1 (no dispara ni s'atura)
+    type 4  -> policia amb pistola (kind 4, op3): estàtic, es gira cap a Jake
+               i dispara quan és a prop (cela 5, tret 6)
     type 6  -> gos     (kind 18, op1): walk 13/14 (celes de gen_enemy3_frames)
-    El tipus 4 (op3, llançador) encara no té comportament 1:1 implementat i
-    queda fora; els tipus 5/23 (op4/op11) son movers, no walkers de C6.
+    Els tipus 5/23 (op4/op11) son movers, no walkers de C6.
 
 Us:
   py -3 tools/gen_enemy_spawn.py --level 1 --out obj/lvl1/enemy_spawn.h
@@ -41,7 +43,8 @@ SPAWN_TYPES = {
     14: (17, 20, 7, 9, 9),   # op10
     21: (17, 20, 10, 12, 12),  # op10
     # L3 (vegeu tools/gen_enemy3_frames.py per a les celes)
-    3: (4, 24, 0, 2, 2),     # policia op2 (xmaxvelocity 24)
+    3: (18, 24, 0, 0, 0),    # guardia amb escut: patrulla sense tret (op2)
+    4: (4, 0, 5, 6, 6),      # policia amb pistola: estatic, dispara (op3)
     6: (18, 24, 13, 13, 13),  # gos op1 (walk cells 13/14)
 }
 
@@ -80,8 +83,8 @@ def generate(level_idx, out_path):
         lines.append("    { %d, %d << 3, %d, %d, %d, %d, %d }, "
                      "// slot %d type 0x%02X" %
                      (x, y, kind, vx, base, aim, throw, slot, t))
-    # ENEMY_N es 20; la resta queden fora de pantalla i no es dibuixen.
-    for i in range(n, 20):
+    # ENEMY_N es 22; la resta queden fora de pantalla i no es dibuixen.
+    for i in range(n, 22):
         lines.append("    { -1000, 0, 19, 0, 5, 14, 15 }, // inactiu")
     lines.append("};")
     lines.append("#endif")

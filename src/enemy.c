@@ -218,10 +218,10 @@ void en2_init(void) {
         e->y8 = sp->y8;
         e->dir = (sp->vx == 0) ? -1 : 1;
         e->vy = 0;
-        // El tipus 22 (estatic, tipus 11 de L2) ha de CAURE al terra: no neix
-        // flotant com els altres estatics (vx == 0).
-        e->on_ground = (sp->kind == 8 || sp->kind == 19 || sp->kind == 17 ||
-                        (sp->vx == 0 && sp->kind != 22)) ? 1 : 0;
+        // Els estatics tambe han de CAURE al terra (DOS: tots els objectes
+        // tenen yacc=2). El tipus 4 amb vx=0 (pistola de L3) naixia flotant
+        // i podia quedar encastat dins un mur.
+        e->on_ground = (sp->kind == 8 || sp->kind == 19 || sp->kind == 17) ? 1 : 0;
         e->tick = 0;
         e->shoot_timer = 0;
         e->dead = 0;
@@ -434,9 +434,9 @@ e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
             y = en2_fall(e, y);
         }
 
-        // Tipus 11 de L2: op7 NO te case al switch del DOS (default) -> l'objecte
-        // no es mou ni mira el jugador, pero ha de caure al terra (gravetat).
-        if (sp->kind == 22) {
+        // Estatics sense moviment X: op7 sense case (tipus 11 de L2) i el
+        // pistoler op3 (kind 4, vx=0) han de caure al terra (DOS yacc=2).
+        if (sp->kind == 22 || (sp->kind == 4 && sp->vx == 0)) {
             y = en2_fall(e, y);
         }
 

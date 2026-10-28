@@ -165,6 +165,8 @@ DATA_FILES = [
     ("L1ENEMI", "ZX0", os.path.join(PROJ, "obj", "L1ENEMI.ZX0")),
     ("L2WORLD", "PAK", os.path.join(PROJ, "obj", "L2WORLD.PAK")),
     ("L2ENEMI", "ZX0", os.path.join(PROJ, "obj", "L2ENEMI.ZX0")),
+    ("L3WORLD", "PAK", os.path.join(PROJ, "obj", "L3WORLD.PAK")),
+    ("L3ENEMI", "ZX0", os.path.join(PROJ, "obj", "L3ENEMI.ZX0")),
 ]
 
 
@@ -606,8 +608,13 @@ def build_levelcode(force, level_idx=None):
     map_path = os.path.join(obj, "levelcode%s.map" % suffix)
     code_s, code_l = map_area(map_path, "CODE")
     data_s, data_l = map_area(map_path, "DATA")
-    if code_s is not None and (code_s + code_l) > LC1_FRAMES_BASE:
-        print("\n[FATAL] El codi del nivell (Banc 1) arriba als frames!")
+    # Limit del codi: si el nivell te frames de mecanismes (ascensors/premses)
+    # no pot arribar a LC1_FRAMES_BASE; si no en te (L3), pot arribar fins als
+    # parametres de C1:0x7680.
+    lv_cfg = next((x for x in LEVELS if x["id"] == (0 if level_idx is None else level_idx)), None)
+    code_limit = LC1_FRAMES_BASE if (lv_cfg is None or lv_cfg["has_elev"]) else LC1_PARAMS_BASE
+    if code_s is not None and (code_s + code_l) > code_limit:
+        print("\n[FATAL] El codi del nivell (Banc 1) arriba al limit 0x%04X!" % code_limit)
         sys.exit(1)
     if data_s is not None and (data_s + data_l) > 0x7780:
         print("\n[FATAL] Les dades del codi del nivell (Banc 1) no hi caben!")
@@ -670,11 +677,12 @@ def build_enemybank(force, level_idx=None):
         _sync(hdr_src, hdr)
         spawn_h = os.path.join(vdir, "enemy_spawn.h")
         spawn_src = os.path.join(PROJ, "tools", "blues_dos", "bb", "staticres.c")
+        spawn_gen = os.path.join(HERE, "gen_enemy_spawn.py")
         if os.path.basename(vdir) != "lvl0":
-            if force or is_stale(spawn_h, [spawn_src]):
-                run([sys.executable, os.path.join(HERE, "gen_enemy_spawn.py"),
+            if force or is_stale(spawn_h, [spawn_src, spawn_gen]):
+                run([sys.executable, spawn_gen,
                      "--level", str(level_idx), "--out", spawn_h])
-                mark_fresh(spawn_h, [spawn_src])
+                mark_fresh(spawn_h, [spawn_src, spawn_gen])
         rel = os.path.join(vdir, "enemy.rel")
         headers = [hdr] + [os.path.join(PROJ, name) for name in ENEMY_C_HEADERS["src/enemy.c"]]
         if os.path.basename(vdir) != "lvl0":
@@ -722,6 +730,12 @@ def build_enemybank(force, level_idx=None):
         if force or is_stale(frames_path, [gen2, sqv2]):
             run([sys.executable, gen2])
             mark_fresh(frames_path, [gen2, sqv2])
+    if level_idx == 2:
+        gen3 = os.path.join(PROJ, "tools", "gen_enemy3_frames.py")
+        sqv3 = os.path.join(PROJ, "assets", "bbdata", "ENEMI3.SQV")
+        if force or is_stale(frames_path, [gen3, sqv3]):
+            run([sys.executable, gen3])
+            mark_fresh(frames_path, [gen3, sqv3])
     frames = open(frames_path, "rb").read()
     code = open(code_path, "rb").read()
     assert len(frames) % 512 == 0 and len(frames) // 512 >= 14, len(frames)
@@ -1211,9 +1225,9 @@ def build_music(force):
     if not os.path.exists(ext_hud) or open(ext_hud).read() != ext_hud_txt:
         open(ext_hud, "w").write(ext_hud_txt)
 
-    # MUSBANK = player + HUD/GAMEOVER + pad fins slot + intro + pad fins 0x1D00 + LVLCHS (814 B).
+    # MUSBANK = player + HUD/GAMEOVER + pad fins slot + intro + pad fins 0x1D00 + LVLCHS (838 B).
     LVLCHS_MB_OFF = 0x1D00
-    LVLCHS_LEN = 814
+    LVLCHS_LEN = 838
     mbin = os.path.join(obj, "MUSBANK.BIN")
     pdata = open(pbin, "rb").read()
     idata = open(songs["intro"][0], "rb").read()
@@ -1667,6 +1681,11 @@ LEVELS = [
          has_rooms=True),
     dict(id=1, tag="L2", song="theme1", doors=0, has_code=True, has_elev=True,
          has_rooms=False),
+    # L3 prison: Theme2 (4.670 B) obliga a layout C1 variable; no te ascensors
+    # ni premses (has_elev=False) ni mecanismes propis encara (has_code=False),
+    # pero si 6 sales i 24 portes. Aixi el paquet cap a l'scratch de 14.560 B.
+    dict(id=2, tag="L3", song="theme2", doors=24, has_code=False, has_elev=False,
+         has_rooms=True),
 ]
 
 
@@ -1794,16 +1813,20 @@ def build_level_packages(force=False):
             if lv["has_code"]:
                 m_data += bytes(code_base - 0x5000 - len(m_data))
                 m_data += open(code_src, "rb").read()
-                assert len(m_data) <= (LC1_FRAMES_BASE - 0x5000), len(m_data)
                 if lv["has_elev"]:
+                    assert len(m_data) <= (LC1_FRAMES_BASE - 0x5000), len(m_data)
                     m_data += bytes(LC1_FRAMES_BASE - 0x5000 - len(m_data))
                     m_data += open(elev_src, "rb").read()
+                else:
+                    # Sense frames de mecanismes: el codi pot arribar fins als
+                    # parametres (p. ex. L3, Theme2 + codi a 0x6BA0).
+                    assert len(m_data) <= (LC1_PARAMS_BASE - 0x5000), len(m_data)
             # Parametres sempre a C1:0x7680 (blindat < 0x7800 per no tocar FDC mestre a C0:0x7800)
             m_data += bytes(LC1_PARAMS_BASE - 0x5000 - len(m_data))
             parm = bytearray(open(parm_src, "rb").read())
             assert len(parm) == LVLPARM_SIZE, len(parm)
             for fld, val in ((LVLPARM_ROOMS, rooms_off), (LVLPARM_TRIG, trig_off),
-                             (LVLPARM_CODE_EXC, code_base),
+                             (LVLPARM_CODE_EXC, code_base if lv["has_code"] else 0),
                              (LVLPARM_HUD, lay["hud_off"]),
                              (LVLPARM_GAMEOVER, lay["gameover_off"]),
                              (LVLPARM_DOORS, lay["doors_off"]),
@@ -1884,27 +1907,27 @@ def package(starter_path, starter_start, game_path):
 
     # Taula de disc dels nivells (C1:0x4000 de MUSBANK). 6 nivells x (WORLD, ENEMI, C1).
     # Format: "LV", 1, 6 + 18 x <u16 ondisk, u8 sectors, u16 crc> (94 B)
-    # + pool [6 nivells][WORLD 56 B (28 sec)][ENEMI 32 B (16 sec)][C1 32 B (16 sec)] = 720 B
-    # Total = 814 B incrustats a C1:0x4000 dins MUSBANK.BIN abans de la canco intro (0x5000).
+    # + pool [6 nivells][WORLD 60 B (30 sec)][ENEMI 32 B (16 sec)][C1 32 B (16 sec)] = 744 B
+    # Total = 838 B incrustats a C1:0x4000 dins MUSBANK.BIN abans de la canco intro (0x5000).
     lvl_payload = bytearray(b"LV\x01\x06")
-    lvl_pool = bytearray(6 * (56 + 32 + 32))
+    lvl_pool = bytearray(6 * (60 + 32 + 32))
     for lvl in range(6):
-        for typ, suffix, max_sec, stride in ((0, "WORLD", 28, 56), (1, "ENEMI", 16, 32), (2, "C1", 16, 32)):
+        for typ, suffix, max_sec, stride in ((0, "WORLD", 30, 60), (1, "ENEMI", 16, 32), (2, "C1", 16, 32)):
             name = "L%d%s" % (lvl + 1, suffix)
             if name in chs_map:
                 obytes, scount, chs, lcrc = chs_map[name]
                 assert scount <= max_sec, (name, scount, max_sec)
                 lvl_payload += struct.pack("<HBH", obytes, scount, lcrc)
-                off = lvl * (56 + 32 + 32) + (0 if typ == 0 else (56 if typ == 1 else 88))
+                off = lvl * (60 + 32 + 32) + (0 if typ == 0 else (60 if typ == 1 else 92))
                 lvl_pool[off:off + len(chs)] = bytes(chs)
             else:
                 lvl_payload += struct.pack("<HBH", 0, 0, 0)
     lvl_payload += lvl_pool
-    assert len(lvl_payload) == 814, len(lvl_payload)
+    assert len(lvl_payload) == 838, len(lvl_payload)
 
     # Incrustar LVLCHS a MUSBANK.BIN a offset 0x1D00 (C1:0x5D00, despres de song_intro)
     # sense trepitjar player_akg (0x4000..0x4C00), hud_bank (0x4C10..0x4FA0) ni song_intro (0x5000..0x5C12).
-    # En arrencar el primer nivell, load_level_file el copia a C1:0x7C00..0x7F2D (zona permanent lliure).
+    # En arrencar el primer nivell, load_level_file el copia a C1:0x7C00..0x7F45 (zona permanent lliure).
     LVLCHS_MB_OFF = 0x1D00
     obj_dir = os.path.join(PROJ, "obj")
     mbin_path = os.path.join(obj_dir, "MUSBANK.BIN")
@@ -2047,10 +2070,14 @@ def main():
         game_path, game_start, game_size = compile_and_link(force)
         build_bank(force, 0)  # Banc 5 per nivell
         build_bank(force, 1)
+        build_bank(force, 2)
         build_levelcode(force, 0)  # Banc 1: codi del nivell (ascensors)
         build_levelcode(force, 1)  # Banc 1: codi del nivell (premses)
+        # L3 no porta codi d'excepcions (has_code=False): estalvia ~1,1 KB al
+        # paquet, que es l'únic que no hi cabia a l'scratch de 14.560 B.
         build_enemybank(force, 0)  # Banc C3 (walkers; reutilitza bank_equ.rel)
         build_enemybank(force, 1)
+        build_enemybank(force, 2)
         build_level_bundles(force)  # JAKE / ELWOOD (Banc C7)
         build_level_packages(force)  # LnWORLD.PAK / LnENEMI + GAMEOVER (manifest)
         build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)

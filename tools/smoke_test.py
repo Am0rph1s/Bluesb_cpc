@@ -146,7 +146,7 @@ def check_dsk():
                 ondisk, sec, crc = struct.unpack("<HBH", lv_raw[off:off+5])
                 if sec == 0:
                     continue
-                pool_off = 4 + n_lvl * 3 * 5 + lvl * (56 + 32 + 32) + (0 if typ == 0 else (56 if typ == 1 else 88))
+                pool_off = 4 + n_lvl * 3 * 5 + lvl * (60 + 32 + 32) + (0 if typ == 0 else (60 if typ == 1 else 92))
                 chs_bytes = lv_raw[pool_off:pool_off + sec * 2]
                 chs = list(zip(chs_bytes[0::2], chs_bytes[1::2]))
                 data = bytearray()

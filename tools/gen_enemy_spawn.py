@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""Genera la taula de spawns d'enemics del nivell 2 (ENT) a partir de
+"""Genera la taula de spawns d'enemics d'un nivell (2..6) a partir de
 tools/blues_dos/bb/staticres.c.
 
 Nomes es converteixen els tipus que el motor C6 pot tractar:
-  type 11 -> static  (kind 22): op7 no hi ha case al switch DOS -> no es mou
-  type 12 -> walker  (kind 18, op1): walk 1/2, atac 3
-  type 13 -> llançador (kind 21, op7): walk 4/5, llançament 6
-  type 14 -> walker  (kind 17, op10): walk 7/8, llançament 9
-  type 21 -> walker  (kind 17, op10): walk 10/11, llançament 12
-El tipus 22 (premsa hidràulica, op11) queda fora: és un objecte mòbil
-vertical de 37 px i va en un subsistema propi.
+  L2:
+    type 11 -> static  (kind 22): op7 no hi ha case al switch DOS -> no es mou
+    type 12 -> walker  (kind 18, op1): walk 1/2, atac 3
+    type 13 -> llançador (kind 21, op7): walk 4/5, llançament 6
+    type 14 -> walker  (kind 17, op10): walk 7/8, llançament 9
+    type 21 -> walker  (kind 17, op10): walk 10/11, llançament 12
+    El tipus 22 (premsa hidràulica, op11) queda fora: és un objecte mòbil
+    vertical de 37 px i va en un subsistema propi.
+  L3:
+    type 3  -> policia (kind 4, op2): walk 0/1, tret 2
+    type 6  -> gos     (kind 18, op1): walk 13/14 (celes de gen_enemy3_frames)
+    El tipus 4 (op3, llançador) encara no té comportament 1:1 implementat i
+    queda fora; els tipus 5/23 (op4/op11) son movers, no walkers de C6.
 
 Us:
   py -3 tools/gen_enemy_spawn.py --level 1 --out obj/lvl1/enemy_spawn.h
@@ -34,6 +40,9 @@ SPAWN_TYPES = {
     13: (21, 32, 4, 6, 6),   # llançador op7 (xmaxvelocity 32)
     14: (17, 20, 7, 9, 9),   # op10
     21: (17, 20, 10, 12, 12),  # op10
+    # L3 (vegeu tools/gen_enemy3_frames.py per a les celes)
+    3: (4, 24, 0, 2, 2),     # policia op2 (xmaxvelocity 24)
+    6: (18, 24, 13, 13, 13),  # gos op1 (walk cells 13/14)
 }
 
 

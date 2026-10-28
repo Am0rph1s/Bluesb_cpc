@@ -84,6 +84,8 @@ i16 s_vx, s_vy;
 u8  s_on_ground;
 u8  s_jump_prev;
 u8  s_climb_prev;
+u8  s_climb_t6;    // 1 = l'escala actual es una reixa (tile 6, L3)
+u8  s_crouch_hold; // 1 = ajupit que continua fins poder aixecar-se (DOS unk2E==0)
 u8  s_carry_kind;
 u8  s_grab_prev;
 u8  s_up_prev;
@@ -573,27 +575,36 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
     }
 
     // --- Moviment horitzontal i col·lisió de parets ---
-    if (effective_vx > 0) {
-        u16 next_px = (u16)((s_px8 + effective_vx) >> 3);
-        u16 c_right = (u16)((next_px + 10) >> 3);
-        u8 fl = tile_flags(c_right, (u16)((py + 16) >> 4)) |
-                tile_flags(c_right, (u16)(py >> 4));
-        if (fl & 1) {
-            s_vx = 0;
-            s_px8 = (i16)(((c_right << 3) - 11) * SUB);
-        } else {
-            s_px8 = (i16)(s_px8 + effective_vx);
-        }
-    } else if (effective_vx < 0) {
-        u16 next_px = (u16)((s_px8 + effective_vx) >> 3);
-        u16 c_left  = (u16)((next_px + 1) >> 3);
-        u8 fl = tile_flags(c_left, (u16)((py + 16) >> 4)) |
-                tile_flags(c_left, (u16)(py >> 4));
-        if (fl & 2) {
-            s_vx = 0;
-            s_px8 = (i16)(((c_left << 3) + 8 - 1) * SUB);
-        } else {
-            s_px8 = (i16)(s_px8 + effective_vx);
+    // 1:1 DOS level.c:1770-1833: ajupit (unk2E==0 -> alçada 14) NOMES es
+    // mira la fila de sota el cap; dret (alçada 26) també la de sobre. En CPC
+    // la fila de peus no es pot consultar amb tile_flags (els tiles de terra
+    // porten flags=7); per això s'usa la fila del cap (py+16) i, dret, la de
+    // sobre (py). Això és el que permet passar per forats d'1 tile (L3 row 23).
+    {
+        u16 head_row = (u16)((py + 16) >> 4);
+        u16 top_row = (u16)(py >> 4);
+        if (effective_vx > 0) {
+            u16 next_px = (u16)((s_px8 + effective_vx) >> 3);
+            u16 c_right = (u16)((next_px + 10) >> 3);
+            u8 fl = tile_flags(c_right, head_row);
+            if (!crouch) fl |= tile_flags(c_right, top_row);
+            if (fl & 1) {
+                s_vx = 0;
+                s_px8 = (i16)(((c_right << 3) - 11) * SUB);
+            } else {
+                s_px8 = (i16)(s_px8 + effective_vx);
+            }
+        } else if (effective_vx < 0) {
+            u16 next_px = (u16)((s_px8 + effective_vx) >> 3);
+            u16 c_left  = (u16)((next_px + 1) >> 3);
+            u8 fl = tile_flags(c_left, head_row);
+            if (!crouch) fl |= tile_flags(c_left, top_row);
+            if (fl & 2) {
+                s_vx = 0;
+                s_px8 = (i16)(((c_left << 3) + 8 - 1) * SUB);
+            } else {
+                s_px8 = (i16)(s_px8 + effective_vx);
+            }
         }
     }
     {
@@ -799,12 +810,13 @@ static u8 load_package(const DiskFileDesc* f, u16 crc) {
 // ============================================================
 // Taula de disc dels nivells incrustada a C1:0x4000 (MUSBANK permanent).
 // Format (build.py): "LV", 1, 6 + 18 x <ondisk u16, sectors u8, crc u16>
-// + pool [6][WORLD 56 B][ENEMI 32 B][C1 32 B]. Cap CHS de nivell al resident.
+// + pool [6][WORLD 60 B][ENEMI 32 B][C1 32 B]. Cap CHS de nivell al resident.
 #define LVLCHS_N            6
 #define LVLCHS_POOL_OFF     (4 + LVLCHS_N * 3 * 5)
-#define LVLCHS_LEVEL_STRIDE (56 + 32 + 32)
+#define LVLCHS_LEVEL_STRIDE (60 + 32 + 32)
+#define LVLCHS_LEN          838
 
-static u8 s_chs_buf[56];
+static u8 s_chs_buf[60];
 static DiskFileDesc s_lvl_desc;
 
 static u8 load_level_file(u8 lvl, u8 typ) {
@@ -814,10 +826,10 @@ static u8 load_level_file(u8 lvl, u8 typ) {
     u8 prev, n;
     u16 typ_stride;
     if (lvl >= LVLCHS_N) lvl = LVLCHS_N - 1;
-    typ_stride = (typ == 0) ? 0 : ((typ == 1) ? 56 : 88);
+    typ_stride = (typ == 0) ? 0 : ((typ == 1) ? 60 : 92);
     prev = bank_set(0xC1);
     if (*(const u8*)0x7C00u != 'L') {
-        cpct_memcpy((void*)0x7C00u, (const void*)0x5D00u, 814u);
+        cpct_memcpy((void*)0x7C00u, (const void*)0x5D00u, LVLCHS_LEN);
     }
     e = (const u8*)(0x7C00u + 4u + (u16)(lvl * 3u + typ) * 5u);
     n = e[2];
@@ -967,9 +979,12 @@ void main(void) {
     // premut el '2', el FRONT mostra el mapa amb la ruta de l'L2 i s'hi
     // entra directe. Cal passar per FRONT_RUN perquè és qui carrega MUSBANK
     // (front.c:466); FRONT_MAP sol el pressuposa carregat i peta en fred.
+    // El '3' fa el mateix amb l'L3 (prison) per poder-lo verificar.
     cpct_scanKeyboard_f();
     if (cpct_isKeyPressed(Key_2)) {
         g_map_level = 1;
+    } else if (cpct_isKeyPressed(Key_3)) {
+        g_map_level = 2;
     }
     while (1) {
         {
@@ -1157,6 +1172,7 @@ void main(void) {
                     g_cam_row = (u16)s_lv.cam0_row;
                 }
                 s_vx = 0; s_vy = 0;
+                s_crouch_hold = 0;
                 s_on_ground = 1;
                 s_ground_elevator = -1;
                 s_invuln_timer = 75;
@@ -1193,7 +1209,7 @@ void main(void) {
 
         // 2. Pas de física genèrica de col·lisió sòlida al motor resident
         dbg_border(0x57);
-        player_physics_step(g_belt_push, s_climb_prev, jump, crouch);
+        player_physics_step(g_belt_push, s_climb_prev, jump, (u8)(crouch || s_crouch_hold));
 
         // 3. Càmera i deadzone
         {
@@ -1284,7 +1300,7 @@ void main(void) {
         g_vram_start = camera_ma(g_cam_x4, g_cam_row);
         dbg_border(0x47);
         hud_render(s_back_page, (page_dx != 0 || page_dy != 0));
-        cur = select_player_anim(s_climb_prev, move, jump, crouch, (i16)dsy);
+        cur = select_player_anim(s_climb_prev, move, jump, (u8)(crouch || s_crouch_hold), (i16)dsy);
 
         dbg_border(0x52);
         // Dibuixar objectes mòbils i sprites sobre el fons actualitzat

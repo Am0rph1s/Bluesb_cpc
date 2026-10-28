@@ -52,6 +52,8 @@ extern i16 s_vx, s_vy;
 extern u8  s_on_ground;
 extern u8  s_jump_prev;
 extern u8  s_climb_prev;
+extern u8  s_climb_t6;
+extern u8  s_crouch_hold;
 extern u8  s_carry_kind;
 extern u8  s_grab_prev;
 extern u8  s_carry_state;

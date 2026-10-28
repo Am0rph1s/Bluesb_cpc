@@ -119,12 +119,38 @@ def build_level_pkg(level_idx=0, out_dir=None):
         elev_x = [(x >> 1) for _, x, _ in elevators]
         elev_y = [y for _, _, y in elevators]
         elev_col = [(x >> 4) for _, x, _ in elevators]
-        start_px = xpos_arr[39] >> 1
-        # DOS dona la base dels peus; el motor CPC fa servir la cantonada
-        # superior (s_py8), igual que el cas hardcoded de Magasin (ypos - PH).
+        # Formula oficial DOS_CPC_COORDINATES: DOS x es el centre horitzontal
+        # i y la base dels peus; CPC x es la vora esquerra i y la part superior.
+        start_px = (xpos_arr[39] >> 1) - 8
         start_py = ypos_arr[39] - 30
-        cam0_x4 = 0
-        cam0_row = max(0, (map_h * 2) - 20)
+        # Camera inicial 1:1 DOS init_level(): centrada al jugador, no a (0,max).
+        # DOS: xorigin = ((xpos>>4) - (TILEMAP_SCREEN_W/16)/2) << 4   (clamp >=0)
+        #      yorigin = ((ypos>>4) - ((TILEMAP_SCREEN_H/16)/2 + 1)) << 4
+        #      despres +16 o clamp a screen_tilemap_h - (TILEMAP_SCREEN_H+16)
+        dos_x = xpos_arr[39]
+        dos_y = ypos_arr[39]
+        cam_col = (dos_x >> 4) - ((320 // 16) // 2)
+        if cam_col < 0:
+            cam_col = 0
+        # cam_col*16 DOS px -> *8 px CPC -> /4 = cam_col*2 unitats de 4 px
+        cam0_x4 = cam_col * 2
+        max_cam_x4 = max(0, (map_w * 2) - 40)
+        if cam0_x4 > max_cam_x4:
+            cam0_x4 = max_cam_x4
+        cam_top = ((dos_y >> 4) - ((160 // 16) // 2 + 1)) << 4
+        if cam_top < 0:
+            cam_top = 0
+        level_h_px = map_h * 16
+        if cam_top + 176 > level_h_px:
+            cam_top = level_h_px - 176
+        else:
+            cam_top += 16
+        if cam_top < 0:
+            cam_top = 0
+        cam0_row = cam_top >> 3
+        max_cam_row = max(0, (map_h * 2) - 20)
+        if cam0_row > max_cam_row:
+            cam0_row = max_cam_row
 
     DOS_RESTART_X = [720, 912, 336, 288, 960, 64]
     DOS_RESTART_Y = [496, 752, 816, 304, 592, 352]

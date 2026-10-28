@@ -353,6 +353,16 @@ static void b5_check_bonus_triggers(u8 col, u8 row, i16 px, i16 py, u8 crouch) {
     }
 }
 
+// Sostre (is_floor_solid amb vy<0): ops de plataforma sempre solides.
+static u8 b5_solid_ceil(u8 col, u8 row) {
+    const u8* tp = b5_trig_ptr(col, row);
+    u8 op;
+    if (!tp) return 0;
+    op = tp[2];
+    return (op == 0 || op == 2 || op == 3 || op == 20 || op == 21 ||
+            op == 27 || op == 28 || op == 29);
+}
+
 void moving_bank_update(void) {
     u8 jump = (u8)bc_b;
     u8 crouch = (u8)bc_c;
@@ -365,6 +375,17 @@ void moving_bank_update(void) {
 
     py = (i16)(s_py8 >> 3);
     px = (i16)(s_px8 >> 3);
+
+    // 1:1 DOS unk2E: l'alçada d'ajupit es manté fins que el cap pot aixecar-se
+    // (sostre sobre el cap a les dues columnes del jugador). Així, si es deixa
+    // d'ajupir dins un espai baix, el jugador continua ajupit al mateix lloc.
+    if (crouch) {
+        s_crouch_hold = 1;
+    } else if (s_crouch_hold &&
+               !b5_solid_ceil((u8)((px + 1) >> 3), (u8)(py >> 4)) &&
+               !b5_solid_ceil((u8)((px + 14) >> 3), (u8)(py >> 4))) {
+        s_crouch_hold = 0;
+    }
 
     if (s_dance_timer) {
         s_dance_timer--;
@@ -408,18 +429,27 @@ void moving_bank_update(void) {
         return;
     }
 
-    // --- Escala (tt==7 -> climbing=1) i Aigua/Peixera (tt==11 -> climbing=2) ---
+    // --- Escala (tt==7), reixa de L3 (tt==6) i Aigua/Peixera (tt==11) ---
+    // DOS level.c do_level_fixup_object_unkA: type 6 i 7 son tots dos
+    // escalables (sprite_type 3 i 2). El 7 alinea l'X al centre del tile;
+    // el 6 NO, i per tant s'hi pot entrar/sortir pels costats (L3).
     tt = b5_tile_type(col, row);
-    // Prioritat absoluta a l'escala sobre l'aigua si qualsevol part del cos toca un tile de tipus 7:
-    if (tt != 7) {
+    // Prioritat absoluta a l'escala/reixa sobre l'aigua si qualsevol part
+    // del cos en toca una.
+    if (tt != 7 && tt != 6) {
         if (b5_tile_type(col, (u8)((py + 8) >> 4)) == 7 ||
             b5_tile_type(col, (u8)((py + 20) >> 4)) == 7 ||
             b5_tile_type(col, (u8)((py + PH) >> 4)) == 7) {
             tt = 7;
+        } else if (b5_tile_type(col, (u8)((py + 8) >> 4)) == 6 ||
+                   b5_tile_type(col, (u8)((py + 20) >> 4)) == 6 ||
+                   b5_tile_type(col, (u8)((py + PH) >> 4)) == 6) {
+            tt = 6;
         }
     }
-    if (tt == 7 || tt == 11) {
-        climbing = (tt == 7) ? 1 : 2;
+    if (tt == 6 || tt == 7 || tt == 11) {
+        climbing = (tt == 11) ? 2 : 1;
+        s_climb_t6 = (tt == 6);
         // 1:1 DOS level.c:504-506: a l'escala només cauen globus (grab_type 2)
         // i paraigua (grab_type 8); la caixa (grab_type 0) es queda al cap
         // i puja/baixa amb anim 24/4. Abans s'esborrava sempre.
@@ -430,15 +460,18 @@ void moving_bank_update(void) {
                 s_px8 = (i16)(px * SUB);
             }
             s_on_ground = 0;
+        } else if (tt == 6) {
+            // Reixa de L3: sense imant horitzontal (DOS no fa el snap del 7).
+            s_on_ground = 0;
         }
         if (jump) {
-            s_vy = (tt == 7) ? -24 : -12;
+            s_vy = (tt == 11) ? -12 : -24;
             s_on_ground = 0;
         } else if (crouch) {
-            s_vy = (tt == 7) ? 24 : 16;
+            s_vy = (tt == 11) ? 16 : 24;
         } else if (tt == 11 && !s_on_ground) {
             s_vy = 8;
-        } else if (tt == 7) {
+        } else if (tt == 6 || tt == 7) {
             s_vy = 0;
         }
         s_ground_elevator = -1;

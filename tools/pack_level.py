@@ -204,6 +204,11 @@ def build_level_pkg(level_idx=0, out_dir=None):
     b6_in_level = set(trig_bin[t * 10 + 6] for t in set(map_bin) | set(rooms_bin))
     trig_b6 = [b6 for b6 in used_b6
                if b6 in b6_in_level and list(arrays[names6[b6]])[1] in (11, 12)]
+    # Switches/palanques: entrades de level_triggersdata_2030 amb p[1] < 10.
+    # El DOS les processa amb triggers_update_tiles2: canvien un conjunt de
+    # tiles (palanca + comporta) i la propia palanca passa a un altre b6.
+    switch_b6s = [b6 for b6 in used_b6
+                  if b6 in b6_in_level and list(arrays[names6[b6]])[1] < 10]
     b6_to_idx = {b6: i for i, b6 in enumerate(trig_b6)}
     b6_lut = [b6_to_idx.get(b6, 0xFF) for b6 in range(64)]
 
@@ -233,8 +238,17 @@ def build_level_pkg(level_idx=0, out_dir=None):
         used |= set(seq)
     for entry in trig_entries:
         used.add(entry[1])
+    # Tiles de desti dels switches (palanca i comporta) tambe han d'existir al
+    # tileset compacte; si no, remap[t] cauria a 0 i es veuria un tile erroni.
+    # S'afegeixen DESPRES dels tiles existents per no remapejar mapa/TRIG.
+    switch_targets = set()
+    # Els grafics DOS de comporta oberta (175/178) no hi caben al paquet de
+    # 28 sectors. S'obre amb el tile buit 15, que ja es al tileset.
+    switch_targets.add(15)
     used |= {208, 159, 96}          # vinil, instrument, tile buit
     tile_order = sorted(used)
+    for t in sorted(switch_targets - used):
+        tile_order.append(t)
     assert len(tile_order) <= 256, len(tile_order)
     remap = [0] * 256
     for i, t in enumerate(tile_order):
@@ -264,6 +278,28 @@ def build_level_pkg(level_idx=0, out_dir=None):
     tile_vinyl_c = remap[208]
     tile_instr_c = remap[159]
     tile_empty_c = remap[96]
+    # Taula compacta de switches: (b6, n_states, n_changes, offset) + tiles.
+    switch_b6_c, switch_ns, switch_nc, switch_off, switch_tiles = [], [], [], [], []
+    for b6 in switch_b6s:
+        p = list(arrays[names6[b6]])
+        ns, nc = p[0], p[1]
+        base = 2 + (ns - 1) * nc * 4
+        changes = []
+        for k in range(nc):
+            col = p[base + k * 4]
+            row = p[base + k * 4 + 1]
+            tile = p[base + k * 4 + 2]
+            if tile in (241, 245, 246):
+                continue
+            changes.append((col, row, remap[15]))
+        if not changes:
+            continue
+        switch_b6_c.append(b6)
+        switch_ns.append(1)
+        switch_nc.append(len(changes))
+        switch_off.append(len(switch_tiles))
+        for col, row, tile in changes:
+            switch_tiles.extend((col, row, tile))
     print("  tile compaction: %d tiles usats (tileset %d B, TRIG %d B)" %
           (len(tile_order), len(tileset_c), len(trig_c)))
     if measure_only:
@@ -418,6 +454,18 @@ def build_level_pkg(level_idx=0, out_dir=None):
         chunk = ", ".join(f"0x{v:02X}" if v == 0xFF else f"{v:4d}" for v in b6_lut[i : i + 16])
         lines.append(f"    {chunk},")
     lines.append("};")
+    lines.append("")
+
+    lines.append("// Switches/palanques (DOS triggers_update_tiles2, b6 < 10).")
+    lines.append(f"#define LEVEL_SWITCH_COUNT {len(switch_b6_c)}")
+    if switch_b6_c:
+        fmt = lambda a: ", ".join(str(v) for v in a)
+        lines.append(f"static const u8 s_switch_b6[LEVEL_SWITCH_COUNT] = {{ {fmt(switch_b6_c)} }};")
+        lines.append(f"static const u8 s_switch_off[LEVEL_SWITCH_COUNT] = {{ {fmt(switch_off)} }};")
+        lines.append(f"static const u8 s_switch_nc[LEVEL_SWITCH_COUNT] = {{ {fmt(switch_nc)} }};")
+        lines.append(f"static const u8 s_switch_changes[{len(switch_tiles)}] = {{ {fmt(switch_tiles)} }};")
+    lines.append("")
+
     lines.append("")
 
     # Extreure només els sprites emergents de DOS usats pel nivell (SPRITE.SQV frames 128..134 -> grab_type 16..22)

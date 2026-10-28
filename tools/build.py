@@ -1793,7 +1793,8 @@ def build_level_packages(force=False):
                     trig_off + len(trigc_raw), BANK5_BASE)
             assert BANK5_BASE + len(code_raw) <= 0x8000, (BANK5_BASE, len(code_raw))
             rooms_trig_raw = rooms_raw + trigc_raw
-            map_zx, _ = zx0_compress(bytes(map_raw), classic=True, quick=ZX0_QUICK)
+            map_zx, _ = zx0_compress(bytes(map_raw), classic=True,
+                                     quick=ZX0_QUICK if lv["id"] != 2 else False)
             rt_zx, _ = zx0_compress(bytes(rooms_trig_raw), classic=True, quick=ZX0_QUICK)
             code_zx, _ = zx0_compress(bytes(code_raw), classic=True, quick=ZX0_QUICK)
             c5_used = len(map_raw) + len(rooms_trig_raw) + len(code_raw)

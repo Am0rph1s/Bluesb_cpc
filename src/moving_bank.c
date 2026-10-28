@@ -353,6 +353,30 @@ static void b5_check_bonus_triggers(u8 col, u8 row, i16 px, i16 py, u8 crouch) {
     }
 }
 
+#if LEVEL_SWITCH_COUNT > 0
+// Switch/palança: aplica el bloc d'estat que el DOS tria (p[0]-1) amb
+// triggers_update_tiles2, pero nomes un cop per contacte (latch).
+static u8 s_switch_lock;
+
+static u8 b5_switch_match(u8 b6) {
+    u8 i;
+    for (i = 0; i < LEVEL_SWITCH_COUNT; i++) {
+        if (s_switch_b6[i] == b6) return (u8)(i + 1);
+    }
+    return 0;
+}
+
+static void b5_apply_switch(u8 idx) {
+    u8 i = (u8)(idx - 1);
+    const u8* p = s_switch_changes + s_switch_off[i];
+    u8 n = s_switch_nc[i];
+    while (n--) {
+        b5_set_tile(p[0], p[1], p[2]);
+        p += 3;
+    }
+}
+#endif
+
 // Sostre (is_floor_solid amb vy<0): ops de plataforma sempre solides.
 static u8 b5_solid_ceil(u8 col, u8 row) {
     const u8* tp = b5_trig_ptr(col, row);
@@ -422,6 +446,29 @@ void moving_bank_update(void) {
 
     // --- Triggers d'ítems: vinils (+1/-10), interrogants (?), cors, 1-Up, guitarra i meta ---
     b5_check_bonus_triggers(col, row, px, py, crouch);
+#if LEVEL_SWITCH_COUNT > 0
+    // Palanques/comportes: mirar el tile dels peus i el de sobre (DOS
+    // triggers_update_tiles1 comprova ypos16 i ypos16-1).
+    {
+        u8 sw = 0, b6 = 255;
+        const u8* tp = b5_trig_ptr(col, row);
+        if (tp) b6 = tp[TP_B6];
+        sw = (b6 != 255) ? b5_switch_match(b6) : 0;
+        if (!sw && row > 0) {
+            tp = b5_trig_ptr(col, (u8)(row - 1));
+            if (tp) b6 = tp[TP_B6];
+            sw = (b6 != 255) ? b5_switch_match(b6) : 0;
+        }
+        if (sw) {
+            if (!s_switch_lock) {
+                b5_apply_switch(sw);
+                s_switch_lock = 1;
+            }
+        } else {
+            s_switch_lock = 0;
+        }
+    }
+#endif
     if (s_dance_timer) {
         s_vx = 0;
         bc_r = 0;

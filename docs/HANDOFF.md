@@ -16,7 +16,7 @@
    - Mai ajustar valors a ull ni per intuïció. Per a coordenades, utilitzar la fórmula oficial:  
      $cpc\_x = dos\_x / 2 - w_{cpc} / 2$, $cpc\_y = dos\_y - h_{dos}$ (`docs/DOS_CPC_COORDINATES.md`).
 2. **Pressupost de memòria resident (Bloc 0: `0x0000..0x3FFF`)**:
-   - `_CODE`: límit màxim a `0x3880`. Actualment a **`0x387E`** (**només 2 bytes lliures!**).
+   - `_CODE`: límit màxim a `0x3880`. Actualment a **`0x37D8`** (**168 bytes lliures!**).
    - Qualsevol lògica nova no trivial s'ha de compilar en bancs superiors (C1, C5 o C6), mai al resident.
 3. **Regla de commutació de maquinari**:
    - Per cridar codi bancat que escriu a VRAM s'utilitza `0xC0`, mai `0xC1` (`0xC1` mostra la RAM 7 a `0xC000..0xFFFF` i tapa la pantalla; `0xC0` manté la VRAM visible a la pàgina 0).
@@ -50,7 +50,7 @@ py -3 tools/smoke_test.py --skip-run      # Valida sectors DSK, CRCs i arrencada
 ```
 +---------------------------------------------------------------------------------+
 | BLOC 0 (Resident 0x0000..0x3FFF, sempre mapejat a RAM 0)                         |
-|  - 0x0100..0x387E: _CODE del resident (motor genèric, vídeo, ISR, blit)          |
+|  - 0x0100..0x37D8: _CODE del resident (motor genèric, vídeo, ISR, blit)          |
 |  - 0x3880..0x3C9D: _DATA resident (globals, s_lv, càmera, estat del jugador)    |
 |  - 0x3CA0..0x3FFF: Pila Z80 (lliure ~865 B)                                     |
 +---------------------------------------------------------------------------------+

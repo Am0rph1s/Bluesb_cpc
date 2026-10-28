@@ -26,7 +26,6 @@ extern const u8 s_hud_strips[39][24];
 #define PLAY_ROWS  20
 
 extern void render_tile_fast(const u8* tile);
-extern void hud_blit_col(const u8* strip24, u16 ma20);
 
 u16 g_render_tile_offset;
 

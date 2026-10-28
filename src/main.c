@@ -61,6 +61,20 @@ extern volatile u8 g_ticks;
 static const u8 s_crate_walk[6] = { 15, 13, 14, 16, 13, 14 };
 static const u8 s_walk[6] = { 1, 2, 0, 3, 2, 0 };
 
+#define PROFILE_BORDER 0
+#if PROFILE_BORDER
+static void dbg_border(u8 col) {
+    __asm
+        ld      bc, #0x7F10
+        out     (c), c
+        ld      c, a
+        out     (c), c
+    __endasm;
+}
+#else
+#define dbg_border(col) ((void)0)
+#endif
+
 // Estat compartit resident (actualitzat des del mòdul de nivell al Banc 5):
 u16 g_cam_x4;
 u16 g_cam_row;
@@ -1024,6 +1038,7 @@ void main(void) {
     u8 last_ticks = g_ticks;
 
     while (1) {
+        dbg_border(0x5E);
         if (!stack_canary_ok()) {
             cpct_setBorder(0x4C);
         }
@@ -1076,8 +1091,10 @@ void main(void) {
         bc_b = jump;
         bc_c = crouch;
         bc_d = grab;
+        dbg_border(0x40);
         moving_update();
         if (!s_in_room) {
+            dbg_border(0x5E);
             enemy_update();
         }
 
@@ -1175,6 +1192,7 @@ void main(void) {
         }
 
         // 2. Pas de física genèrica de col·lisió sòlida al motor resident
+        dbg_border(0x57);
         player_physics_step(g_belt_push, s_climb_prev, jump, crouch);
 
         // 3. Càmera i deadzone
@@ -1242,6 +1260,7 @@ void main(void) {
         g_vram_start = camera_ma((u16)(g_cam_x4 - page_dx),
                                  (u16)(g_cam_row - page_dy));
 
+        dbg_border(0x4C);
         // --- Restaurar el fons al BACKBUFFER (LIFO) ---
         carry_restore(s_back_page);
         sprite_restore_umbrella();
@@ -1256,15 +1275,18 @@ void main(void) {
             enemy_restore(s_back_page);
             moving_restore(s_back_page, (move_x != 0 || move_y != 0));
             moving_popup_restore(s_back_page);
+            dbg_border(0x57);
             sync_backbuffer(page_dx, page_dy, g_cam_x4, g_cam_row);
             bc_a = s_back_page;
             moving_draw_conveyor_tiles();
         }
         world_flush_repaints();
         g_vram_start = camera_ma(g_cam_x4, g_cam_row);
+        dbg_border(0x47);
         hud_render(s_back_page, (page_dx != 0 || page_dy != 0));
         cur = select_player_anim(s_climb_prev, move, jump, crouch, (i16)dsy);
 
+        dbg_border(0x52);
         // Dibuixar objectes mòbils i sprites sobre el fons actualitzat
         if (!s_in_room) {
             moving_draw(s_back_page, g_cam_x4, g_cam_row);
@@ -1318,7 +1340,8 @@ void main(void) {
             draw_gameover_banner(s_back_page);
         }
 
-                // Sincronització vertical fluida a 25 Hz (2 VSYNCs = 40 ms)
+                dbg_border(0x54);
+        // Sincronització vertical fluida a 25 Hz (2 VSYNCs = 40 ms)
         cpc_wait_vsync_start();
         if ((u8)(g_ticks - last_ticks) < 10) {
             cpc_wait_vsync_start();

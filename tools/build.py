@@ -721,6 +721,7 @@ def build_enemybank(force, level_idx=None):
         sqv2 = os.path.join(PROJ, "assets", "bbdata", "ENEMI2.SQV")
         if force or is_stale(frames_path, [gen2, sqv2]):
             run([sys.executable, gen2])
+            mark_fresh(frames_path, [gen2, sqv2])
     frames = open(frames_path, "rb").read()
     code = open(code_path, "rb").read()
     assert len(frames) % 512 == 0 and len(frames) // 512 >= 14, len(frames)
@@ -1168,7 +1169,7 @@ def build_music(force):
     # Escriuen a VRAM => han de viure a la RAM 1 i cridar-se amb 0xC0. Com que
     # son comuns a tots els nivells, van a MUSBANK (0x4C10, despres del player)
     # i no al bloc de codi del nivell.
-    hb_base, hb_data = 0x4C10, 0x4F90
+    hb_base, hb_data = 0x4C10, 0x4FA8
     hb_src = os.path.join(PROJ, "src", "hud_bank.c")
     hb_rel = os.path.join(obj, "hud_bank.rel")
     hb_headers = [os.path.join(PROJ, n) for n in

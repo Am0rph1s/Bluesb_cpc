@@ -14,8 +14,8 @@ Nomes es converteixen els tipus que el motor C6 pot tractar:
   L3:
     type 3  -> guardia amb escut (kind 18, op2 sense tret): patrulla contínua,
                walk 0/1 (no dispara ni s'atura)
-    type 4  -> policia amb pistola (kind 4, op3): estàtic, es gira cap a Jake
-               i dispara quan és a prop (cela 5, tret 6)
+    type 4  -> policia amb pistola (kind 4): mateix comportament que a L1
+               (patrulla + tret); walk 5/6, pose de tret 11
     type 6  -> gos     (kind 18, op1): walk 13/14 (celes de gen_enemy3_frames)
     Els tipus 5/23 (op4/op11) son movers, no walkers de C6.
 
@@ -44,7 +44,7 @@ SPAWN_TYPES = {
     21: (17, 20, 10, 12, 12),  # op10
     # L3 (vegeu tools/gen_enemy3_frames.py per a les celes)
     3: (18, 24, 0, 0, 0),    # guardia amb escut: patrulla sense tret (op2)
-    4: (4, 0, 5, 6, 6),      # policia amb pistola: estatic, dispara (op3)
+    4: (4, 24, 5, 11, 11),   # policia amb pistola: com L1 (patrulla + tret)
     6: (18, 24, 13, 13, 13),  # gos op1 (walk cells 13/14)
 }
 

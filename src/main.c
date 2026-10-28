@@ -875,6 +875,11 @@ static void load_level_packages(void) {
         if (!load_level_file(lvl, 0)) {
             cpct_setBorder(0x42); while (1) { }
         }
+        // L3 porta la imatge C1 en un paquet separat (L3C1.PAK) per no
+        // excedir els 28 sectors de L3WORLD. Els altres nivells la duen dins.
+        if (lvl == 2 && !load_level_file(lvl, 2)) {
+            cpct_setBorder(0x44); while (1) { }
+        }
         // Parametres del nivell (geometria, tiles, start, checkpoint...)
         level_params_load();
         if (!load_level_file(lvl, 1)) {

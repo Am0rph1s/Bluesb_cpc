@@ -104,10 +104,10 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
 |---|---|---|---|---|---|---|---|---|---|---|
 | L1 | 0x5000 (1.619) | 0x5658 | 0x5A00 | 0x5F50 | 0x5FB0 | 0x5FE8 (1.135 B) | 0x6900 | 0x6D00 | 0x7680 | 13.427 B |
 | L2 | 0x5000 (2.721) | 0x5AA8 | 0x5E50 | 0x63A0 | 0x63A0 | 0x63A8 (1.135 B) | 0x6900 (PRESS 792 B) | 0x6D00 | 0x7680 | 13.357 B |
-| L3 | 0x5000 (4.670) | 0x6240 | 0x65E8 | 0x6B38 | 0x6B98 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 14.191 B |
+| L3 | 0x5000 (4.670) | 0x6240 | 0x65E8 | 0x6B38 | 0x6B98 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 11.295 + 3.520 B |
 
 - L3 **no porta codi d'excepcions**: no té ascensors ni premses encara. Això és el que fa que
-  `L3WORLD.PAK` càpiga en 28 sectors (14.191 B; **17 B de marge** sobre el límit de 14.208 B).
+  `L3WORLD.PAK` = 11.295 B (23 sectors) i `L3C1.PAK` = 3.520 B (8 sectors); C1 va separat amb `load_level_file(lvl,2)`.
 - Si mai s'hi afegeix codi de mecanismes a L3, caldrà comprimir més o fer split de C1.
 
 ### 3.2 Pressupost C5 (mapa + sales + TRIG5 + codi del món)
@@ -116,7 +116,7 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
 |---|---|---|---|---|---|---|
 | L1 | 9.216 | 1.000 | 1.195 | 4.580 | 15.991 | **393** |
 | L2 | 9.216 | 0 | 1.025 | 4.516 | 14.757 | 1.627 |
-| L3 | 9.216 | 1.200 | 1.065 | 3.389 | 14.870 | 1.514 |
+| L3 | 9.216 | 1.200 | 1.065 | 4.450 | 15.931 | 453 |
 
 ### 3.3 C6 (enemics)
 
@@ -149,7 +149,7 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
   3. Fidelitat fina d'animacions i tipus 22 com a objecte mòbil independent.
 
 ### Nivell 3 (`prison`) — **INTEGRAT I CARREGANT**
-- Afegit a `LEVELS` i `DATA_FILES`: `L3WORLD.PAK` (14.191 B) i `L3ENEMI.ZX0` (6.676 B).
+- Afegit a `LEVELS` i `DATA_FILES`: `L3WORLD.PAK` (11.295 B), `L3C1.PAK` (3.520 B) i `L3ENEMI.ZX0` (6.676 B).
 - `pack_level.py 2 --outdir obj/lvl2` regenera tileset/mapa/sales/TRIG/restore/params.
 - Xarxa de C1 variable: Theme2 (4.670 B), HUD, GAMEOVER, 24 portes i restore de 6 sales.
 - **Verificat en emulador** (drecera `3`): `magic=0xB0`, `level_id=2`, `g_map_level=2`,
@@ -166,6 +166,12 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
   s'obren les comportes (29,26)/(29,27) i (76,30)/(76,31). Com que els grafics DOS de comporta
   oberta (175/178) no caben al paquet de 28 sectors, s'obre amb el tile buit 15; pendent recuperar
   el grafic exacte si es guanya espai.
+- **Trampilles L3**: afegides les seqüències DOS b4 4/5/7/8 (obertes/tancades
+  temporitzades) a DOS_ANIM_SEQS; el motor ja les anima amb anim_tick_c5.
+- **Ítems de les habitacions**: moving_bank.c ara llegeix els triggers b6 de
+  ROOMSC (no només vinils/instrument) i actualitza el tile de la sala.
+- **Hitbox de la rata**: el check vertical genèric passa de 50 a 38 px; la rata
+  (level_obj_h[6]=10) ja no toca Jake una fila més amunt.
 - **Pendent**:
   1. `type 4`/op3 (4 llançadors) i movers `type 5`/op4 + `type 23`/op11.
   2. Validació de portes/sales/àcid i recorregut complet del nivell.

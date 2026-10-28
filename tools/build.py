@@ -109,7 +109,8 @@ BANK_C_SOURCES = ["src/moving_bank.c"]
 BANK_ASM_SOURCES = ["engine/bank5_table.s"]
 BANK_C_HEADERS = {
     "src/moving_bank.c": ["engine/cpctelera.h", "engine/bank.h",
-                          "src/moving.h", "src/sprite.h", "src/level_pkg.h"],
+                          "src/moving.h", "src/sprite.h", "src/level_pkg.h",
+                          "src/level_params.h"],
 }
 
 # FRONT banked (overlay d'arrencada C4:0x4000, descartable per TILESET).
@@ -167,6 +168,7 @@ DATA_FILES = [
     ("L2ENEMI", "ZX0", os.path.join(PROJ, "obj", "L2ENEMI.ZX0")),
     ("L3WORLD", "PAK", os.path.join(PROJ, "obj", "L3WORLD.PAK")),
     ("L3ENEMI", "ZX0", os.path.join(PROJ, "obj", "L3ENEMI.ZX0")),
+    ("L3C1",    "PAK", os.path.join(PROJ, "obj", "L3C1.PAK")),
 ]
 
 
@@ -1762,6 +1764,7 @@ def build_level_packages(force=False):
 
         world_dst = os.path.join(obj, tag + "WORLD.PAK")
         en_dst = os.path.join(obj, tag + "ENEMI.ZX0")
+        c1_dst = os.path.join(obj, tag + "C1.PAK")
         srcs = [tiles_src, map_src, trig_src, rooms_src, bank5_src, mus_src,
                 lay_src, en_src, parm_src]
         if lv["has_code"]:
@@ -1769,7 +1772,7 @@ def build_level_packages(force=False):
         if lv["has_elev"]:
             srcs.append(elev_src)
 
-        if force or is_stale(world_dst, srcs):
+        if force or is_stale(world_dst, srcs) or (lv["id"] == 2 and not os.path.exists(c1_dst)):
             t_raw = open(tiles_src, "rb").read()
             # L3: els tiles comprimeixen 321 B mes amb quick=False; cal per
             # cabre en 28 sectors (el FDC nomes pot llegir 14.336 B a l'scratch).
@@ -1849,14 +1852,22 @@ def build_level_packages(force=False):
 
             flags = ((1 if lv["has_code"] else 0) | (2 if lv["has_elev"] else 0) |
                      (4 if lv["has_rooms"] else 0) | 8)
-            write_package(world_dst, lv["id"], flags, [
+            world_secs = [
                 (0xC4, True, 0x4000, bytes(t_zx), len(t_raw)),
                 (0xC5, True, 0x4000, bytes(map_zx), len(map_raw)),
                 (0xC5, True, rooms_off, bytes(rt_zx), len(rooms_trig_raw)),
                 (0xC5, True, BANK5_BASE, bytes(code_zx), len(code_raw)),
-                (0xC1, True, 0x5000, bytes(m_zx), len(m_data)),
-            ])
+            ]
+            # L3: C1 separat (L3C1.PAK) per alliberar L3WORLD i poder afegir
+            # animacions/triggers de sala sense passar de 28 sectors.
+            if lv["id"] != 2:
+                world_secs.append((0xC1, True, 0x5000, bytes(m_zx), len(m_data)))
+            write_package(world_dst, lv["id"], flags, world_secs)
             mark_fresh(world_dst, srcs)
+            if lv["id"] == 2:
+                write_package(c1_dst, lv["id"], flags,
+                              [(0xC1, True, 0x5000, bytes(m_zx), len(m_data))])
+                print("PAK: %sC1 %d B" % (tag, os.path.getsize(c1_dst)))
             print("PAK: %sWORLD %d B (tiles=%d c5=%d+%d+%d c1=%d)" %
                   (tag, os.path.getsize(world_dst), len(t_zx), len(map_zx),
                    len(rt_zx), len(code_zx), len(m_zx)))

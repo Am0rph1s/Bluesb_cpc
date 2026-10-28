@@ -141,7 +141,7 @@ def check_dsk():
         lv_raw = mb_raw[LVLCHS_MB_OFF:]
         n_lvl = lv_raw[3]
         for lvl in range(n_lvl):
-            for typ, suffix in ((0, "WORLD"), (1, "ENEMI")):
+            for typ, suffix in ((0, "WORLD"), (1, "ENEMI"), (2, "C1")):
                 off = 4 + (lvl * 3 + typ) * 5
                 ondisk, sec, crc = struct.unpack("<HBH", lv_raw[off:off+5])
                 if sec == 0:

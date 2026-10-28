@@ -14,6 +14,7 @@
 #include "moving.h"
 #include "sprite.h"
 #include "level_pkg.h"
+#include "level_params.h"
 
 #define MAP_PTR  ((const u8*)0x4000)
 #define MAP_MUT  ((u8*)0x4000)
@@ -273,6 +274,116 @@ static void b5_update_entities_and_spans(void) {
     }
 }
 
+#if LEVEL_ID == 2
+static void b5_set_tile_at(u8 col, u8 row, u8 tile, u8 room) {
+    if (!room) {
+        b5_set_tile(col, row, tile);
+        return;
+    }
+    {
+        u16 off = (u16)s_lv.rooms_off +
+                  s_lv.room_rowoff[row - s_lv.room_row0] + col;
+        ((u8*)(u16)s_lv.rooms_off)[off] = tile;
+        if (s_rep_n < 4) {
+            s_rep_col[s_rep_n] = col;
+            s_rep_row[s_rep_n] = row;
+            s_rep_tile[s_rep_n] = tile;
+            s_rep_pages[s_rep_n] = 3;
+            s_rep_n++;
+        }
+    }
+}
+
+static void b5_apply_trig3(const LevelTriggerEntry* e, u8 col, u8 row,
+                           i16 px, i16 py, u8 room) {
+    if (e->kind == 11) {
+        if (e->popup_or_chk && !g_checkpoint) {
+            g_checkpoint = e->popup_or_chk;
+        }
+        if (e->exit_flag) {
+            if (g_has_instrument == (LEVEL_ID + 1) && !g_level_complete) {
+                g_level_complete = 1;
+                b5_set_tile_at(col, row, e->bg_tile, room);
+                if (e->special_anim == 21) s_dance_timer = 52;
+                if (s_carry_kind) carry_abort();
+            }
+            return;
+        }
+        b5_set_tile_at(col, row, e->bg_tile, room);
+    } else if (e->kind == 12) {
+        b5_set_tile_at(col, row, e->bg_tile, room);
+        if (e->popup_or_chk < LEVEL_POPUP_COUNT) {
+            s_popup_idx = e->popup_or_chk;
+            s_popup_wx = (i16)(px & ~1);
+            s_popup_wy = (i16)(py - 8);
+            s_popup_timer = 30;
+        }
+    } else {
+        return;
+    }
+    if (e->add_vinyls) {
+        u8 v = (u8)(g_vinyls_count + e->add_vinyls);
+        if (v >= 100) {
+            v = (u8)(v - 100);
+            if (g_hearts_count < 5) g_hearts_count++;
+        }
+        g_vinyls_count = v;
+    }
+    if (e->sub_vinyls) {
+        g_vinyls_count = (g_vinyls_count > e->sub_vinyls)
+                       ? (u8)(g_vinyls_count - e->sub_vinyls) : 0;
+    }
+    if (e->add_heart && g_hearts_count < 5) g_hearts_count++;
+    if (e->add_life && g_lives_count < 99) g_lives_count++;
+    if (e->instrument && !g_has_instrument) g_has_instrument = e->instrument;
+    if (e->special_anim == 21) s_dance_timer = 52;
+}
+
+static void b5_room_check(u8 col, u8 row, i16 px, i16 py) {
+    u16 off;
+    u8 b6, idx, tile;
+    if (row < s_lv.room_row0 || row >= (u8)(s_lv.room_row0 + s_lv.room_rows) ||
+        col >= s_lv.room_total_cols) return;
+    off = (u16)s_lv.rooms_off + s_lv.room_rowoff[row - s_lv.room_row0] + col;
+    tile = ((const u8*)(u16)s_lv.rooms_off)[off];
+    b6 = ((const u8*)(u16)s_lv.trig_off)[(u16)tile * 5u + TP_B6];
+    if (b6 >= 64) return;
+    idx = s_b6_to_trig3[b6];
+    if (idx == 0xFF) return;
+    b5_apply_trig3(&s_level_trig3[idx], col, row, px, py, 1);
+}
+
+static void b5_check_bonus_triggers(u8 col, u8 row, i16 px, i16 py, u8 crouch) {
+    const u8* tp;
+    u8 b6, idx;
+    const LevelTriggerEntry* e;
+
+    if (row >= s_lv.room_row0) {
+        b5_room_check(col, row, px, py);
+        return;
+    }
+    tp = b5_trig_ptr(col, row);
+    if (!tp) return;
+    b6 = tp[TP_B6];
+    if (b6 == 255 && !crouch && row > 0) {
+        row--;
+        tp = b5_trig_ptr(col, row);
+        if (!tp) return;
+        b6 = tp[TP_B6];
+    }
+#if LEVEL_HAS_ACID
+    if (b6 == 2 || b6 == 3 || b6 == 4) {
+        acid_hurt((b6 == 2) ? -56 : (b6 == 3) ? -40 : -20);
+        return;
+    }
+#endif
+    if (b6 >= 64) return;
+    idx = s_b6_to_trig3[b6];
+    if (idx == 0xFF) return;
+    e = &s_level_trig3[idx];
+    b5_apply_trig3(e, col, row, px, py, 0);
+}
+#else
 static void b5_check_bonus_triggers(u8 col, u8 row, i16 px, i16 py, u8 crouch) {
     const u8* tp = b5_trig_ptr(col, row);
     u8 b6, idx;
@@ -286,10 +397,6 @@ static void b5_check_bonus_triggers(u8 col, u8 row, i16 px, i16 py, u8 crouch) {
         if (!tp) return;
         b6 = tp[TP_B6];
     }
-    // 1:1 DOS tiles.c:907-919 + level.c:1583-1593 (kind=10, b6=2/3/4):
-    // l'àcid sempre fa mal. La intermitència és només visual (anim cada 4
-    // loops); el dany segueix el tile ACTUAL del mapa (MAP_MUT), així quan
-    // el raig mostra el buit (90/10) no hi ha b6 àcid i es pot passar.
 #if LEVEL_HAS_ACID
     if (b6 == 2 || b6 == 3 || b6 == 4) {
         acid_hurt((b6 == 2) ? -56 : (b6 == 3) ? -40 : -20);
@@ -299,12 +406,9 @@ static void b5_check_bonus_triggers(u8 col, u8 row, i16 px, i16 py, u8 crouch) {
     if (b6 >= 64) return;
     idx = s_b6_to_trig3[b6];
     if (idx == 0xFF) return;
-
     e = &s_level_trig3[idx];
     if (e->kind == 11) {
-        if (e->popup_or_chk && !g_checkpoint) {
-            g_checkpoint = e->popup_or_chk;
-        }
+        if (e->popup_or_chk && !g_checkpoint) g_checkpoint = e->popup_or_chk;
         if (e->exit_flag) {
             if (g_has_instrument == (LEVEL_ID + 1) && !g_level_complete) {
                 g_level_complete = 1;
@@ -326,7 +430,6 @@ static void b5_check_bonus_triggers(u8 col, u8 row, i16 px, i16 py, u8 crouch) {
     } else {
         return;
     }
-
     if (e->add_vinyls) {
         u8 v = (u8)(g_vinyls_count + e->add_vinyls);
         if (v >= 100) {
@@ -339,19 +442,12 @@ static void b5_check_bonus_triggers(u8 col, u8 row, i16 px, i16 py, u8 crouch) {
         g_vinyls_count = (g_vinyls_count > e->sub_vinyls)
                        ? (u8)(g_vinyls_count - e->sub_vinyls) : 0;
     }
-    if (e->add_heart && g_hearts_count < 5) {
-        g_hearts_count++;
-    }
-    if (e->add_life && g_lives_count < 99) {
-        g_lives_count++;
-    }
-    if (e->instrument && !g_has_instrument) {
-        g_has_instrument = e->instrument;
-    }
-    if (e->special_anim == 21) {
-        s_dance_timer = 52;
-    }
+    if (e->add_heart && g_hearts_count < 5) g_hearts_count++;
+    if (e->add_life && g_lives_count < 99) g_lives_count++;
+    if (e->instrument && !g_has_instrument) g_has_instrument = e->instrument;
+    if (e->special_anim == 21) s_dance_timer = 52;
 }
+#endif
 
 #if LEVEL_SWITCH_COUNT > 0
 // Switch/palança: aplica el bloc d'estat que el DOS tria (p[0]-1) amb

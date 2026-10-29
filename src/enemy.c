@@ -188,7 +188,7 @@ static const Spawn s_spawn[ENEMY_N] = {
     // Cambrera ESTÀTICA (DOS slot 14, type 16 -> object_func_op4): dos
     // (xpos 1648, ypos 800) -> CPC x 816, top 768. Frame neutral = cel·la 9
     // (ENEMI1 SQV 33 = DOS frame 179). Kind 22 = estàtica (no camina).
-    { 816,  768 << 3, 22,  0,  9 , 14, 15 }, // 20: Cambrera (replà ascensor) [slot 14]
+    { 816,  768 << 3, 23,  0,  9 , 15, 15 }, // 20: Cambrera (replà ascensor) [slot 14]
     { -1000, 0, 19, 0, 5, 14, 15 }, // inactiu (ENEMY_N=22)
 };
 #else
@@ -306,7 +306,7 @@ void en2_update(void) {
 
         y = (i16)(e->y8 >> 3);
 
-        if (sp->kind == 4 || sp->kind == 17 || sp->kind == 21) {
+        if (sp->kind == 4 || sp->kind == 17 || sp->kind == 21 || sp->kind == 23) {
             // 1:1 DOS object_func_op2 (policia), op10 (cambrera) i op7
             // (llançador de L2). Distancies de DOS (level.c
             // do_level_update_object_bounds):
@@ -326,7 +326,7 @@ void en2_update(void) {
             //   policia (op2)   80 DOS -> 40 CPC
             //   llançador (op7) 80 DOS -> 40 CPC
             //   cambrera (op10) 160 DOS -> 80 CPC
-            i16 max_y = is_cop ? 20 : 10;
+            i16 max_y = (is_cop || sp->kind == 23) ? 20 : 10;
             i16 max_x = is_cop ? 40 : (is_throw ? 40 : 80);
             if (dy <= max_y && abs_dx < max_x) {
                 e->dir = (dx_jake >= 0) ? 1 : -1;
@@ -455,7 +455,7 @@ e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
 
         // Estatics sense moviment X: op7 sense case (tipus 11 de L2) i el
         // pistoler op3 (kind 4, vx=0) han de caure al terra (DOS yacc=2).
-        if (sp->kind == 22 || (sp->kind == 4 && sp->vx == 0)) {
+        if (sp->kind == 22 || sp->kind == 23 || (sp->kind == 4 && sp->vx == 0)) {
             y = en2_fall(e, y);
         }
 
@@ -585,7 +585,7 @@ void en2_draw(void) {
             u8 cell = (u8)(sp->base_cell + step);
             if (e->shoot_timer) {
                 if (sp->kind == 4) cell = sp->aim_cell;              // pose de tret
-                else if (sp->kind == 17 || sp->kind == 21) cell = sp->throw_cell;  // llançament
+                else if (sp->kind == 17 || sp->kind == 21 || sp->kind == 23) cell = sp->throw_cell;  // llançament
             }
             const u8* src = en2_cell(cell);
             if (e->dir < 0) {

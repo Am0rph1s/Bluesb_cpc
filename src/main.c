@@ -58,7 +58,7 @@ extern volatile u8 g_ticks;
 #define DEAD_B      116
 #define CRATE_FLY_FRAME ((const u8*)0x7A20)
 
-static const u8 s_crate_walk[6] = { 15, 13, 14, 16, 13, 14 };
+static const u8 s_crate_walk[6] = { 14, 12, 13, 15, 12, 13 };
 static const u8 s_walk[6] = { 1, 2, 0, 3, 2, 0 };
 
 #define PROFILE_BORDER 0
@@ -528,9 +528,9 @@ static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) 
         }
         s_anim_idx = 0;
         s_anim_timer = 0;
-        // 1:1 DOS: repòs amb caixa = animframes_ptr[24/4] = animframe_00bd
-        // = [1, 10] (Jake DOS 10 / Elwood 60). És el frame 17 de l'atlas.
-        return 17;
+        // 1:1 DOS: repòs amb caixa/paraigües = animframes_ptr[44/4] =
+        // animframe_00c7 = [5, 14,14,14,14,14] (SQV 14 -> cel·la 13).
+        return 13;
     }
     if (!s_on_ground || (u16)(bsy + 30) > 160) {
         return 4;
@@ -675,8 +675,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
             if (s_vy >= 0 && climbing != 1) {
                 i16 elevator_top;
                 i8 elevator_id;
-                bc_a = (u16)(px + (PW >> 1)); // centre del jugador (xpos DOS)
-                bc_b = (u16)prev_feet; bc_c = (u16)curr_feet;
+                bc_a = (u16)px; bc_b = (u16)prev_feet; bc_c = (u16)curr_feet;
                 bc_d = (u16)s_vy; bc_e = (u16)&elevator_top;
                 elevator_id = moving_find_landing();
                 if (elevator_id >= 0) {
@@ -1218,25 +1217,12 @@ void main(void) {
         if (s_on_ground && s_ground_elevator >= 0) {
             MovingElevator* e = &g_mag_elevators[(u8)s_ground_elevator];
             i16 px = (i16)(s_px8 >> 3);
-            // 1:1 DOS (do_level_handle_object_bonus_collision): compara el
-            // CENTRE del jugador (xpos) amb el centre de l'objecte +/-
-            // level_obj_w[type]:
-            //   ascensor (type 7)  w=18 px DOS -> 9 px CPC
-            //   premsa   (type 22) w=10 px DOS -> 5 px CPC
-            // Abans es comparava la vora esquerra (px) amb +/-9, o sigui una
-            // finestra real de +/-17 sobre el centre: Jake podia anar-hi
-            // penjat mig cos fora i el pujaven dins la paret.
-            {
-                i16 pcx = (i16)(px + (PW >> 1));
-                i16 half = (s_ground_elevator >= MAG_ELEVATOR_COUNT)
-                               ? PRESS_HALF_W : ELEVATOR_HALF_W;
-                if (pcx > (i16)(e->center_x - half) &&
-                    pcx < (i16)(e->center_x + half)) {
-                    s_py8 = (i16)(s_py8 + e->delta_y * SUB);
-                } else {
-                    s_ground_elevator = -1;
-                    s_on_ground = 0;
-                }
+            if (px + PW > e->center_x - ELEVATOR_HALF_W &&
+                px < e->center_x + ELEVATOR_HALF_W) {
+                s_py8 = (i16)(s_py8 + e->delta_y * SUB);
+            } else {
+                s_ground_elevator = -1;
+                s_on_ground = 0;
             }
         }
 

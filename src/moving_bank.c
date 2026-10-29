@@ -583,16 +583,32 @@ void moving_bank_update(void) {
     // quan el tile dels PEUS es 7/6. No n'hi ha prou que el cap o el cos en
     // toquin una: si hi ha una escala sota una altra, el Jake ha de poder
     // caminar i saltar normalment fins que hi entra amb els peus.
+    // Tolerancia horitzontal: si estem a prop de l'escala i premem
+    // amunt/avall, corregim el desfasament i entrem al tile central. Al DOS
+    // n'hi ha prou de ser-hi a sobre; aqui cal ajudar l'alineacio.
     tt = b5_tile_type(col, row);
+    if (tt != 6 && tt != 7 && tt != 11 && !s_climb_prev && (jump || crouch)) {
+        if (col > 0 && b5_tile_type((u8)(col - 1), row) == 7) {
+            col--;
+            tt = 7;
+        } else if (b5_tile_type((u8)(col + 1), row) == 7) {
+            col++;
+            tt = 7;
+        }
+    }
     if (tt == 6 || tt == 7 || tt == 11) {
+        // Si els peus son sobre un tile d'escala pero a sota hi ha terra,
+        // som a la base: sense amunt/avall no s'enganxa (es pot caminar i
+        // saltar). Si el terra no hi es, venim de costat/dalt i si que hi
+        // ens hi enganxem.
+        u8 at_base = (u8)(s_on_ground && b5_solid_ceil(col, (u8)(row + 1)));
         if (tt == 7) {
             // 1:1 DOS level.c:1495: nomes s'alinea horitzontalment si es prem amunt/avall
             if (s_climb_prev != 1 && (jump || crouch)) {
                 px = (i16)(((u16)col << 3) - 4);
                 s_px8 = (i16)(px * SUB);
             }
-            // Si es a terra i no prem amunt ni avall, no s'agafa a l'escala (continua caminant)
-            if (!s_climb_prev && !jump && !crouch && s_on_ground) {
+            if (!s_climb_prev && !jump && !crouch && at_base) {
                 // continua caminant normalment pel terra
             } else {
                 climbing = 1;
@@ -610,7 +626,7 @@ void moving_bank_update(void) {
             }
         } else if (tt == 6) {
             // Reixa de L3: sense imant horitzontal (DOS no fa el snap del 7)
-            if (!s_climb_prev && !jump && !crouch && s_on_ground) {
+            if (!s_climb_prev && !jump && !crouch && at_base) {
                 // continua caminant normalment pel terra
             } else {
                 climbing = 1;

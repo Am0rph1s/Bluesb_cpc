@@ -105,10 +105,10 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
 |---|---|---|---|---|---|---|---|---|---|---|
 | L1 | 0x5000 (1.619) | 0x5658 | 0x5A00 | 0x5F50 | 0x5FB0 | 0x5FE8 (1.135 B) | 0x6900 | 0x6D00 | 0x7680 | 13.401 B |
 | L2 | 0x5000 (2.721) | 0x5AA8 | 0x5E50 | 0x63A0 | 0x63A0 | 0x63A8 (1.135 B) | 0x6900 (PRESS 792 B) | 0x6D00 | 0x7680 | 13.284 B |
-| L3 | 0x5000 (4.670) | 0x6240 | 0x65E8 | 0x6B38 | 0x6B98 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 11.296 + 3.520 B |
+| L3 | 0x5000 (4.670) | 0x6240 | 0x65E8 | 0x6B38 | 0x6B98 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 11.369 + 3.520 B |
 
 - L3 **no porta codi d'excepcions**: no té ascensors ni premses encara. Això és el que fa que
-  `L3WORLD.PAK` = 11.296 B (23 sectors) i `L3C1.PAK` = 3.520 B (8 sectors); C1 va separat amb `load_level_file(lvl,2)`.
+  `L3WORLD.PAK` = 11.369 B (23 sectors) i `L3C1.PAK` = 3.520 B (8 sectors); C1 va separat amb `load_level_file(lvl,2)`.
 - Si mai s'hi afegeix codi de mecanismes a L3, caldrà comprimir més o fer split de C1.
 
 ### 3.2 Layout i Pressupost C5 (mapa + sales + TRIG5 + codi del món dinàmic + taula 0x7FE8)
@@ -117,9 +117,9 @@ El codi de món (src/moving_bank.c) s'enllaça just darrere les dades del nivell
 
 | Nivell | Mapa | Sales | TRIG5 | Base Codi | Codi+DATA | Lliures fins a 0x7FE8 |
 |---|---|---|---|---|---|---|
-| L1 | 9.216 | 1.000 | 1.195 | 0x6C93 | 4.493 B | **452 B** |
-| L2 | 9.216 | 0 | 1.025 | 0x6801 | 4.456 B | **1.660 B** |
-| L3 | 9.216 | 1.200 | 1.070 | 0x6CDE | 4.396 B | **475 B** |
+| L1 | 9.216 | 1.000 | 1.195 | 0x6C93 | 4.601 B | **348 B** |
+| L2 | 9.216 | 0 | 1.025 | 0x6801 | 4.644 B | **1.468 B** |
+| L3 | 9.216 | 1.200 | 1.070 | 0x6CDE | 4.494 B | **379 B** |
 
 ### 3.3 C6 (enemics)
 

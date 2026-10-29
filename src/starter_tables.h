@@ -4,17 +4,17 @@
 
 // Generat per tools/build.py. NO EDITAR.
 #define GAME_START 0x125B
-#define GAME_LEN 15328
-#define GAME_CRC 0x167A
+#define GAME_LEN 15360
+#define GAME_CRC 0x83F3
 #define FDC_LEN 913
-#define CRC_FDC 0x0ADB
+#define CRC_FDC 0x5EBC
 #define FRONT_LEN 2448
-#define CRC_FRONT 0xB2AB
+#define CRC_FRONT 0xC320
 #define MUS_LEN 8366
-#define CRC_MUS 0x2DF6
+#define CRC_MUS 0xCEB7
 // HOLD musica ISR (_g_mus_hold del GAME): el starter el neteja a
 // s_start (reboot calent podria dur brossa = ISR muda per sempre).
-#define MUS_HOLD_ADDR 0x388E
+#define MUS_HOLD_ADDR 0x38AE
 
 static const u8 g_game_chs[64] = {
     0x00,0xC9,0x01,0xC1,0x01,0xC2,0x01,0xC3,0x01,0xC4,0x01,0xC5,
@@ -24,7 +24,7 @@ static const u8 g_game_chs[64] = {
     0x03,0xC6,0x03,0xC7,0x03,0xC8,0x03,0xC9,0x04,0xC1,0x04,0xC2,
     0x04,0xC3,0x04,0xC4,
 };
-static const DiskFileDesc g_file_game = { 15456, 32, g_game_chs };
+static const DiskFileDesc g_file_game = { 15488, 32, g_game_chs };
 static const u8 g_fdc_chs[4] = {
     0x04,0xC5,0x04,0xC6,
 };

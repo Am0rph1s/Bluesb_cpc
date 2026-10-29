@@ -31,7 +31,7 @@ CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "15000",
 # La PILA no canvia: el canari (0x3D00) i el limit de la pila (SP=0x3FFE) son
 # els mateixos; el _DATA acaba per sota del canari.
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0x3880", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0x38A0", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 

@@ -647,8 +647,9 @@ void moving_bank_update(void) {
             s_climb_t6 = 0;
             if (s_carry_kind == 2 || s_carry_kind == 8) carry_abort();
             if (jump) {
-                s_vy = -12;
-                s_on_ground = 0;
+                // 1:1 DOS: a l'aigua yfriction = 0, o sigui que el salt NO
+                // impulsa; el tile d'aigua (op23) posa yvelocity = 0. Aixi
+                // no pot superar el serrell d'onades (se surt per l'escala).
             } else if (crouch) {
                 s_vy = 16;
             } else if (!s_on_ground) {

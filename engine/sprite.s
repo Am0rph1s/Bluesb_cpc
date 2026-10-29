@@ -465,7 +465,7 @@ blit_next_line:
     ret
 
 ;; ============================================================
-;; Taula de reixa periòdica (8 línies × 2 fases × 16 bytes = 256 bytes)
+;; Taula de reixa periodica (8 linies x 2 fases x 16 bytes = 256 B)
 ;; Cada entrada de 16 bytes conté: 8 bytes de màscara + 8 bytes de color
 ;; ============================================================
 _grate_lut:

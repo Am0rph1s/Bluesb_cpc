@@ -587,11 +587,16 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
     {
         u16 head_row = (u16)((py + 16) >> 4);
         u16 top_row = (u16)(py >> 4);
+        u16 feet_row = (u16)((py + 29) >> 4);
         if (effective_vx > 0) {
             u16 next_px = (u16)((s_px8 + effective_vx) >> 3);
             u16 c_right = (u16)((next_px + 10) >> 3);
             u8 fl = tile_flags(c_right, head_row);
             if (!crouch) fl |= tile_flags(c_right, top_row);
+            // 1:1 DOS (level.c tile0_flags = ypos16): tambe es mira la fila
+            // dels peus. Un esglao (tile solid amb la superficie mes amunt
+            // que els peus) bloqueja; el terra pla no (superficie == peus).
+            fl |= tile_flags(c_right, feet_row);
             if (fl & 1) {
                 s_vx = 0;
                 s_px8 = (i16)(((c_right << 3) - 11) * SUB);
@@ -603,6 +608,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
             u16 c_left  = (u16)((next_px + 1) >> 3);
             u8 fl = tile_flags(c_left, head_row);
             if (!crouch) fl |= tile_flags(c_left, top_row);
+            fl |= tile_flags(c_left, feet_row);
             if (fl & 2) {
                 s_vx = 0;
                 s_px8 = (i16)(((c_left << 3) + 8 - 1) * SUB);

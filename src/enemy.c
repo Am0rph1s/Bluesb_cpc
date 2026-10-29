@@ -686,16 +686,27 @@ void en2_check_player_hit(void) {
         }
     }
 
-    // 2. Walkers / Enemics (nomes els de classe 2: el peix es decoracio):
+    // 2. Walkers / Enemics (nomes els de classe 2: el peix es decoracio).
+    // 1:1 DOS level.c do_level_handle_object_collision (type 2):
+    //   |centre_jugador - centre_objecte| < w_jugador + w_objecte
+    //   (10 + 10 px DOS = 10 px CPC) i les caixes [ypos - h, ypos] s'han de
+    //   superposar. El jugador fa h=26 dret; cada enemic level_obj_h[kind].
+    //   Amb top-left: et - py + (he-4) < 26+he  (abans hi havia una finestra
+    //   fixa de 38 px que no arribava al carro de la iaia quan Jake era a
+    //   sobre d'una taula, i que la rata de L3 necessita petita).
     e = s_enemies;
     for (i = 0; i < ENEMY_N; i++, e++) {
+        u8 k, he;
+        i16 dxc;
         if (e->dead) continue;
-        if (en2_collide_class(s_spawn[i].kind) != 2) continue;
-        // 50 era massa generic: la rata de L3 (level_obj_h[6]=10) tocava Jake
-        // quan aquest era una fila mes amunt (taula). Amb 38 cal que les
-        // caixes es toquin de veritat.
-        if ((u16)(e->x - px + 6) < 16 &&
-            (u16)((e->y8 >> 3) - py + 24) < 38) {
+        k = s_spawn[i].kind;
+        if (en2_collide_class(k) != 2) continue;
+        dxc = (i16)(e->x - px);
+        if (dxc <= -10 || dxc >= 10) continue;
+        // level_obj_h[kind] en px (vertical 1:1): 4=28, 8/19=16,
+        // 24 (rata/gos de L3)=10, resta 30.
+        he = (k == 24) ? 10 : ((k == 8 || k == 19) ? 16 : ((k == 4) ? 28 : 30));
+        if ((u8)((e->y8 >> 3) - py + he - 4) < (u8)(26 + he)) {
             bc_r = 1;
             return;
         }

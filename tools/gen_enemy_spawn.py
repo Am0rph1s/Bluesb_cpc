@@ -45,7 +45,7 @@ SPAWN_TYPES = {
     # L3 (vegeu tools/gen_enemy3_frames.py per a les celes)
     3: (18, 24, 0, 0, 0),    # guardia amb escut: patrulla sense tret (op2)
     4: (4, 24, 5, 11, 11),   # policia amb pistola: com L1 (patrulla + tret)
-    6: (18, 24, 13, 13, 13),  # gos op1 (walk cells 13/14)
+    6: (24, 24, 13, 13, 13),  # rata/gos L3 op1: walker amb hitbox h=10 (level_obj_h[6])
 }
 
 

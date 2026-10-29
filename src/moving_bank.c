@@ -507,8 +507,8 @@ void moving_bank_update(void) {
         s_crouch_hold = 0;
     }
 
-    if (s_dance_timer) {
-        s_dance_timer--;
+    if (s_dance_timer || s_dying_timer) {
+        if (s_dance_timer) s_dance_timer--;
         s_vx = 0;
         bc_r = 0;
         g_belt_push = 0;
@@ -573,12 +573,7 @@ void moving_bank_update(void) {
         }
     }
 #endif
-    if (s_dance_timer) {
-        s_vx = 0;
-        bc_r = 0;
-        g_belt_push = 0;
-        return;
-    }
+
 
     // --- Escala (tt==7), reixa de L3 (tt==6) i Aigua/Peixera (tt==11) ---
     // DOS level.c do_level_fixup_object_unkA: type 6 i 7 son tots dos
@@ -590,33 +585,61 @@ void moving_bank_update(void) {
     // caminar i saltar normalment fins que hi entra amb els peus.
     tt = b5_tile_type(col, row);
     if (tt == 6 || tt == 7 || tt == 11) {
-        climbing = (tt == 11) ? 2 : 1;
-        s_climb_t6 = (tt == 6);
-        // 1:1 DOS level.c:504-506: a l'escala només cauen globus (grab_type 2)
-        // i paraigua (grab_type 8); la caixa (grab_type 0) es queda al cap
-        // i puja/baixa amb anim 24/4. Abans s'esborrava sempre.
-        if (s_carry_kind == 2 || s_carry_kind == 8) carry_abort();
         if (tt == 7) {
-            if (s_climb_prev != 1) {
+            // 1:1 DOS level.c:1495: nomes s'alinea horitzontalment si es prem amunt/avall
+            if (s_climb_prev != 1 && (jump || crouch)) {
                 px = (i16)(((u16)col << 3) - 4);
                 s_px8 = (i16)(px * SUB);
             }
-            s_on_ground = 0;
+            // Si es a terra i no prem amunt ni avall, no s'agafa a l'escala (continua caminant)
+            if (!s_climb_prev && !jump && !crouch && s_on_ground) {
+                // continua caminant normalment pel terra
+            } else {
+                climbing = 1;
+                s_climb_t6 = 0;
+                s_on_ground = 0;
+                if (s_carry_kind == 2 || s_carry_kind == 8) carry_abort();
+                if (jump) {
+                    s_vy = -16; // 1:1 DOS yvelocity = -2 => -2 * SUB = -16
+                } else if (crouch) {
+                    s_vy = 16;  // 1:1 DOS yvelocity = 2 => 2 * SUB = 16
+                } else {
+                    s_vy = 0;
+                }
+                s_ground_elevator = -1;
+            }
         } else if (tt == 6) {
-            // Reixa de L3: sense imant horitzontal (DOS no fa el snap del 7).
-            s_on_ground = 0;
+            // Reixa de L3: sense imant horitzontal (DOS no fa el snap del 7)
+            if (!s_climb_prev && !jump && !crouch && s_on_ground) {
+                // continua caminant normalment pel terra
+            } else {
+                climbing = 1;
+                s_climb_t6 = 1;
+                s_on_ground = 0;
+                if (s_carry_kind == 2 || s_carry_kind == 8) carry_abort();
+                if (jump) {
+                    s_vy = -16; // 1:1 DOS yvelocity = -2
+                } else if (crouch) {
+                    s_vy = 16;  // 1:1 DOS yvelocity = 2
+                } else {
+                    s_vy = 0;
+                }
+                s_ground_elevator = -1;
+            }
+        } else {
+            climbing = 2;
+            s_climb_t6 = 0;
+            if (s_carry_kind == 2 || s_carry_kind == 8) carry_abort();
+            if (jump) {
+                s_vy = -12;
+                s_on_ground = 0;
+            } else if (crouch) {
+                s_vy = 16;
+            } else if (!s_on_ground) {
+                s_vy = 8;
+            }
+            s_ground_elevator = -1;
         }
-        if (jump) {
-            s_vy = (tt == 11) ? -12 : -24;
-            s_on_ground = 0;
-        } else if (crouch) {
-            s_vy = (tt == 11) ? 16 : 24;
-        } else if (tt == 11 && !s_on_ground) {
-            s_vy = 8;
-        } else if (tt == 6 || tt == 7) {
-            s_vy = 0;
-        }
-        s_ground_elevator = -1;
     }
 
     // --- Grab / release d'objectes del mapa (globus=8, paraigua=9, caixa=5) ---
@@ -635,7 +658,8 @@ void moving_bank_update(void) {
         s_carry_kind = (tt == 8) ? 2 : 8;
     }
 #endif
-    if (grab && !s_grab_prev && !climbing) {
+    // 1:1 DOS level.c:1940: el llancament de la caixa es permet sempre que es porti a sobre.
+    if (grab && !s_grab_prev && (!climbing || s_carry_kind == 1)) {
         if (s_carry_kind == 1 && !s_carry_state) {
             s_carry_x = (g_face == 0) ? (i16)(s_px8 + 8 * SUB) : (i16)s_px8;
             s_carry_y = (i16)(s_py8 - 6 * SUB);

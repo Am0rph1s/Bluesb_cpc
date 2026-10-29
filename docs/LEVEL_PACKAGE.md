@@ -127,9 +127,10 @@ hi ha cap adreça de C1 hardcoded al resident.
 C4:  0x4000  tileset (16.384)                                        [ple]
 C5:  0x4000  mapa (128 * files_reals)
      +        sales (200 * room_count)          <- rooms_off
-     +        TRIG compacte (256 * 5 = 1.280)  <- trig_off
-     ...      (forat lliure)
-     0x6E00   codi del món (4.548, base fixa BC_*)
+     +        TRIG compacte (5 B per tile usat) <- trig_off
+     +        codi del món (moving_bank.c) + _DATA contigua
+     ...      (forat lliure unificat)
+     0x7FE8   taula de salts fixa BC_* (8 slots x 3 B = 24 B)
 C1:  0x4000  player AKG (4.096, slot fix)          [no és secció: MUSBANK]
      0x5000  cançó (S)
      +       HUD (936)

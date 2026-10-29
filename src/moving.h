@@ -75,6 +75,7 @@ extern u8  g_level_complete;
 extern u8  g_checkpoint;
 extern u8  g_enemy_decomp_cnt;   // diagnostic: descompressions de cela d'enemic (cache miss)
 extern u8 s_dance_timer;
+extern u8 s_dying_timer;
 extern u8 s_pipe_up; // Tuberia (op 17/18/19 del DOS): 1 = el jugador esta dins
                      // del trigger i puja amb forca -> gravetat invertida (DOS: yacc = -3).
 
@@ -103,13 +104,15 @@ extern u8  g_on_ice;    // 1 si el jugador es a terra sobre gel (op=30 o rampes 
 
 // Slots fixos de la taula de salts del Banc 5 (engine/bank5_table.s).
 // Font unica (abans duplicats a moving.c): 0x6E00+3k per sempre.
-#define BC_UPDATE ((void*)0x6E00)
-#define BC_RESTORE ((void*)0x6E03)
-#define BC_DRAW   ((void*)0x6E06) // slot 2 sense us (el CRC-hi-va-morir)
-#define BC_PUSH   ((void*)0x6E09)
-#define BC_FIND   ((void*)0x6E0C)
-#define BC_INIT   ((void*)0x6E0F)
-#define BC_RESPAWN ((void*)0x6E15) // slot 7: reinici de mon (init_level del DOS)
+#define BC_TABLE   0x7FE8
+#define BC_UPDATE  ((void*)(BC_TABLE + 0))
+#define BC_RESTORE ((void*)(BC_TABLE + 3))
+#define BC_DRAW    ((void*)(BC_TABLE + 6))
+#define BC_PUSH    ((void*)(BC_TABLE + 9))
+#define BC_FIND    ((void*)(BC_TABLE + 12))
+#define BC_INIT    ((void*)(BC_TABLE + 15))
+#define BC_CONVEYOR ((void*)(BC_TABLE + 18))
+#define BC_RESPAWN ((void*)(BC_TABLE + 21))
 
 extern u16 g_moving_dst;
 extern u16 g_moving_background;

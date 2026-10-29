@@ -92,9 +92,17 @@ ENEMY_C_HEADERS = {
                     "src/moving.h", "src/sprite.h", "src/enemy.h", "src/level_pkg.h"],
 }
 
-# --- Banc 5 (CP-2.2): lògica moving.* a 0x6E00; slots fixos 0x6E00+3k
-# (han de coincidir amb engine/bank5_table.s; build_bank() ho verifica).
-BANK5_BASE = 0x6E00
+# --- Banc 5 (CP-2.2): lògica moving.* enganxada darrere el TRIG a cada nivell;
+# taula de salts fixa a 0x7FE8 (engine/bank5_table.s; build_bank() ho verifica).
+BANK5_TABLE = 0x7FE8
+
+def c5_code_base(level_idx):
+    if level_idx is None:
+        level_idx = 0
+    map_len = os.path.getsize(os.path.join(PROJ, 'assets', 'bbdata', 'MAPC%d.BIN' % level_idx))
+    rooms_len = os.path.getsize(os.path.join(PROJ, 'assets', 'bbdata', 'ROOMSC%d.BIN' % level_idx))
+    trig_len = os.path.getsize(os.path.join(PROJ, 'assets', 'bbdata', 'TRIGC%d.BIN' % level_idx))
+    return 0x4000 + map_len + rooms_len + trig_len
 # Layout C1 VARIABLE per nivell (blindat per sota de 0x7800 per no tocar FDC.BIN a C0:0x7800):
 # canco + HUD + GAMEOVER + portes + restore + codi + frames + buffers BG.
 # Parametres a C1:0x7680 (77 B), dades BSS a 0x7700 (20 B). Tot < 0x7780.
@@ -103,8 +111,6 @@ LC1_BG_BASE      = 0x6D00
 LC1_PARAMS_BASE  = 0x7680
 LC1_DATA_BASE    = 0x7700
 LC1_ELEV_BG_SIZE = 1120   # 2 pagines x 5 ascensors x 112 B
-BANK5_MAXLEN = 0x1200   # finestra: CODE + pad zeros fins fi _DATA (0x7E07);
-                        # el banc físic dona fins 0x7FFF, de sobres.
 BANK_C_SOURCES = ["src/moving_bank.c"]
 BANK_ASM_SOURCES = ["engine/bank5_table.s"]
 BANK_C_HEADERS = {
@@ -522,46 +528,55 @@ def build_bank(force, level_idx=None):
     ihx = os.path.join(obj, "bank5%s.ihx" % suffix)
     map_path = os.path.join(obj, "bank5%s.map" % suffix)
 
+    b5_base = c5_code_base(level_idx)
     def link_b5(data_loc):
-        run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % BANK5_BASE,
+        run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % b5_base,
              "--data-loc", "0x%04X" % data_loc] + bank_rels + ["-o", ihx])
         return map_area(map_path, "CODE")
 
     # 1a passada amb _DATA a dalt de tot; 2a passada enganxant _DATA just
-    # despres del codi: elimina el forat de ~392 B dins la imatge C5.
+    # despres del codi: elimina el forat dins la imatge C5.
     b5_code_s, b5_code_l = link_b5(0x7F80)
     if b5_code_s is not None:
         dloc = (b5_code_s + b5_code_l + 7) & 0xFFF8
-        if dloc < 0x8000:
-            b5_code_s, b5_code_l = link_b5(dloc)
+        if dloc >= BANK5_TABLE:
+            print("\n[FATAL] Banc 5: _CODE acaba a 0x%04X i _DATA no cap abans "
+                  "de la taula 0x%04X! Cal aprimar moving_bank.c." %
+                  (b5_code_s + b5_code_l, BANK5_TABLE))
+            sys.exit(1)
+        b5_code_s, b5_code_l = link_b5(dloc)
     b5_data_s, b5_data_l = map_area(map_path, "DATA")
     if b5_code_s is not None and b5_data_s is not None and (b5_code_s + b5_code_l) > b5_data_s:
         print("\n[FATAL] Banc 5 _CODE (0x%04X..0x%04X) envaeix _DATA (0x%04X)!" %
               (b5_code_s, b5_code_s + b5_code_l, b5_data_s))
         sys.exit(1)
+    if b5_data_s is not None and (b5_data_s + b5_data_l) > BANK5_TABLE:
+        print("\n[FATAL] Banc 5 _DATA (0x%04X..0x%04X) envaeix la taula de salts (0x%04X)!" %
+              (b5_data_s, b5_data_s + b5_data_l, BANK5_TABLE))
+        sys.exit(1)
     # Asserts d'integritat del banc (FATAL si fallen: adreces o mides malament
     # penjarien el Z80 en el primer call_banked).
     syms = map_symbols(map_path)
     slot_names = {"_bc_update": 0, "_bc_restore": 1, "_bc_draw": 2, "_bc_push": 3,
-                  "_bc_find": 4, "_bc_init": 5, "_bc_conveyor": 6}
+                  "_bc_find": 4, "_bc_init": 5, "_bc_conveyor": 6, "_bc_respawn": 7}
     for name, slot in slot_names.items():
-        want = BANK5_BASE + slot * 3
+        want = BANK5_TABLE + slot * 3
         got = syms.get(name, -1)
         if got != want:
             print("\n[FATAL] Slot %s: esperat 0x%04X, mapa diu %s. Revisa bank5_table.s!" %
                   (name, want, ("0x%04X" % got) if got >= 0 else "absent"))
             sys.exit(1)
     bin_path = os.path.join(obj, "BANK5%s.BIN" % suffix)
-    convert_ihx(ihx, bin_path, start_addr=BANK5_BASE,
-                max_length=image_length(map_path, BANK5_BASE))
+    convert_ihx(ihx, bin_path, start_addr=b5_base,
+                max_length=0x8000 - b5_base)
     size = os.path.getsize(bin_path)
-    if size > BANK5_MAXLEN:
-        print("\n[FATAL] Banc 5: %d bytes > límit 0x%04X! Cal aprimar moving_bank.c." %
-              (size, BANK5_MAXLEN))
+    if b5_base + size > 0x8000:
+        print("\n[FATAL] Banc 5: %d bytes > limit finestra (0x%04X)!" %
+              (size, 0x8000 - b5_base))
         sys.exit(1)
-    print("BANC5%s: 0x%04X (%d bytes, code=%d B, marge_code=%d B)" %
-          (suffix, BANK5_BASE, size, b5_code_l,
-           (b5_data_s or 0x7F80) - (BANK5_BASE + b5_code_l)))
+    free_b5 = BANK5_TABLE - (b5_data_s + b5_data_l)
+    print("BANC5%s: 0x%04X (%d bytes, code=%d B, data=%d B, lliure_banc=%d B)" %
+          (suffix, b5_base, size, b5_code_l, b5_data_l, free_b5))
     if level_idx == 0:
         shutil.copyfile(bin_path, os.path.join(obj, "BANK5.BIN"))
     return bin_path
@@ -1779,11 +1794,9 @@ def build_level_packages(force=False):
             t_zx, _ = zx0_compress(bytes(t_raw), classic=True,
                                    quick=ZX0_QUICK if lv["id"] != 2 else False)
 
-            # C5 (Fase 3.2): [mapa][sales][TRIG compacte] ... [codi del mon].
-            # Tres seccions independents: el codi queda a BANK5_BASE (0x6E00)
-            # fix (slots BC_* del resident) i els offsets reals de les sales i
-            # el TRIG van al manifest i a LevelParams. El forat entre TRIG i
-            # codi no es compta com a usat (no cal omplir-lo de zeros).
+            # C5: [mapa][sales][TRIG compacte][codi del mon + taula salts 0x7FE8].
+            # El codi comenca exactament a code_base = 0x4000 + mapa + sales + TRIG
+            # i arriba fins a 0x8000 (amb la taula de salts fixa a 0x7FE8).
             map_raw = open(map_src, "rb").read()
             rooms_raw = open(rooms_src, "rb").read()
             trigc_raw = open(trig_src, "rb").read()
@@ -1791,34 +1804,31 @@ def build_level_packages(force=False):
             assert len(trigc_raw) % 5 == 0 and len(trigc_raw) > 0, len(trigc_raw)
             rooms_off = 0x4000 + len(map_raw)
             trig_off = rooms_off + len(rooms_raw)
-            assert trig_off + len(trigc_raw) <= BANK5_BASE, \
-                "C5: sales+TRIG (fins 0x%04X) trepitgen el codi (0x%04X)" % (
-                    trig_off + len(trigc_raw), BANK5_BASE)
-            assert BANK5_BASE + len(code_raw) <= 0x8000, (BANK5_BASE, len(code_raw))
+            c5_base = trig_off + len(trigc_raw)
+            assert c5_base + len(code_raw) <= 0x8000, (c5_base, len(code_raw))
             rooms_trig_raw = rooms_raw + trigc_raw
             map_zx, _ = zx0_compress(bytes(map_raw), classic=True,
                                      quick=ZX0_QUICK if lv["id"] != 2 else False)
             rt_zx, _ = zx0_compress(bytes(rooms_trig_raw), classic=True, quick=ZX0_QUICK)
             code_zx, _ = zx0_compress(bytes(code_raw), classic=True, quick=ZX0_QUICK)
             c5_used = len(map_raw) + len(rooms_trig_raw) + len(code_raw)
-            assert 16384 - c5_used >= 256, \
-                "C5 del nivell %s: nomes %d B lliures (minim 256)" % (
+            assert 16384 - c5_used >= 0, \
+                "C5 del nivell %s: nomes %d B lliures" % (
                     tag, 16384 - c5_used)
             print("    C5: mapa 0x4000 (%d), sales 0x%04X (%d), TRIG 0x%04X (%d), "
-                  "codi 0x%04X (%d) -> %d B, %d lliures" %
+                  "codi 0x%04X (%d) -> %d B usats de 16384" %
                   (len(map_raw), rooms_off, len(rooms_raw), trig_off,
-                   len(trigc_raw), BANK5_BASE, len(code_raw), c5_used,
-                   16384 - c5_used))
+                   len(trigc_raw), c5_base, len(code_raw), c5_used))
 
             # C1: imatge MUSMAIN (canco+HUD+GAMEOVER+portes+restore) + codi + frames + params + data
             lay = read_c1_layout(lid)
             mus_raw = open(mus_src, "rb").read()
             assert len(mus_raw) == lay["content_len"], (len(mus_raw), lay)
-            code_base = lay["code_base"]
-            assert code_base == _align8(0x5000 + len(mus_raw)), (code_base, len(mus_raw))
+            c1_code_base = lay["code_base"]
+            assert c1_code_base == _align8(0x5000 + len(mus_raw)), (c1_code_base, len(mus_raw))
             m_data = bytearray(mus_raw)
             if lv["has_code"]:
-                m_data += bytes(code_base - 0x5000 - len(m_data))
+                m_data += bytes(c1_code_base - 0x5000 - len(m_data))
                 m_data += open(code_src, "rb").read()
                 if lv["has_elev"]:
                     assert len(m_data) <= (LC1_FRAMES_BASE - 0x5000), len(m_data)
@@ -1833,7 +1843,7 @@ def build_level_packages(force=False):
             parm = bytearray(open(parm_src, "rb").read())
             assert len(parm) == LVLPARM_SIZE, len(parm)
             for fld, val in ((LVLPARM_ROOMS, rooms_off), (LVLPARM_TRIG, trig_off),
-                             (LVLPARM_CODE_EXC, code_base if lv["has_code"] else 0),
+                             (LVLPARM_CODE_EXC, c1_code_base if lv["has_code"] else 0),
                              (LVLPARM_HUD, lay["hud_off"]),
                              (LVLPARM_GAMEOVER, lay["gameover_off"]),
                              (LVLPARM_DOORS, lay["doors_off"]),
@@ -1856,7 +1866,7 @@ def build_level_packages(force=False):
                 (0xC4, True, 0x4000, bytes(t_zx), len(t_raw)),
                 (0xC5, True, 0x4000, bytes(map_zx), len(map_raw)),
                 (0xC5, True, rooms_off, bytes(rt_zx), len(rooms_trig_raw)),
-                (0xC5, True, BANK5_BASE, bytes(code_zx), len(code_raw)),
+                (0xC5, True, c5_base, bytes(code_zx), len(code_raw)),
             ]
             # L3: C1 separat (L3C1.PAK) per alliberar L3WORLD i poder afegir
             # animacions/triggers de sala sense passar de 28 sectors.

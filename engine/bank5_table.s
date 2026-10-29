@@ -34,26 +34,29 @@
     .globl _g_moving_rows
     .globl _moving_restore_box
 
-    .area _CODE
+    .area _B5TBL (ABS)
+    .org  0x7FE8
 
 _bc_update::
-    jp      _moving_bank_update         ;; slot 0 -> 0x6E00
+    jp      _moving_bank_update         ;; slot 0 -> 0x7FE8
 _bc_restore::
-    jp      _moving_bank_popup_restore  ;; slot 1 -> 0x6E03
+    jp      _moving_bank_popup_restore  ;; slot 1 -> 0x7FEB
 _bc_draw::
-    ret                                 ;; slot 2 (sense ús) -> 0x6E06
+    ret                                 ;; slot 2 (sense us) -> 0x7FEE
     nop
     nop
 _bc_push::
-    jp      _moving_bank_push           ;; slot 3 -> 0x6E09
+    jp      _moving_bank_push           ;; slot 3 -> 0x7FF1
 _bc_find::
-    jp      _moving_bank_find           ;; slot 4 -> 0x6E0C
+    jp      _moving_bank_find           ;; slot 4 -> 0x7FF4
 _bc_init::
-    jp      _moving_bank_init           ;; slot 5 -> 0x6E0F
+    jp      _moving_bank_init           ;; slot 5 -> 0x7FF7
 _bc_conveyor::
-    jp      _moving_bank_conveyor       ;; slot 6 -> 0x6E12
+    jp      _moving_bank_conveyor       ;; slot 6 -> 0x7FFA
 _bc_respawn::
-    jp      _moving_bank_respawn        ;; slot 7 -> 0x6E15 (reinici de nivell)
+    jp      _moving_bank_respawn        ;; slot 7 -> 0x7FFD (reinici de nivell)
+
+    .area _CODE
 
 ;; ============================================================
 ;; const u8* b5_trig_ptr(u8 col, u8 row)

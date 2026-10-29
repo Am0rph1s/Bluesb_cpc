@@ -106,7 +106,7 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
     call_banked(0xC0, LC1_DRAW);
 }
 
-void moving_draw_conveyor_tiles(void) { call_banked(0xC5, (void*)0x6E12); }
+void moving_draw_conveyor_tiles(void) { call_banked(0xC5, BC_CONVEYOR); }
 
 i16 moving_conveyor_push(void) { call_banked(0xC5, BC_PUSH); return bc_r; }
 

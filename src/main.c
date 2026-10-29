@@ -50,8 +50,8 @@ extern volatile u8 g_ticks;
 #define SPEED_AIR   24
 #define MOVE_ACC    7
 #define VY_MAX      (15 * SUB)
-#define GRAV        24
-#define JUMP_VY     (-150)
+#define GRAV        16
+#define JUMP_VY     (-112)
 #define DEAD_L      48
 #define DEAD_R      88
 #define DEAD_T      32
@@ -206,7 +206,7 @@ u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
     // 0/2/3/20/21/27/28/29 són les de plataforma (trigger_func_opX: el
     // jugador s'hi recoloca a sobre). A L1 només hi ha 20/21/27/28; a L2
     // hi ha 29 (64 tiles del terra), 0, 2 i 3.
-    if (op == 0 || op == 2 || op == 3 || op == 20 || op == 21 || op == 27 ||
+    if (op == 0 || op == 1 || op == 2 || op == 3 || op == 20 || op == 21 || op == 27 ||
         op == 28 || op == 29) return 1;
     if (vy >= 0) {
         if (op == 14 || op == 15) return !crouch;
@@ -469,7 +469,7 @@ static u8 anim_step(u8 speed, u8 max_idx) {
 
 static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) {
     if (s_dying_timer) {
-        if (!s_on_ground) return 4;
+        if (s_vy != 0 && !s_on_ground) return 4;
         return (s_dying_timer & 8) ? 10 : 11;
     }
     if (s_dazed_timer) {
@@ -629,7 +629,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                     // TUBERIA (op 17/18/19): el DOS posa yacc = -3 al trigger,
                     // o sea el jugador continua pujant (gravetat invertida).
                     if (s_pipe_up) {
-                        s_vy = (i16)(s_vy - GRAV);
+                        s_vy = (i16)(s_vy - 24);
                     } else {
                         s_vy = (i16)(s_vy + GRAV);
                     }
@@ -649,7 +649,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                         s_vx = 0;
                         if (s_carry_kind == 1 && !s_carry_state) carry_abort();
                     } else {
-                        s_vy = (s_carry_kind == 1 && !s_carry_state) ? -96 : JUMP_VY;
+                        s_vy = (s_carry_kind == 1 && !s_carry_state) ? -72 : JUMP_VY;
                         s_on_ground = 0;
                         s_ground_elevator = -1;
                     }
@@ -1178,6 +1178,13 @@ void main(void) {
                 }
                 s_vx = 0; s_vy = 0;
                 s_crouch_hold = 0;
+                // El update del Banc 5 retorna aviat mentre mor, aixi que
+                // aquests edge-detectors es queden amb l'ultim valor. Cal
+                // reiniciar-los com al DOS en entrar de nou al nivell.
+                s_jump_prev = 0;
+                s_climb_prev = 0;
+                s_grab_prev = 0;
+                s_up_prev = 0;
                 s_on_ground = 1;
                 s_ground_elevator = -1;
                 s_invuln_timer = 75;

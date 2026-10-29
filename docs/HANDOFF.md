@@ -1,8 +1,8 @@
 # Handoff Global — Blues Brothers CPC (Estat Actual i Guia de Continuació)
 
 > **Document unificat de referència per reprendre el desenvolupament**
-> **Data d'actualització**: 28 d'octubre de 2026
-> **Branca**: `fix-c1-l3-unlock` — HEAD `4e53f58` + integració de L3 en l'arbre de treball (pendent de commit)
+> **Data d'actualització**: 29 d'octubre de 2026
+> **Branca**: `fix-c1-l3-unlock` — estat 29/10/2026 (layout C5 dinàmic; vegeu `git log`)
 > **Repo**: `https://github.com/Am0rph1s/Bluesb_cpc`
 > **Target**: Amstrad CPC 6128 (128 KB RAM) — Z80, Mode 0 (16 colors), SDCC 4.5.0 + sdasz80, build amb Python 3.
 
@@ -17,7 +17,7 @@
    - Mai ajustar valors a ull ni per intuïció. Per a coordenades, utilitzar la fórmula oficial:
      `cpc_x = dos_x / 2 - w_cpc / 2`, `cpc_y = dos_y - h_dos` (`docs/DOS_CPC_COORDINATES.md`).
 2. **Pressupost de memòria resident (Bloc 0: `0x0000..0x3FFF`)**:
-   - `_CODE`: `0x0100..0x3826` (**14.118 B**), amb **90 B** de marge fins a `_DATA` (`0x3880`).
+   - `_CODE`: `0x0100..0x385C` (**14.172 B**), amb **36 B** de marge fins a `_DATA` (`0x3880`).
    - `_DATA`: `0x3880..0x3CDE` (1.108 B, inclou `s_lv`). Pila lliure: ~800 B.
    - Qualsevol lògica nova no trivial s'ha de compilar en bancs superiors (C1, C4-C7), mai al resident.
 3. **Regla de commutació de maquinari**:
@@ -61,7 +61,7 @@ Són només per a depuració i no afecten el flux normal.
 ```
 +---------------------------------------------------------------------------------+
 | BLOC 0 (Resident 0x0000..0x3FFF, sempre mapejat a RAM 0)                         |
-|  - 0x0100..0x3826: _CODE del resident (motor genèric, vídeo, ISR, blit)          |
+|  - 0x0100..0x385C: _CODE del resident (motor genèric, vídeo, ISR, blit)          |
 |  - 0x3880..0x3CDE: _DATA resident (globals, s_lv, càmera, estat del jugador)     |
 |  - Pila Z80 (SP=0x3FFE)                                                          |
 +---------------------------------------------------------------------------------+
@@ -80,7 +80,8 @@ Són només per a depuració i no afecten el flux normal.
 |  Banc C4 (0x4000..0x7FFF): Tileset compactat del nivell                          |
 |  Banc C5 (0x4000..0x7FFF): Món del nivell                                        |
 |    - 0x4000: mapa · rooms_off: sales · trig_off: TRIG compacte (5 B/entrada)     |
-|    - 0x6E00: codi del món (moving_bank.c) + _DATA enganxada                      |
+|    - darrere TRIG: codi del món (moving_bank.c) + _DATA contigua                 |
+|    - 0x7FE8..0x7FFF: taula de salts fixa BC_* (8 slots x 3 B = 24 B)             |
 |  Banc C6 (0x4000..0x7FFF): Enemics                                           |
 |    - 0x4000: taula de celes + blocs ZX0                                          |
 |    - 0x4B00: taula de restauració de tiles del nivell                            |
@@ -104,19 +105,21 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
 |---|---|---|---|---|---|---|---|---|---|---|
 | L1 | 0x5000 (1.619) | 0x5658 | 0x5A00 | 0x5F50 | 0x5FB0 | 0x5FE8 (1.135 B) | 0x6900 | 0x6D00 | 0x7680 | 13.401 B |
 | L2 | 0x5000 (2.721) | 0x5AA8 | 0x5E50 | 0x63A0 | 0x63A0 | 0x63A8 (1.135 B) | 0x6900 (PRESS 792 B) | 0x6D00 | 0x7680 | 13.284 B |
-| L3 | 0x5000 (4.670) | 0x6240 | 0x65E8 | 0x6B38 | 0x6B98 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 11.295 + 3.520 B |
+| L3 | 0x5000 (4.670) | 0x6240 | 0x65E8 | 0x6B38 | 0x6B98 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 11.296 + 3.520 B |
 
 - L3 **no porta codi d'excepcions**: no té ascensors ni premses encara. Això és el que fa que
-  `L3WORLD.PAK` = 11.295 B (23 sectors) i `L3C1.PAK` = 3.520 B (8 sectors); C1 va separat amb `load_level_file(lvl,2)`.
+  `L3WORLD.PAK` = 11.296 B (23 sectors) i `L3C1.PAK` = 3.520 B (8 sectors); C1 va separat amb `load_level_file(lvl,2)`.
 - Si mai s'hi afegeix codi de mecanismes a L3, caldrà comprimir més o fer split de C1.
 
-### 3.2 Pressupost C5 (mapa + sales + TRIG5 + codi del món)
+### 3.2 Layout i Pressupost C5 (mapa + sales + TRIG5 + codi del món dinàmic + taula 0x7FE8)
 
-| Nivell | Mapa | Sales | TRIG5 | Codi | Total | Lliures |
+El codi de món (src/moving_bank.c) s'enllaça just darrere les dades del nivell (0x4000 + mapa + sales + TRIG) i la taula de salts fixa viu a 0x7FE8..0x7FFF (slots fixos BC_*). L'espai lliure queda unificat abans de la taula:
+
+| Nivell | Mapa | Sales | TRIG5 | Base Codi | Codi+DATA | Lliures fins a 0x7FE8 |
 |---|---|---|---|---|---|---|
-| L1 | 9.216 | 1.000 | 1.195 | 4.532 | 15.943 | **441** |
-| L2 | 9.216 | 0 | 1.025 | 4.364 | 14.605 | 1.779 |
-| L3 | 9.216 | 1.200 | 1.065 | 4.338 | 15.819 | 565 |
+| L1 | 9.216 | 1.000 | 1.195 | 0x6C93 | 4.493 B | **452 B** |
+| L2 | 9.216 | 0 | 1.025 | 0x6801 | 4.456 B | **1.660 B** |
+| L3 | 9.216 | 1.200 | 1.070 | 0x6CDE | 4.396 B | **475 B** |
 
 ### 3.3 C6 (enemics)
 
@@ -149,7 +152,7 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
   3. Fidelitat fina d'animacions i tipus 22 com a objecte mòbil independent.
 
 ### Nivell 3 (`prison`) — **INTEGRAT I CARREGANT**
-- Afegit a `LEVELS` i `DATA_FILES`: `L3WORLD.PAK` (11.295 B), `L3C1.PAK` (3.520 B) i `L3ENEMI.ZX0` (6.676 B).
+- Afegit a `LEVELS` i `DATA_FILES`: `L3WORLD.PAK` (11.296 B), `L3C1.PAK` (3.520 B) i `L3ENEMI.ZX0` (6.676 B).
 - `pack_level.py 2 --outdir obj/lvl2` regenera tileset/mapa/sales/TRIG/restore/params.
 - Xarxa de C1 variable: Theme2 (4.670 B), HUD, GAMEOVER, 24 portes i restore de 6 sales.
 - **Verificat en emulador** (drecera `3`): `magic=0xB0`, `level_id=2`, `g_map_level=2`,
@@ -177,6 +180,10 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
   2. Validació de portes/sales/àcid i recorregut complet del nivell.
   3. `ENEMY_N=20`: si s'hi afegeixen els 4 llançadors caldrà 22 slots o reduir el codi de C6.
 
+### 4.4 Mecànica universal: Llançament de caixes (1:1 DOS)
+- **Llançament des d'escales, reixes i aigua**: d'acord amb level.c:1940-1942 i do_level_throw_crate (level.c:845-871), si el jugador porta una caixa sobre el cap (s_carry_kind == 1), prémer el botó d'acció (grab) la llança immediatament amb velocitat +/-128, tant a terra com enfilat a una escala (tt == 7), a una reixa (tt == 6, L3) o submergit a l'aigua (tt == 11).
+- **Restriccions mantingudes**: agafar caixes del terra continua exigint terra ferm (s_on_ground == 1), de manera que no es pot agafar una caixa des de l'escala. Els globus (tt == 8) i paraigües (tt == 9) continuen caient automàticament en entrar a l'escala (carry_abort()).
+
 ---
 
 ## 5. Rendiment i Optimització del Framerate (Octubre 2026)
@@ -185,7 +192,7 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
 - **Fase 1 (Completada - commit `127e306`)**:
   - `_hud_blit_col` i el bucle de redibuix del HUD s'han mogut del resident al Banc C1 (`src/hud_bank.c`) i reescrits en ASM directe (Mode 0, càlcul incremental de VRAM amb màscara wrap 2 KB).
   - Ha recuperat **388 línies de raster d'espera VSYNC** durant el scroll horitzontal.
-  - Actualment `_CODE` acaba a `0x3826` (14.118 B), amb **90 B** de marge.
+  - Actualment `_CODE` acaba a `0x385C` (14.172 B), amb **36 B** de marge.
 - **Fases 2 i 3 (Pausades / Documentades)**:
   - *Fase 2 (Render ràpid de tiles)*: reordenació del tileset a la càrrega del nivell + blit via `POP`.
   - *Fase 3 (Còpia front->back en caiguda / Split CRTC)*: descartada a curt termini per complexitat de sprites superposats i sincronització de raster.

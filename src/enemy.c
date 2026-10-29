@@ -706,7 +706,9 @@ void en2_check_player_hit(void) {
         // level_obj_h[kind] en px (vertical 1:1): 4=28, 8/19=16,
         // 24 (rata/gos de L3)=10, resta 30.
         he = (k == 24) ? 10 : ((k == 8 || k == 19) ? 16 : ((k == 4) ? 28 : 30));
-        if ((u8)((e->y8 >> 3) - py + he - 4) < (u8)(26 + he)) {
+        // ATENCIO: en 16 bits. Amb (u8) un enemic 256 px mes amunt tornava
+        // a entrar a la finestra per wrap i feia mal al Jake al seu inici.
+        if ((u16)((e->y8 >> 3) - py + he - 4) < (u16)(26 + he)) {
             bc_r = 1;
             return;
         }

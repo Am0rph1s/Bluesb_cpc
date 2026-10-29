@@ -29,7 +29,7 @@
 // 13 ( 6240): crate_walk2
 // 14 ( 6720): crate_walk3
 // 15 ( 7200): crate_walk4
-// 16 ( 7680): crate_walk5
+// 16 ( 7680): crate_idle
 // 17 ( 8160): crate_lift
 // 18 ( 8640): crate_throw
 // 19 ( 9120): crate_push

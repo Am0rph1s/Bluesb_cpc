@@ -528,7 +528,9 @@ static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) 
         }
         s_anim_idx = 0;
         s_anim_timer = 0;
-        return 14; // 1:1 DOS animframe_00c7 = 0x0E (14)
+        // 1:1 DOS: repòs amb caixa = animframes_ptr[24/4] = animframe_00bd
+        // = [1, 10] (Jake DOS 10 / Elwood 60). És el frame 17 de l'atlas.
+        return 17;
     }
     if (!s_on_ground || (u16)(bsy + 30) > 160) {
         return 4;
@@ -673,7 +675,8 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
             if (s_vy >= 0 && climbing != 1) {
                 i16 elevator_top;
                 i8 elevator_id;
-                bc_a = (u16)px; bc_b = (u16)prev_feet; bc_c = (u16)curr_feet;
+                bc_a = (u16)(px + (PW >> 1)); // centre del jugador (xpos DOS)
+                bc_b = (u16)prev_feet; bc_c = (u16)curr_feet;
                 bc_d = (u16)s_vy; bc_e = (u16)&elevator_top;
                 elevator_id = moving_find_landing();
                 if (elevator_id >= 0) {
@@ -691,7 +694,10 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                         i16 surf = (i16)(target_row << 4);
                         if (is_floor_solid(c_mid1, target_row, s_vy, crouch) ||
                             is_floor_solid(c_mid2, target_row, s_vy, crouch)) {
-                            if (prev_feet <= (surf + 8) && curr_feet >= surf) {
+                            // 1:1 DOS: només s'hi enganxa si els peus CREUEN
+                            // la superfície dins del frame (abans hi havia un
+                            // marge de +8 px que deixava pujar mig tile més).
+                            if (prev_feet <= surf && curr_feet >= surf) {
                                 py = (i16)(surf - PH);
                                 s_py8 = (i16)(py * SUB);
                                 s_vy = 0;
@@ -707,7 +713,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                             i16 surf_u = (i16)(feet_under << 4);
                             if (is_floor_solid(c_mid1, feet_under, s_vy, crouch) ||
                                 is_floor_solid(c_mid2, feet_under, s_vy, crouch)) {
-                                if (prev_feet <= (surf_u + 6) && curr_feet >= (surf_u - 2)) {
+                                if (prev_feet <= surf_u && curr_feet >= surf_u) {
                                     py = (i16)(surf_u - PH);
                                     s_py8 = (i16)(py * SUB);
                                     s_vy = 0;
@@ -1212,12 +1218,25 @@ void main(void) {
         if (s_on_ground && s_ground_elevator >= 0) {
             MovingElevator* e = &g_mag_elevators[(u8)s_ground_elevator];
             i16 px = (i16)(s_px8 >> 3);
-            if (px + PW > e->center_x - ELEVATOR_HALF_W &&
-                px < e->center_x + ELEVATOR_HALF_W) {
-                s_py8 = (i16)(s_py8 + e->delta_y * SUB);
-            } else {
-                s_ground_elevator = -1;
-                s_on_ground = 0;
+            // 1:1 DOS (do_level_handle_object_bonus_collision): compara el
+            // CENTRE del jugador (xpos) amb el centre de l'objecte +/-
+            // level_obj_w[type]:
+            //   ascensor (type 7)  w=18 px DOS -> 9 px CPC
+            //   premsa   (type 22) w=10 px DOS -> 5 px CPC
+            // Abans es comparava la vora esquerra (px) amb +/-9, o sigui una
+            // finestra real de +/-17 sobre el centre: Jake podia anar-hi
+            // penjat mig cos fora i el pujaven dins la paret.
+            {
+                i16 pcx = (i16)(px + (PW >> 1));
+                i16 half = (s_ground_elevator >= MAG_ELEVATOR_COUNT)
+                               ? PRESS_HALF_W : ELEVATOR_HALF_W;
+                if (pcx > (i16)(e->center_x - half) &&
+                    pcx < (i16)(e->center_x + half)) {
+                    s_py8 = (i16)(s_py8 + e->delta_y * SUB);
+                } else {
+                    s_ground_elevator = -1;
+                    s_on_ground = 0;
+                }
             }
         }
 
@@ -1292,13 +1311,15 @@ void main(void) {
 
         dbg_border(0x4C);
         // --- Restaurar el fons al BACKBUFFER (LIFO) ---
-        carry_restore(s_back_page);
+        // Ordre de dibuix: caixa -> Jake -> globus/paraigües. El restore va
+        // al revés: globus/paraigües -> Jake -> caixa.
         sprite_restore_umbrella();
         sprite_restore_balloon();
         if (s_have_drawn[s_back_page]) {
             sprite_restore_player();
             s_have_drawn[s_back_page] = 0;
         }
+        carry_restore(s_back_page);
         // Restore LIFO (invers al draw world->enemic->jugador):
         // l'enemic abans que els ascensors (els dibuixa a sobre).
         if (!s_in_room) {
@@ -1323,6 +1344,11 @@ void main(void) {
             enemy_draw(s_back_page);
         }
 
+        // 1:1 DOS: la caixa portada es dibuixa ABANS del jugador (objectes
+        // 35/37 abans del 39), així en Jake queda per davant i no sembla que
+        // estiguin en plans diferents. El restore va en ordre invers (LIFO).
+        carry_draw(s_back_page);
+
         g_spr_y = (u8)dsy;
         g_spr_x = (u8)dsx;
 
@@ -1345,7 +1371,6 @@ void main(void) {
             s_have_drawn[s_back_page] = 0;
         }
 
-        carry_draw(s_back_page);
         if (s_carry_kind == 2) {
             if (!s_carry_state) {
                 sprite_blit_balloon();
@@ -1373,7 +1398,7 @@ void main(void) {
                 dbg_border(0x54);
         // Sincronització vertical fluida a 25 Hz (2 VSYNCs = 40 ms)
         cpc_wait_vsync_start();
-        if ((u8)(g_ticks - last_ticks) < 10) {
+        if ((u8)(g_ticks - last_ticks) < 2) {
             cpc_wait_vsync_start();
         }
         last_ticks = g_ticks;

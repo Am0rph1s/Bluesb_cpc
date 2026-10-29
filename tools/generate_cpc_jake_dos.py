@@ -134,7 +134,7 @@ GAME_FRAMES = [
     ('crate_walk2', 14),
     ('crate_walk3', 15),
     ('crate_walk4', 16),
-    ('crate_walk5', 17),
+    ('crate_idle', 10),  # DOS 10: repòs amb caixa (animframes[24/4]=[1,10])
     ('crate_lift',  12),
     # 18..19: Empènyer, llançar
     ('crate_throw', 18),

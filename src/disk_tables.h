@@ -12,7 +12,7 @@ static const DiskFileDesc g_file_front = { 2448, 6, g_front_chs };
 
 #define CRC_FSPLASH 0xD44F
 
-#define CRC_MUSBANK 0x691C
+#define CRC_MUSBANK 0x6ADF
 
 #define CRC_FSELECT 0x9A85
 
@@ -22,26 +22,26 @@ static const u8 g_jake_chs[16] = {
     0x0D,0xC6,0x0D,0xC7,0x0D,0xC8,0x0D,0xC9,0x0E,0xC1,0x0E,0xC2,
     0x0E,0xC3,0x0E,0xC4,
 };
-static const DiskFileDesc g_file_jake = { 3132, 8, g_jake_chs };
-#define CRC_JAKE 0x26D5
+static const DiskFileDesc g_file_jake = { 3163, 8, g_jake_chs };
+#define CRC_JAKE 0xD848
 
 static const u8 g_elwood_chs[12] = {
     0x0E,0xC5,0x0E,0xC6,0x0E,0xC7,0x0E,0xC8,0x0E,0xC9,0x0F,0xC1,
 };
-static const DiskFileDesc g_file_elwood = { 2818, 6, g_elwood_chs };
-#define CRC_ELWOOD 0x98D2
+static const DiskFileDesc g_file_elwood = { 2922, 6, g_elwood_chs };
+#define CRC_ELWOOD 0xAE8F
 
-#define CRC_L1WORLD 0x062C
+#define CRC_L1WORLD 0xE88F
 
-#define CRC_L1ENEMI 0xDAD4
+#define CRC_L1ENEMI 0xCE6D
 
-#define CRC_L2WORLD 0xA15A
+#define CRC_L2WORLD 0x63D0
 
-#define CRC_L2ENEMI 0xAEBD
+#define CRC_L2ENEMI 0xB3ED
 
-#define CRC_L3WORLD 0xF670
+#define CRC_L3WORLD 0x2D18
 
-#define CRC_L3ENEMI 0xCEE6
+#define CRC_L3ENEMI 0x5644
 
 #define CRC_L3C1 0xFE58
 

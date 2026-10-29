@@ -129,7 +129,10 @@ void moving_bank_find(void) {
     {
         const MovingElevator* e = g_mag_elevators;
         for (i = 0; i < LEVEL_ELEVATOR_COUNT; i++, e++) {
-            if ((u16)(e->center_x - bc_a + 8) < 33) {
+            // 1:1 DOS: |centre_jugador - centre_objecte| < level_obj_w[type]
+            // (18 px DOS = 9 px CPC). bc_a porta el CENTRE del jugador.
+            i16 dx = (i16)(e->center_x - bc_a);
+            if (dx > -ELEVATOR_HALF_W && dx < ELEVATOR_HALF_W) {
                 i16 surface = (i16)(e->y - ELEVATOR_OBJECT_H);
                 if ((i16)bc_b <= (i16)(surface + 8) && (i16)bc_c >= surface) {
                     *(i16*)bc_e = (i16)(surface - 30);
@@ -147,7 +150,9 @@ void moving_bank_find(void) {
     {
         const MovingElevator* e = &g_mag_elevators[MAG_ELEVATOR_COUNT];
         for (i = 0; i < LEVEL_PRESS_COUNT; i++, e++) {
-            if ((u16)(e->center_x - bc_a + 8) < 33) {
+            // Premsa (type 22): level_obj_w = 10 px DOS -> 5 px CPC.
+            i16 dx = (i16)(e->center_x - bc_a);
+            if (dx > -PRESS_HALF_W && dx < PRESS_HALF_W) {
                 i16 surface = (i16)(e->y - PRESS_OBJECT_H);
                 if ((i16)bc_b <= (i16)(surface + 8) && (i16)bc_c >= surface) {
                     *(i16*)bc_e = (i16)(surface - 30);
@@ -651,8 +656,12 @@ void moving_bank_update(void) {
                 s_on_ground = 0;
             } else if (crouch) {
                 s_vy = 16;
-            } else if (!s_on_ground) {
-                s_vy = 8;
+            } else {
+                // 1:1 DOS tiles.c trigger_func_op23 (aigua): yvelocity = 0.
+                // Abans es posava s_vy = 8 (enfonsar-se 1 px/frame) i a la
+                // superficie el tile dels peus alternava aire/aigua: l'anim
+                // passava de nedar a saltar cada frame (parpelleig).
+                s_vy = 0;
             }
             s_ground_elevator = -1;
         }

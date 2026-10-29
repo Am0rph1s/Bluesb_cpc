@@ -19,6 +19,9 @@
 #define ELEVATOR_WIDTH_PX 18
 #define ELEVATOR_SPR_WIDTH_PX (ELEVATOR_W_BYTES * 2)
 #define ELEVATOR_HALF_W 9
+// Premses (op11, level_obj_w[22] = 10 px DOS -> 5 px CPC): mateixa finestra
+// de suport que al DOS (do_level_handle_object_bonus_collision).
+#define PRESS_HALF_W 5
 
 typedef struct {
     i16 center_x;               // coordenades de joc Mode 0 (px)

@@ -104,7 +104,7 @@ GAME_FRAMES_ELWOOD = [
     ('crate_walk2', 64),
     ('crate_walk3', 65),
     ('crate_walk4', 66),
-    ('crate_walk5', 67),
+    ('crate_idle', 60),  # DOS 60 (Jake 10 + 50): repòs amb caixa
     ('crate_lift',  62),
     ('crate_throw', 68),
     ('crate_push', 70),

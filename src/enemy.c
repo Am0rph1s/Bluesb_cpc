@@ -168,9 +168,9 @@ static const Spawn s_spawn[ENEMY_N] = {
     { 548,  496 << 3,  8, 16,  0 , 14, 15 }, //  9: Peix 2 (Peixera 2) [slot 12]
 
     // 3 Ocells (kind 19, DOS op8): slots 26, 27, 28
-    { 232,   64 << 3, 19, 32,  5 , 14, 15 }, // 10: Ocell 1 (NÃºvols esquerra) [slot 26]
-    { 512,   48 << 3, 19, 32,  5 , 14, 15 }, // 11: Ocell 2 (NÃºvols centre) [slot 27]
-    { 808,   64 << 3, 19, 32,  5 , 14, 15 }, // 12: Ocell 3 (NÃºvols dreta) [slot 28]
+    { 232,   64 << 3, 19, 24,  5 , 14, 15 }, // 10: Ocell 1 (NÃºvols esquerra) [slot 26]
+    { 512,   48 << 3, 19, 24,  5 , 14, 15 }, // 11: Ocell 2 (NÃºvols centre) [slot 27]
+    { 808,   64 << 3, 19, 24,  5 , 14, 15 }, // 12: Ocell 3 (NÃºvols dreta) [slot 28]
 
     // 2 Grangers (kind 18, DOS op1): slots 16, 17
     { 352,  320 << 3, 18, 24,  7 , 14, 15 }, // 13: Granger 1 (escala vinils esq) [slot 16]
@@ -185,7 +185,10 @@ static const Spawn s_spawn[ENEMY_N] = {
     { 624,  768 << 3, 20, 24, 11 , 14, 15 }, // 17: Rocker 2 (2n pis dreta) [slot 15]
     {  72,  464 << 3, 20, 24, 11 , 14, 15 }, // 18: Rocker 3 (prop Bar/Restaurant) [slot 9]
     { 584,  720 << 3, 20, 24, 11 , 14, 15 }, // 19: Rocker 4 (2n pis) [slot 13]
-    { -1000, 0, 19, 0, 5, 14, 15 }, // inactiu (ENEMY_N=22)
+    // Cambrera ESTÀTICA (DOS slot 14, type 16 -> object_func_op4): dos
+    // (xpos 1648, ypos 800) -> CPC x 816, top 768. Frame neutral = cel·la 9
+    // (ENEMI1 SQV 33 = DOS frame 179). Kind 22 = estàtica (no camina).
+    { 816,  768 << 3, 22,  0,  9 , 14, 15 }, // 20: Cambrera (replà ascensor) [slot 14]
     { -1000, 0, 19, 0, 5, 14, 15 }, // inactiu (ENEMY_N=22)
 };
 #else
@@ -319,8 +322,12 @@ void en2_update(void) {
             i16 abs_dx = (dx_jake >= 0) ? dx_jake : -dx_jake;
             u8 is_cop = (sp->kind == 4);
             u8 is_throw = (sp->kind == 21);
+            // Les distancies del DOS son px DOS: l'horitzontal CPC es 2:1.
+            //   policia (op2)   80 DOS -> 40 CPC
+            //   llançador (op7) 80 DOS -> 40 CPC
+            //   cambrera (op10) 160 DOS -> 80 CPC
             i16 max_y = is_cop ? 20 : 10;
-            i16 max_x = is_cop ? 80 : (is_throw ? 80 : 160);
+            i16 max_x = is_cop ? 40 : (is_throw ? 40 : 80);
             if (dy <= max_y && abs_dx < max_x) {
                 e->dir = (dx_jake >= 0) ? 1 : -1;
                 // 1:1 DOS: en rang de tir es PARA (direction_lr = 0) i fa la
@@ -363,7 +370,10 @@ void en2_update(void) {
             nx = (i16)(e->x + dx);
         }
 
-        if (sp->vx == 0) {
+        if (sp->kind == 22) {
+            // Estàtic pur (type 11 de L2 / cambrera estàtica de L1): al DOS
+            // op4/op2 sense atac no mouen ni giren l'objecte.
+        } else if (sp->vx == 0) {
             // EstÃ tic (ex: policia replÃ  ascensors): gira encarant Jake o periÃ²dicament
             i16 dy = jake_y - y;
             if (dy >= -24 && dy <= 32) {
@@ -374,17 +384,26 @@ void en2_update(void) {
                 e->dir = (i8)-e->dir;
             }
         } else if (sp->kind == 8 || sp->kind == 19) {
-            i16 min_x, max_x;
             if (sp->kind == 8) {
+                i16 min_x, max_x;
                 min_x = (sp->x < 500) ? 388 : 564;
                 max_x = (i16)(min_x + 48);
+                if (nx < min_x) { e->x = min_x; e->dir = 1; }
+                else if (nx > max_x) { e->x = max_x; e->dir = -1; }
+                else { e->x = nx; }
             } else {
-                min_x = (i16)(sp->x - 96);
-                max_x = (i16)(sp->x + 96);
+                // 1:1 DOS object_func_op8 (ocells: type 19 -> op 9 -> case 8):
+                //   if (tile_type(xpos16 + 2 - facing_left*4, ypos16) != 1)
+                //       moving_direction ^= 1;
+                // xpos16 son tiles de 16 px. En CPC (8 px/col): centre +2
+                // columnes si va a la dreta, -2 si va a l'esquerra; la fila
+                // es la dels peus. Al cel les tiles son tipus 1 i els
+                // nuvols/caixes (tipus 0) fan de paret.
+                u16 frow = (u16)(((e->y8 >> 3) + ENEMY_HT) >> 4);
+                u16 cchk = (u16)((e->x + 8 + (e->dir << 4)) >> 3);
+                if (tile_type(cchk, frow) != 1) e->dir = (i8)-e->dir;
+                e->x = (i16)(e->x + (i16)(e->dir * 3));
             }
-            if (nx < min_x) { e->x = min_x; e->dir = 1; }
-            else if (nx > max_x) { e->x = max_x; e->dir = -1; }
-            else { e->x = nx; }
             e->on_ground = 1;
             e->vy = 0;
         } else {

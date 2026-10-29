@@ -486,7 +486,9 @@ static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) 
             s_anim_timer++;
             if (s_anim_timer >= 4) {
                 s_anim_timer = 0;
-                s_anim_idx ^= 1;
+                // s_anim_idx pot venir de walk (p. ex. 3): XOR 1 el deixava
+                // a 2/3 i sempre es dibuixava el mateix frame. Forcem 0/1.
+                s_anim_idx = (u8)((s_anim_idx + 1) & 1);
             }
             return s_anim_idx ? 5 : 9;
         }

@@ -57,31 +57,47 @@ static void draw_char(u8 tile_index, u16 ma, u8 tile_half_y, u8 tile_half_x) {
     render_tile_fast(tile);
 }
 
-// Repinta un tile animat de 8x16 del mapa, només els caràcters CRTC de 4x8
-// que cauen dins el viewport actual. Això manté el ring circular lliure de wraps.
-void render_tile_world(u8 tile_index, u16 col, u16 row,
-                       u16 cam_x4, u16 cam_row) {
-    u16 cx = (u16)(col << 1);
-    u16 cy = (u16)(row << 1);
-    i16 sx = (i16)cx - (i16)cam_x4;
-    i16 sy = (i16)cy - (i16)cam_row;
-    u8 prev_b, sub;
+// Repinta un SPAN de tiles animats (mateixa fila, col_start..col_end) amb
+// UNA sola commutacio al Banc 4. Abans (P1b) cada columna feia el seu
+// bank_set/bank_restore; ara es fa un unicament per span (4-6 columnes).
+// El punter al tile es calcula un sol cop i el MA s'incrementa de 40 per
+// subfila en lloc de multiplicar.
+void render_tile_span(u8 tile_index, u16 col_start, u16 col_end, u16 row,
+                      u16 cam_x4, u16 cam_row) {
+    const u8* tp = TILESET + ((u16)tile_index << 6);
+    u16 col;
+    u8 prev_b;
 
     prev_b = bank_set(0xC4);
-    for (sub = 0; sub < 2; sub++) {
-        if (sy >= 0 && sy < PLAY_ROWS) {
-            u16 ma = (u16)(((cy * 40) + cx) & 0x03FF);
-            if (sx >= 0 && sx < PLAY_CHARS) {
-                draw_char(tile_index, ma, sub, 0);
+    for (col = col_start; col <= col_end; col++) {
+        u16 cx = (u16)(col << 1);
+        u16 ma = (u16)(((((u16)row << 1) * 40) + cx) & 0x03FF);
+        i16 sx = (i16)cx - (i16)cam_x4;
+        i16 sy = (i16)((u16)(row << 1)) - (i16)cam_row;
+        u8 sub;
+        for (sub = 0; sub < 2; sub++) {
+            if (sy >= 0 && sy < PLAY_ROWS) {
+                const u8* t = tp + (u16)(sub << 5);
+                if (sx >= 0 && sx < PLAY_CHARS) {
+                    g_render_tile_offset = (u16)(ma << 1);
+                    render_tile_fast(t);
+                }
+                if ((sx + 1) >= 0 && (sx + 1) < PLAY_CHARS) {
+                    g_render_tile_offset = (u16)(((ma + 1) & 0x03FF) << 1);
+                    render_tile_fast((const u8*)(t + 2));
+                }
             }
-            if ((sx + 1) >= 0 && (sx + 1) < PLAY_CHARS) {
-                draw_char(tile_index, (u16)((ma + 1) & 0x03FF), sub, 1);
-            }
+            sy++;
+            ma = (u16)((ma + 40) & 0x03FF);
         }
-        sy++;
-        cy++;
     }
     bank_restore(prev_b);
+}
+
+// Repinta un sol tile animat (repintats puntuals de main.c / render_room).
+void render_tile_world(u8 tile_index, u16 col, u16 row,
+                       u16 cam_x4, u16 cam_row) {
+    render_tile_span(tile_index, col, col, row, cam_x4, cam_row);
 }
 
 extern void render_column(u16 cam_x4, u16 cam_row, u16 sx);

@@ -28,6 +28,8 @@
 
 extern void render_tile_world(u8 tile_index, u16 col, u16 row,
                               u16 cam_x4, u16 cam_row);
+extern void render_tile_span(u8 tile_index, u16 col_start, u16 col_end,
+                             u16 row, u16 cam_x4, u16 cam_row);
 
 // --- Consultes directes al Banc 5 (MAP_PTR i TRIG_PTR ja mapejats) ---
 
@@ -736,7 +738,7 @@ void moving_bank_update(void) {
 
 void moving_bank_conveyor(void) {
     u8 page = (u8)bc_a;
-    u8 s, c;
+    u8 s;
 
     // 1. Repintar spans animats visibles (cintes + àcid + aigua + vores).
     // Mateix indexat que el tick (stamp mod len per resta; vegeu anim_tick_c5).
@@ -768,10 +770,10 @@ void moving_bank_conveyor(void) {
             // Tile repetit respecte del pas anterior: les dues pagines ja el
             // tenen pintat, no cal repintar (60% dels passos a L2).
             if (tile == s_anim_data[off + prev]) continue;
-            for (c = sp->col_start; c <= sp->col_end; c++) {
-                if ((u16)(((u16)c << 1) - g_cam_x4 + 1) >= 41) continue;
-                render_tile_world(tile, c, sp->row, g_cam_x4, g_cam_row);
-            }
+            // P1b: un unic bank_set(0xC4) per span; render_tile_span ja
+            // retalla les meitats invisibles de cada columna.
+            render_tile_span(tile, sp->col_start, sp->col_end, sp->row,
+                             g_cam_x4, g_cam_row);
         }
     }
 

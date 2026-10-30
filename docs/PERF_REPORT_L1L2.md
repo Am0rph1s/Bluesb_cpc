@@ -106,3 +106,24 @@ ni entre portar caixa o no. El cost no depèn de l'escena: domina un cost base.
    `PROFILE_BORDER` per tenir temps per secció.
 2. Optimitzar les seccions més cares (C5 anim tick / find, enemics, HUD).
 3. Tornar a capturar amb el mateix mètode i comparar.
+
+
+## Actualitzacio 30/10/2026: passos P1a, P1b, P2.1, P2.2, P3 i P4.2
+
+Aplicats i mesurats els passos del pla `pla_optimitzacio_fps_l1l2.md` (detall a
+la seva seccio "Estat d'execucio"). Resum de l'efecte a L1 (inici de nivell):
+
+| Configuracio | quiet | caminant | caminant2 | quiet2 |
+|---|---|---|---|---|
+| Baseline (abans del pla) | 13,0 | 11,0 | 11,0 | - |
+| P4.2 + P2.1 + P1a + P2.2 | 16,6 | 10,5 | 11,0 | - |
+| + P3 (cache de flip) | 12,4 | 10,5 | 9,3 | 16,6 |
+| + P1b (blit de span) | 12,5 | 10,5 | 9,3 | 16,6 |
+
+Notes:
+* La mesura depen de la zona del nivell (enemics i spans visibles), per aixo el
+  "quiet" inicial i el final difereixen: el que compara es la MATEIXA sequencia
+  entre builds.
+* P3 i P1b no fan baixar els fps; P1b no els apuja de forma mesurable perque el
+  frame esta lligat a VSYNC (vegeu el pla).
+* El joc queda estable amb el canari de pila intacte (us real de pila: 100 B).

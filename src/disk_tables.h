@@ -2,17 +2,17 @@
 #define DISK_TABLES_H
 #include "fdc.h"
 
-#define CRC_FDC 0x5451
+#define CRC_FDC 0xF0D1
 
 static const u8 g_front_chs[12] = {
     0x04,0xC7,0x04,0xC8,0x04,0xC9,0x05,0xC1,0x05,0xC2,0x05,0xC3,
 };
 static const DiskFileDesc g_file_front = { 2448, 6, g_front_chs };
-#define CRC_FRONT 0x1038
+#define CRC_FRONT 0x6926
 
 #define CRC_FSPLASH 0xD44F
 
-#define CRC_MUSBANK 0xDF52
+#define CRC_MUSBANK 0x8C02
 
 #define CRC_FSELECT 0x9A85
 
@@ -31,17 +31,17 @@ static const u8 g_elwood_chs[12] = {
 static const DiskFileDesc g_file_elwood = { 2818, 6, g_elwood_chs };
 #define CRC_ELWOOD 0x98D2
 
-#define CRC_L1WORLD 0x6438
+#define CRC_L1WORLD 0x7086
 
-#define CRC_L1ENEMI 0x6454
+#define CRC_L1ENEMI 0xF1C7
 
-#define CRC_L2WORLD 0x9E44
+#define CRC_L2WORLD 0xFFCF
 
-#define CRC_L2ENEMI 0x4006
+#define CRC_L2ENEMI 0x5BCA
 
-#define CRC_L3WORLD 0x7DE8
+#define CRC_L3WORLD 0xB160
 
-#define CRC_L3ENEMI 0xA00A
+#define CRC_L3ENEMI 0x25FE
 
 #define CRC_L3C1 0xFE58
 

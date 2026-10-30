@@ -127,3 +127,21 @@ Notes:
 * P3 i P1b no fan baixar els fps; P1b no els apuja de forma mesurable perque el
   frame esta lligat a VSYNC (vegeu el pla).
 * El joc queda estable amb el canari de pila intacte (us real de pila: 100 B).
+
+
+### Captura final amb `docs/perf/perf_monitor.py` (build 364a480, L1)
+
+Log: `scratch/perf.log` (340 mostres, 130 s, inici de nivell + caminar cap a
+les clavegueres).
+
+| Tram | n | mediana | mitjana | min | max |
+|---|---|---|---|---|---|
+| quiet (5-22 s) | 45 | **16,8 fps** | 16,7 | 14,7 | 18,5 |
+| caminant (30-70 s) | 105 | **10,4 fps** | 18,5* | 8,3 | 184,4* |
+| quiet2 (100-128 s) | 73 | **16,7 fps** | 16,7 | 14,6 | 16,8 |
+
+\* els valors alts son glitches del comptador de fase (wrap de 8 bits) en
+travessar un canvi de zona; la mediana es la xifra bona.
+
+Canari de pila intacte (`0x55AA` x8) i `s_lv` magic `0xB0` al final de la
+captura: cap crash ni desbordament de pila.

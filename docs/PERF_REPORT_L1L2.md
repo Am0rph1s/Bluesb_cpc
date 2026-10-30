@@ -148,19 +148,28 @@ captura: cap crash ni desbordament de pila.
 
 ## Actualitzacio 30/10/2026 (nit): HUD en scroll + cache d'enemics
 
-Build `11ac841`. Mateix metode (`perf_monitor.py`, 339 mostres, 130 s, L1):
+Build `11ac841`. El HUD es deixa de reconstruir (40 columnes, ~63.400 T =
+15,9 ms) a cada frame d'scroll: ara es copia el HUD ja renderitzat de l'altra
+pagina de VRAM (16 scanlines x 80 B, ~26.900 T = 6,7 ms) i, si la tira creua el
+wrap de `0x800`, es reconstrueix. Tambe s'ha corregit el "poisoning" de la
+cache de celes girades (scratch fix a `0x7700` + reutilitzacio de l'orientacio
+oposada) i s'ha revertit P1b.
 
-| Tram | mediana abans (`3a6d1ec`) | mediana ara | Guany |
-|---|---|---|---|
-| quiet | 16,8 fps | **16,7 fps** | = |
-| caminant | 10,4 fps | **16,7 fps** | **+60%** |
-| quiet2 | 16,7 fps | **16,7 fps** | = |
+**Mesura A/B en calent** (mateix build, mateixa ruta, caminant alternant
+direccio, 4 mostres de 8 s; el fast-path es desactiva patchejant
+`hud_try_copy` a `xor a; ret`):
 
-El guany ve de deixar de reconstruir el HUD (40 columnes, ~63.400 T = 15,9 ms)
-a cada frame d'scroll: ara es copia el HUD ja renderitzat de l'altra pagina de
-VRAM (16 scanlines x 80 B, ~26.900 T = 6,7 ms) i, si la tira creua el wrap de
-`0x800`, es reconstrueix. Tambe s'ha corregit el "poisoning" de la cache de
-celes girades (scratch fix a `0x7700` + reutilitzacio de l'orientacio oposada).
+| Configuracio | Mediana |
+|---|---|
+| Amb fast-path | **14,7 fps** |
+| Sense fast-path | **13,7 fps** |
 
-Pendent: `quiet` segueix a 3 VSYNCs (16,7 fps); per creuar a 25 fps calen ~3-5 ms
-mes (mesura per seccions amb `PROFILE_BORDER` abans de tocar res).
+Guany del Pas A: **+1,0 fps (~9 ms/frame en scroll)**.
+
+> Nota: una captura anterior amb `perf_monitor` va donar "caminant 16,7 fps
+> (+60%)"; era un artefacte (el jugador va quedar encallat i l'fps mesurava
+> repòs). La xifra valida es l'A/B de dalt.
+
+Pendent: `quiet` segueix a 3 VSYNCs (16,7 fps) i caminant a ~14,7 fps. Per
+creuar a 16,7 fps calen ~10 ms mes: Pas C (parelles de columnes) i el dibuix
+d'enemics (C6, ~14 ms/frame).

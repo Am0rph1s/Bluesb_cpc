@@ -136,28 +136,45 @@ Cost del fast-path: ~26.900 T (6,7 ms) en lloc de 63.400 T (15,9 ms).
 | **Pas C** (`render_column` parelles + `HL+3`) | PENDENT | el resident té ~97 B; cal mesurar abans |
 | **Pas 0** (mesura de `quiet`) | PENDENT | `quiet` segueix a 16,7 fps (3 VSYNCs) |
 
-### Mesura L1 (`docs/perf/perf_monitor.py`, 339 mostres, 130 s)
+### Mesura A/B del Pas A (en calent, mateix build i mateixa ruta)
 
-| Tram | n | mediana | abans (`3a6d1ec`) | guany |
-|---|---|---|---|---|
-| quiet (5-22 s) | 45 | **16,7 fps** | 16,8 | = |
-| caminant (30-70 s) | 105 | **16,7 fps** | 10,4 | **+60%** |
-| quiet2 (100-128 s) | 73 | **16,7 fps** | 16,7 | = |
+El HUD es pot desactivar en calent patchejant `hud_try_copy` a `xor a; ret`
+(retorna 0 = reconstrucció, el comportament anterior). Caminant alternant
+direcció (per no encallar-se), 4 mostres de 8 s:
 
-`caminant` passa de 5 VSYNCs (10,4 fps) a **3 VSYNCs (16,7 fps)**. El HUD era,
-de bon tros, el cost dominant de l'scroll (15,9 ms/frame), tal com deia el
-diagnòstic de la Trampa 1.
+| Configuració | Mostres | Mediana |
+|---|---|---|
+| Amb fast-path (còpia VRAM→VRAM) | 13,9 / 14,9 / 14,9 / 14,4 | **14,7 fps** |
+| Sense fast-path (reconstrucció) | 14,4 / 13,9 / 13,4 / 12,4 | **13,7 fps** |
+
+**Guany: +1,0 fps (~9 ms/frame en scroll).** El HUD era el cost dominant de
+l'scroll (15,9 ms) i ara en costa 6,7 ms, però com que el frame segueix a ~70 ms
+(4 VSYNCs) el guany en fps queda limitat per la quantització de VSYNC.
+
+> **Correcció d'una mesura anterior**: un `perf_monitor` va donar "caminant
+> 16,7 fps (+60%)" però era un artefacte: el jugador es va quedar encallat a
+> `px=76` i l'fps mesurava repòs. La xifra bona és l'A/B de dalt.
 
 ### Detalls d'implementació que cal recordar
 
 * **El HUD no són 160 B contigus**: són 2 files de caràcters = **16 scanlines de
   80 B a passos de `0x800`**. `hud_copy_strip` fa 2 files × 8 scanlines.
 * La còpia només és lineal si la tira **no creua el wrap de `0x800`**
-  (`off <= 0x760`); si el creua, es reconstrueix (8% dels offsets).
+  (`off <= 0x760`); si el creua, es reconstrueix (~8% dels offsets).
 * El **snapshot de contingut és global** (4 B), no per pàgina: quan canvia, la
   pàgina de torn es reconstrueix i l'altra copia d'ella al frame següent.
   Amb comptadors per pàgina el codi de C1 no hi cabia (aritmètica de 16 bits ×8).
 * **C1 va just**: `hud_bank` viu a `0x4C01..0x4FC6` (965 B de 967) i `_DATA` a
-  `0x4FC8..0x4FFF` (53 B). `hb_base`/`hb_data` s'han ajustat a `build.py`.
+  `0x4FC8..0x4FFF` (53 B). `hb_base`/`hb_data` ajustats a `build.py`.
 * `_DATA` resident a `0x39A0` (pila 494 B; **ús real mesurat 100 B**) i canari a
   `0x3E10`.
+* `build_bank_equ` genera un placeholder per `_hud_try_copy` a la 1a iteració
+  (el HUD es construeix abans del resident); la 2a ja hi posa l'adreça bona.
+
+### Següent objectiu
+
+Per creuar a 16,7 fps caminant calen ~10 ms més. Candidats, per ordre:
+1. **Pas C** (parelles de columnes a `render_column`): ~3-4 ms.
+2. **Dibuix/restauració d'enemics** (C6, ~14 ms/frame segons el perfil): el
+   següent coll d'ampolla real.
+3. **Pas 0**: mesurar el frame en `quiet` per seccions abans de tocar res.

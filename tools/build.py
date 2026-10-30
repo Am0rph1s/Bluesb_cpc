@@ -77,10 +77,10 @@ DSKNAME8 = "BLUESB"
 
 # --- Banc C3 (walkers L1): frames + codi + dades (CP-2.2, com el Banc 5)
 # (C3 i no C2: OUT(0x7F00,0xC2) penja la maquina, vist 10/26.)
-# Frames ENEMI1.BIN (14x512 B) a 0x4000; taula de salts fixa a 0x5C00
+# Frames ENEMI1.BIN (14x512 B) a 0x4000; taula de salts fixa a 0x5A00
 # (engine/enemy_table.s, slots init/update/restore/draw); codi+dades
 # fins 0x8000 (pool de fons inclos). ENEMI.BIN = frames + imatge codi.
-ENEMY_BASE = 0x5C00
+ENEMY_BASE = 0x5A00
 ENEMY_DATA = 0x5820  # dins l'area alliberada pels frames comprimits (cache 0x5000..0x57FF, estat 0x5800..0x581F)
 ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 # L2-L6: ENEMI2.BIN..ENEMI6.BIN (mateix format de 16 celes); build_enemybank
@@ -717,9 +717,9 @@ def build_enemybank(force, level_idx=None):
     en_code_s, en_code_l = map_area(map_path, "CODE")
     en_data_s, en_data_l = map_area(map_path, "DATA")
     # Layout C6 nou: frames comprimits 0x4000, cache 0x5000, estat 0x5800,
-    # dades 0x5820..<0x5C00, codi 0x5C00..<0x7900 (LUT).
+    # dades 0x5820..<0x5A00, codi 0x5A00..<0x7900 (LUT de flip), BG pool 0x7A00.
     if en_code_s is not None and (en_code_s + en_code_l) > 0x7900:
-        print("\n[FATAL] Banc C6 _CODE (0x%04X..0x%04X) envaeix la LUT (0x7900)!" %
+        print("\n[FATAL] Banc C6 _CODE (0x%04X..0x%04X) envaeix la LUT de flip (0x7900)!" %
               (en_code_s, en_code_s + en_code_l))
         sys.exit(1)
     if en_data_s is not None and (en_data_s + en_data_l) > ENEMY_BASE:
@@ -763,7 +763,7 @@ def build_enemybank(force, level_idx=None):
     #   0x4040..        blocs ZX0 per cela (1 flux independent per cela)
     #   0x5000..0x57FF  cache de 4 slots de 512 B (scratch: no cal carregar-hi res)
     #   0x5800..0x581F  estat de la cache (cela per slot + next + comptador)
-    #   0x5C00..        codi (ENEMYCODE.BIN)
+    #   0x5A00..        codi (ENEMYCODE.BIN)
     from zx0pkg.zx0 import zx0_compress
     EN_TABLE = 0x4000
     EN_BLOCKS = 0x4040
@@ -784,10 +784,10 @@ def build_enemybank(force, level_idx=None):
         print("\n[FATAL] Blocs ZX0 d'enemics (fins 0x%04X) envaeixen la cache 0x%04X!",
               blocks_end, EN_CACHE)
         sys.exit(1)
-    if EN_CACHE + EN_CACHE_SLOTS * 512 > 0x4000 + 0x1C00:
-        print("\n[FATAL] Cache d'enemics passa del final de frames (0x5C00)!")
+    if EN_CACHE + EN_CACHE_SLOTS * 512 > ENEMY_BASE:
+        print("\n[FATAL] Cache d'enemics passa del inici de codi (0x%04X)!" % ENEMY_BASE)
         sys.exit(1)
-    raw_len = 0x1C00                       # 0x4000..0x5BFF
+    raw_len = ENEMY_BASE - 0x4000           # 0x4000..ENEMY_BASE-1 (codi despres)
     im = bytearray(raw_len)
     im[0:len(table)] = table
     im[EN_BLOCKS - 0x4000:EN_BLOCKS - 0x4000 + len(blocks)] = blocks

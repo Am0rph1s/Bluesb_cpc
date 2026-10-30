@@ -1,7 +1,7 @@
 ﻿// ============================================================
 // enemy.c - Walkers del nivell 1 (kinds DOS 8/15/19 -> op1), BANC C6
 // ------------------------------------------------------------
-// S'enllaÃ§a a 0x5C00 (darrere els frames a 0x4000) amb taula de
+// S'enllaÃ§a a 0x5A00 (darrere els frames a 0x4000) amb taula de
 // salts fixa (engine/enemy_table.s): el resident hi crida via
 // call_banked(0xC6, slot). El banc es C6 (no C2/C3): OUT(0x7F00,0xC2)
 // penja la maquina i C3 reboota (vist 10/26); la imatge hi arriba
@@ -85,15 +85,16 @@ static u16 s_slot_dst[BG_SLOTS];
 static u8 s_slot_span[BG_SLOTS];
 static u8 s_slot_rows[BG_SLOTS];
 
-// Buffer dinÃ mic de flip sota demanda per a enemics encarats a l'esquerra:
-static u8 s_flip_buffer[ENEMY_FRAME_SIZE];
-static u8 s_flipped_cell;
+// (10/30/26 P3) Els sprites girats JA NO fan servir un buffer de flip
+// dedicat: la cela girada es desa a la MATEIXA cache ZX0 amb la clau
+// 'cela | 0x80'. Aixi dos enemics girats amb celes diferents conviuen
+// sense trepitjar-se i no es re-flipeja cap cela a cada frame.
 
 extern u8 tile_type(u16 col, u16 row);
 extern u8 tile_flags(u16 col, u16 row);
 extern u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
 
-// Rutines rÃ pides en ASM per flipejar la cela a s_flip_buffer (engine/enemy_table.s):
+// Rutines rapides en ASM per flipejar una cela dins la cache (engine/enemy_table.s):
 extern void en2_init_lut(void);
 extern void en2_flip_cell(const u8* src, u8* dst);
 
@@ -121,19 +122,36 @@ extern void zx0_decompress(const void* src, void* dst);
 #define ENEMY_CACHE_NEXT   (*(u8*)0x5810)
 // comptador real resident (diagnostic; es pot llegir des de l'emu)
 
-static const u8* en2_cell(u8 cell) {
-    u8 s;
+// Retorna la cela 'cell', girada horitzontalment si flip != 0. Les celes
+// girades es cachegen igual que les normals (clau = cell | 0x80), aixi que
+// nomes es descomprimeixen i giren un cop; els frames seguents les troben
+// a la cache. Si cal girar, es descomprimeix la cela font a un slot temporal
+// del ring (que queda lliure despres) i es mira cap al slot bo.
+static const u8* en2_cell(u8 cell, u8 flip) {
+    u8 s, key;
     if (cell >= ENEMY_CELLS) cell = 0;
+    key = flip ? (u8)(cell | 0x80) : cell;
     for (s = 0; s < ENEMY_CACHE_SLOTS; s++) {
-        if (ENEMY_CACHE_WHO[s] == cell)
+        if (ENEMY_CACHE_WHO[s] == key)
             return ENEMY_CACHE_BASE + ((u16)s << 9);
     }
     s = ENEMY_CACHE_NEXT;
     ENEMY_CACHE_NEXT = (u8)((s + 1) & (ENEMY_CACHE_SLOTS - 1));
-    zx0_decompress((const void*)(*(const u16*)
-                   (ENEMY_CELL_TABLE + ((u16)cell << 1))),
-                   ENEMY_CACHE_BASE + ((u16)s << 9));
-    ENEMY_CACHE_WHO[s] = cell;
+    if (flip) {
+        u8 t = ENEMY_CACHE_NEXT;
+        ENEMY_CACHE_NEXT = (u8)((t + 1) & (ENEMY_CACHE_SLOTS - 1));
+        zx0_decompress((const void*)(*(const u16*)
+                       (ENEMY_CELL_TABLE + ((u16)cell << 1))),
+                       ENEMY_CACHE_BASE + ((u16)t << 9));
+        ENEMY_CACHE_WHO[t] = 0xFF;
+        en2_flip_cell(ENEMY_CACHE_BASE + ((u16)t << 9),
+                      ENEMY_CACHE_BASE + ((u16)s << 9));
+    } else {
+        zx0_decompress((const void*)(*(const u16*)
+                       (ENEMY_CELL_TABLE + ((u16)cell << 1))),
+                       ENEMY_CACHE_BASE + ((u16)s << 9));
+    }
+    ENEMY_CACHE_WHO[s] = key;
     g_enemy_decomp_cnt++;
     return ENEMY_CACHE_BASE + ((u16)s << 9);
 }
@@ -212,7 +230,6 @@ void en2_init(void) {
     Enemy* e = s_enemies;
     const Spawn* sp = s_spawn;
     en2_init_lut();
-    s_flipped_cell = 0xFF;
     for (i = 0; i < 16; i++) ENEMY_CACHE_WHO[i] = 0xFF;
     ENEMY_CACHE_NEXT = 0;
     g_enemy_decomp_cnt = 0;
@@ -590,16 +607,7 @@ void en2_draw(void) {
                 if (sp->kind == 4) cell = sp->aim_cell;              // pose de tret
                 else if (sp->kind == 17 || sp->kind == 21 || sp->kind == 23) cell = sp->throw_cell;  // llançament
             }
-            const u8* src = en2_cell(cell);
-            if (e->dir < 0) {
-                if (s_flipped_cell != cell) {
-                    en2_flip_cell(src, s_flip_buffer);
-                    s_flipped_cell = cell;
-                }
-                frame = s_flip_buffer;
-            } else {
-                frame = src;
-            }
+            frame = en2_cell(cell, (u8)(e->dir < 0));
         }
 
         g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
@@ -632,13 +640,10 @@ void en2_draw(void) {
                 // Cela 13: base + offset files projectil + 4 (centrat horitzontal 8 px Mode 0)
                 const u8* frame;
                 if (s_proj.vx < 0) {
-                    if (s_flipped_cell != 13) {
-                        en2_flip_cell(en2_cell(13), s_flip_buffer);
-                        s_flipped_cell = 13;
-                    }
-                    frame = s_flip_buffer + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
+                    // Cela 13 girada, cachejada com qualsevol altra (P3).
+                    frame = en2_cell(13, 1) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
                 } else {
-                    frame = en2_cell(13) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
+                    frame = en2_cell(13, 0) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
                 }
 
                 g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);

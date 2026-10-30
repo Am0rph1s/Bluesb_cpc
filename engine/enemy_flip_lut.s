@@ -1,15 +1,12 @@
 ;; ============================================================
 ;; enemy_flip_lut.s - LUT mirror Mode 0 pels walkers (banc C6)
 ;; ------------------------------------------------------------
-;; S'enllaca PRIMER del modul (davant enemy_table.s): _DATA comenca
-;; aqui (ENEMY_DATA=0x6500 alineat a 256: HI constant 0x65, llegit
-;; via _g_flip_lut_hi pel blit amb flip de moving_blit.s).
-;; L'omple en2_init a runtime (sense crt0 al banc, .ds no viatja).
+;; Historicament definia _s_flip_lut (LUT de flip a _DATA del banc C6),
+;; pero el flip es fa amb la LUT de C6:0x4E00 (en2_flip_cell), aixi que
+;; aquest modul ja no aporta cap dada.
 ;; ============================================================
+;; (10/30/26) _s_flip_lut (256 B de _DATA) ELIMINAT: no hi havia cap
+;; referencia des de l'ATLAS ni des del blit (el flip es fa amb la LUT de
+;; 0x4E00 via en2_flip_cell). Allibera 256 B de _DATA del banc C6, que
+;; permeten baixar ENEMY_BASE i donar 256 B mes de codi a C6.
     .module enemy_flip_lut
-
-    .area _DATA
-
-    .globl _s_flip_lut
-_s_flip_lut::
-    .ds 256

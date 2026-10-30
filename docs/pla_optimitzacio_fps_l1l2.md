@@ -97,3 +97,55 @@ Seguim exactament l'ordre d'aplicació i verificació que proposes:
    - Usar el bloc lliure `0x4E00..0x4FFF` (512 B, verificat lliure a L1, L2 i L3 a `build_enemybank`) juntament amb `s_flip_buffer` a `_DATA` per tenir 2 buffers de flip (o cache direccional de 6 slots amb `0x5000..0x57FF`), sense tocar `_CODE` (`0x5C00..0x78E5`) ni la LUT (`0x7900`).
 6. **Pas 6 — P4.1 (Commutació directa a `0xC0` a `moving_restore` / `moving_draw`)**:
    - Verificar i aplicar al final, comprovant que el marge de `level_code` i el comportament dels ascensors/premses és idèntic.
+
+
+---
+
+## 3. Estat d'execucio (30/10/2026)
+
+| Pas | Estat | Detall |
+|---|---|---|
+| **P4.2** pacing VSYNC `< 7` | FET | `src/main.c` (`g_ticks` va a 300 Hz: 6 ticks = 1 VSYNC) |
+| **P2.1** fusio `get_tile_at` + `get_trig_byte` | FET | una sola commutacio a `0xC5` per consulta |
+| **P1a** spans per sequencia | FET | `s_anim_pos[16]` + salt del repintat si el tile no canvia |
+| **P2.2** dedup intra-frame d'enemics | FET | `tt_pf`/`tt_pb` + short-circuit + `c2row != brow` |
+| **P1b** blit de span amb un unic `bank_set(0xC4)` | **DESCARTAT (mesurat)** | vegeu sota |
+| **P3** flip multiple sense trepitjament | FET (cache direccional) | vegeu sota |
+| **P4.1** commutacio directa a `0xC0` | VERIFICAT, sense canvis | a C1 el rang `0xC000-0xFFFF` es sempre el banc 7 |
+
+### P1b: per que es descarta
+
+`render_tile_span` (bucle del span amb un unic `bank_set(0xC4)`) ocupa **364 B** de
+`_CODE` resident, i el resident te **37 B** lliures (`_CODE` `0x0100..0x38CB`, `_DATA`
+a `0x38F0`). Per fer-lo cabre cal pujar `_DATA` a `0x39A0` i el canari a `0x3E10`:
+la pila baixa de 670 B a **494 B** i el joc cau a Locomotive BASIC al cap de pocs
+segons de joc. Watermark mesurat omplint `0x3E10..0x3FFD` amb `0xCC`: tota la zona
+queda escrita (us real >= 494 B).
+
+A mes, el guany esperat es petit: la commutacio de banc es ~2% del cost per
+caracter; el 98% restant es `render_tile_fast` (blit de ~2.400 T-states). Per tant
+no compensa el cost en memoria. Per recuperar-lo caldria alliberar ~150 B de
+resident; el candidat mes net son els dos buffers de fons del carry
+(`_s_carry_bg_c0` / `_s_carry_bg_80`, 320 B cadascun, a `engine/sprite.s`), que
+podrien passar a un banc amb slot fix.
+
+### P3: implementacio final (millor que el 2n buffer del pla)
+
+En lloc de dos buffers de flip, les celes girades es guarden a la **mateixa cache
+ZX0** del banc C6 amb la clau `cela | 0x80` (`en2_cell(cell, flip)`). Aixi una cela
+girada es descomprimeix i es gira **un sol cop** i els frames seguents la troben a
+la cache: dos enemics girats amb celes diferents conviuen sense trepitjar-se i no
+es re-flipeja cap cela a cada frame.
+
+Canvis de memoria al banc C6:
+* cache de **4 slots** (`0x5000..0x57FF`),
+* `_s_flip_lut` (256 B de `_DATA`, sense cap referencia) eliminat,
+* `ENEMY_BASE` de `0x5C00` a **`0x5A00`** (codi 7.412 B, 1.804 B lliures).
+
+**Correccio important del pla**: el bloc `0x4E00..0x4FFF` que el pla donava per
+lliure **NO ho es** a L1: la taula de restauracio d'enemics fa **917 B** a `0x4B00`
+(acaba a `0x4E95`), no els 725 B de la xifra antiga. En posar-hi la LUT,
+`en2_init_lut` trepitjava 150 B de la taula i `restore_level_tiles` escrivia tiles
+escombraries dins el codi de C5 -> el joc queia a BASIC al cap d'un parell de
+segons. La LUT de flip es queda a `0x7900..0x79FF` (lliure: el codi acaba a
+`0x76F4`) i `build.py` ara avorta si `_CODE` arriba a `0x7900`.

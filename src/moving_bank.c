@@ -757,13 +757,17 @@ void moving_bank_conveyor(void) {
         const AnimSpan* sp = s_level_anim_spans;
         for (s = 0; s < LEVEL_ANIM_SPAN_COUNT; s++, sp++) {
             u8 tile;
-            u8 qq, L, p;
+            u8 qq, L, p, prev, off;
             if ((u16)(((u16)sp->row << 1) - g_cam_row + 1) >= 21) continue;
             qq = sp->seq;
             L = s_anim_len[qq];
-            p = cur_phase;
-            while (p >= L) p -= L;
-            tile = s_anim_data[s_anim_off[qq] + p];
+            p = s_anim_pos[qq];
+            prev = (u8)((p == 0) ? (L - 1) : (p - 1));
+            off = s_anim_off[qq];
+            tile = s_anim_data[off + p];
+            // Tile repetit respecte del pas anterior: les dues pagines ja el
+            // tenen pintat, no cal repintar (60% dels passos a L2).
+            if (tile == s_anim_data[off + prev]) continue;
             for (c = sp->col_start; c <= sp->col_end; c++) {
                 if ((u16)(((u16)c << 1) - g_cam_x4 + 1) >= 41) continue;
                 render_tile_world(tile, c, sp->row, g_cam_x4, g_cam_row);

@@ -158,27 +158,22 @@ void level_params_load(void) {
     bank_restore(prev);
 }
 
-static u8 get_tile_at(u16 col, u16 row) {
+// 1:1 DOS: tile + byte de TRIG amb UNA sola commutacio de banc (abans
+// get_tile_at i get_trig_byte en feien dues de seguides per consulta).
+static u8 get_trig_byte(u16 col, u16 row, u8 offset) {
     u8 prev, t;
     if (row >= s_lv.room_row0 && row < (u16)(s_lv.room_row0 + s_lv.room_rows) &&
         col < s_lv.room_total_cols) {
         prev = bank_set(0xC5);
         t = ((const u8*)(u16)s_lv.rooms_off)[s_lv.room_rowoff[row - s_lv.room_row0] + col];
-        bank_restore(prev);
-        return t;
+    } else {
+        if (col >= s_lv.map_w || row >= s_lv.map_h) return 0xFF;
+        prev = bank_set(0xC5);
+        t = MAP_PTR[(row << 7) + col];
     }
-    if (col >= s_lv.map_w || row >= s_lv.map_h) return 0xFF;
-    prev = bank_set(0xC5);
-    t = MAP_PTR[(row << 7) + col];
-    bank_restore(prev);
-    return t;
-}
-
-static u8 get_trig_byte(u16 col, u16 row, u8 offset) {
-    u8 prev, t = get_tile_at(col, row);
-    if (t == 0xFF) return 0xFF;
-    prev = bank_set(0xC5);
-    t = ((const u8*)(u16)s_lv.trig_off)[((u16)t) * TRIG_STRIDE + offset];
+    if (t != 0xFF) {
+        t = ((const u8*)(u16)s_lv.trig_off)[((u16)t) * TRIG_STRIDE + offset];
+    }
     bank_restore(prev);
     return t;
 }
@@ -1390,7 +1385,7 @@ void main(void) {
                 dbg_border(0x54);
         // Sincronització vertical fluida a 25 Hz (2 VSYNCs = 40 ms)
         cpc_wait_vsync_start();
-        if ((u8)(g_ticks - last_ticks) < 2) {
+        if ((u8)(g_ticks - last_ticks) < 7) {
             cpc_wait_vsync_start();
         }
         last_ticks = g_ticks;

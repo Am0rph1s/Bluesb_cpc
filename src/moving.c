@@ -32,6 +32,9 @@ u8  g_on_ice;
 u8 s_conveyor_phase;
 u8 s_conveyor_tick;
 u8 s_page_conveyor_phase[2];
+// Posicio de cada sequencia animada (0..len-1). S'avanca 1 cop per tick i
+// per sequencia, en lloc de fer 'st mod len' per cada span (54 a L2).
+u8 s_anim_pos[16];
 
 void moving_init(void) { call_banked(0xC5, BC_INIT); }
 
@@ -61,18 +64,20 @@ void anim_tick_c5(void) {
         const u8* offs = (const u8*)bc_d;
         u8 n = (u8)bc_b, s;
         u8* map = (u8*)0x4000;
-        u8 st;
+        u8 q;
         s_conveyor_tick = 0;
-        st = ++s_conveyor_phase; // segell per al repintat (moving_bank_conveyor)
+        s_conveyor_phase++; // segell per al repintat (moving_bank_conveyor)
+        // Avancar 1 pas cada sequencia (lens te sentinella 0).
+        for (q = 0; lens[q]; q++) {
+            if ((u8)(s_anim_pos[q] + 1) >= lens[q]) s_anim_pos[q] = 0;
+            else s_anim_pos[q]++;
+        }
         for (s = 0; s < n; s++, sp++) {
-            u8 L = lens[sp->seq];
-            u8 p = st;
-            u8 tile;
-            u8 c;
-            while (p >= L) p -= L;
-            tile = data[offs[sp->seq] + p];
-            {
-                u8* dst = &map[((u16)sp->row << 7) + sp->col_start];
+            u8 tile = data[offs[sp->seq] + s_anim_pos[sp->seq]];
+            u8* dst = &map[((u16)sp->row << 7) + sp->col_start];
+            // Si el mapa ja te aquest tile, no cal reescriure'l (60% dels
+            // passos de les seqs 10/11 de L2 repeteixen tile).
+            if (*dst != tile) {
                 u8 c = (u8)(sp->col_end - sp->col_start + 1);
                 while (c--) *dst++ = tile;
             }

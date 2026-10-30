@@ -44,6 +44,7 @@ extern MovingElevator g_mag_elevators[MAG_MOVER_COUNT];
 
 // Estat compartit resident (llegit/escribible des del Banc 5):
 extern u8 s_conveyor_phase;
+extern u8 s_anim_pos[16];
 extern u8 s_conveyor_tick;
 extern u8 s_page_conveyor_phase[2];
 

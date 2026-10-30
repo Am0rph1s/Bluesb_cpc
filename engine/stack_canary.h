@@ -4,11 +4,11 @@
 #include "cpctelera.h"
 
 // Canari de pila resident per detectar desbordaments de SP cap a _DATA.
-// S'ubica a 0x3C00: per sobre de _DATA (fi actual ~0x3BDD) i per sota de
+// S'ubica a 0x3D40: per sobre de _DATA (fi actual ~0x3BDD) i per sota de
 // la pila SP ~0x3FFE. NO fixar-lo mes avall: _DATA creix amb el projecte
 // i trepitjaria el canari (falsa alarma permanent + corrupcio de variables).
 // build.py avorta (FATAL) si _DATA arriba a 0x3C00.
-#define CANARY_ADDR   0x3D00
+#define CANARY_ADDR   0x3D60
 #define CANARY_MAGIC  0xAA55
 #define CANARY_WORDS  8
 

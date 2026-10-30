@@ -429,21 +429,24 @@ void en2_update(void) {
                 // travessar oques estretes (reixat de L3).
                 u16 acol = (u16)((nx + (e->dir > 0 ? ENEMY_W - 1 : 0)) >> 3);
                 u8 bit = (u8)(e->dir > 0 ? 1 : 2);
-                // op7 (llançador de L2): al DOS gira quan el tile DAVANT es
-                // de tipus 12 (no pas aire com a op0/op8).
-                u8 hit12 = (sp->kind == 21) &&
-                    (tile_type(pcol, frow) == 12 || tile_type(pcol, brow) == 12);
-                // Parets per op de plataforma (is_floor_solid amb vy<0): el
-                // cos sencer (cap, mig i peus-1/peus-2) no pot entrar en un
-                // tile solid, tant si el flag de paret es 0 com si no.
-                u8 hrow = (u8)((y + 8) >> 4);
-                u8 solid_side = is_floor_solid(acol, brow, -1, 0) ||
-                    is_floor_solid(acol, c2row, -1, 0) ||
-                    is_floor_solid(acol, hrow, -1, 0);
-                if (hit12 || tile_type(pcol, frow) == 1 || tile_type(pcol, brow) == 1 ||
-                    solid_side ||
-                    (tile_flags(acol, brow) & bit) ||
-                    (tile_flags(acol, c2row) & bit)) {
+                // 1:1 DOS: llegir tt_pf/tt_pb un sol cop i fer short-circuit
+                // abans de les consultes cares (is_floor_solid/tile_flags).
+                u8 tt_pf = tile_type(pcol, frow);
+                u8 tt_pb = tile_type(pcol, brow);
+                u8 turn = (u8)(tt_pf == 1 || tt_pb == 1);
+                if (sp->kind == 21 && (tt_pf == 12 || tt_pb == 12)) turn = 1;
+                if (!turn) {
+                    // Parets per op de plataforma (is_floor_solid amb vy<0):
+                    // el cos sencer no pot entrar en un tile solid.
+                    // c2row == brow el 100% dels frames sobre terra pla.
+                    u8 hrow = (u8)((y + 8) >> 4);
+                    turn = is_floor_solid(acol, brow, -1, 0);
+                    if (!turn && c2row != brow) turn = is_floor_solid(acol, c2row, -1, 0);
+                    if (!turn) turn = is_floor_solid(acol, hrow, -1, 0);
+                    if (!turn) turn = (u8)((tile_flags(acol, brow) & bit) != 0);
+                    if (!turn && c2row != brow) turn = (u8)((tile_flags(acol, c2row) & bit) != 0);
+                }
+                if (turn) {
 e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
                 } else {
                     e->x = nx;

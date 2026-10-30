@@ -123,3 +123,41 @@ Cost del fast-path: ~26.900 T (6,7 ms) en lloc de 63.400 T (15,9 ms).
 | `caminant2` | ~86 ms (9,3 fps) | ~64 ms | elimina la regressió de P3 |
 | `quiet` | ~41-44 ms (16,8 fps) | igual fins al Pas 0 | cal mesura prèvia |
 | `_CODE` resident | 27 B | **~200 B** (P1b + main.c) | marge per al Pas A/C |
+
+---
+
+## 4. Estat d'execució (build `11ac841`)
+
+| Pas | Estat | Resultat |
+|---|---|---|
+| **Pas D** (P1b revertit + retall d'spans) | FET | `render_tile_span` fora; +186 B de `_CODE`; retall a C5 |
+| **Pas A** (HUD: còpia VRAM→VRAM) | FET | `hud_try_copy`/`hud_copy_strip` al resident; snapshot global de 4 B |
+| **Pas B** (cache d'enemics) | FET | scratch `0x7700` + reutilització `key^0x80`; assert `_CODE` ≤ `0x7700` |
+| **Pas C** (`render_column` parelles + `HL+3`) | PENDENT | el resident té ~97 B; cal mesurar abans |
+| **Pas 0** (mesura de `quiet`) | PENDENT | `quiet` segueix a 16,7 fps (3 VSYNCs) |
+
+### Mesura L1 (`docs/perf/perf_monitor.py`, 339 mostres, 130 s)
+
+| Tram | n | mediana | abans (`3a6d1ec`) | guany |
+|---|---|---|---|---|
+| quiet (5-22 s) | 45 | **16,7 fps** | 16,8 | = |
+| caminant (30-70 s) | 105 | **16,7 fps** | 10,4 | **+60%** |
+| quiet2 (100-128 s) | 73 | **16,7 fps** | 16,7 | = |
+
+`caminant` passa de 5 VSYNCs (10,4 fps) a **3 VSYNCs (16,7 fps)**. El HUD era,
+de bon tros, el cost dominant de l'scroll (15,9 ms/frame), tal com deia el
+diagnòstic de la Trampa 1.
+
+### Detalls d'implementació que cal recordar
+
+* **El HUD no són 160 B contigus**: són 2 files de caràcters = **16 scanlines de
+  80 B a passos de `0x800`**. `hud_copy_strip` fa 2 files × 8 scanlines.
+* La còpia només és lineal si la tira **no creua el wrap de `0x800`**
+  (`off <= 0x760`); si el creua, es reconstrueix (8% dels offsets).
+* El **snapshot de contingut és global** (4 B), no per pàgina: quan canvia, la
+  pàgina de torn es reconstrueix i l'altra copia d'ella al frame següent.
+  Amb comptadors per pàgina el codi de C1 no hi cabia (aritmètica de 16 bits ×8).
+* **C1 va just**: `hud_bank` viu a `0x4C01..0x4FC6` (965 B de 967) i `_DATA` a
+  `0x4FC8..0x4FFF` (53 B). `hb_base`/`hb_data` s'han ajustat a `build.py`.
+* `_DATA` resident a `0x39A0` (pila 494 B; **ús real mesurat 100 B**) i canari a
+  `0x3E10`.

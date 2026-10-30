@@ -145,3 +145,22 @@ travessar un canvi de zona; la mediana es la xifra bona.
 
 Canari de pila intacte (`0x55AA` x8) i `s_lv` magic `0xB0` al final de la
 captura: cap crash ni desbordament de pila.
+
+## Actualitzacio 30/10/2026 (nit): HUD en scroll + cache d'enemics
+
+Build `11ac841`. Mateix metode (`perf_monitor.py`, 339 mostres, 130 s, L1):
+
+| Tram | mediana abans (`3a6d1ec`) | mediana ara | Guany |
+|---|---|---|---|
+| quiet | 16,8 fps | **16,7 fps** | = |
+| caminant | 10,4 fps | **16,7 fps** | **+60%** |
+| quiet2 | 16,7 fps | **16,7 fps** | = |
+
+El guany ve de deixar de reconstruir el HUD (40 columnes, ~63.400 T = 15,9 ms)
+a cada frame d'scroll: ara es copia el HUD ja renderitzat de l'altra pagina de
+VRAM (16 scanlines x 80 B, ~26.900 T = 6,7 ms) i, si la tira creua el wrap de
+`0x800`, es reconstrueix. Tambe s'ha corregit el "poisoning" de la cache de
+celes girades (scratch fix a `0x7700` + reutilitzacio de l'orientacio oposada).
+
+Pendent: `quiet` segueix a 3 VSYNCs (16,7 fps); per creuar a 25 fps calen ~3-5 ms
+mes (mesura per seccions amb `PROFILE_BORDER` abans de tocar res).

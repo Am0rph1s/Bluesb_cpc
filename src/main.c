@@ -1321,7 +1321,9 @@ void main(void) {
         world_flush_repaints();
         g_vram_start = camera_ma(g_cam_x4, g_cam_row);
         dbg_border(0x47);
-        hud_render(s_back_page, (page_dx != 0 || page_dy != 0));
+        // El scroll no cal forcar-lo: hud_render detecta el canvi de
+        // g_vram_start i fa la copia rapida del HUD (vegeu hud_bank.c).
+        hud_render(s_back_page, 0);
         cur = select_player_anim(s_climb_prev, move, jump, (u8)(crouch || s_crouch_hold), (i16)dsy);
 
         dbg_border(0x52);

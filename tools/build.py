@@ -460,6 +460,13 @@ def build_bank_equ(resident_map):
             continue
         lines.append(".globl %s" % name)
         lines.append("%s = 0x%04X" % (name, syms[name]))
+    # Llavor: en la 1a iteracio el mapa resident encara no te _hud_try_copy
+    # (el HUD es construeix ABANS del resident). Placeholder perque l'enllac
+    # no peti; la 2a iteracio ja hi posa l'adreca bona (mateixa mida de codi).
+    for name in ("_hud_try_copy",):
+        if name not in syms:
+            lines.append(".globl %s" % name)
+            lines.append("%s = 0x0000" % name)
     lines.append(".area _CODE")
     text = "\n".join(lines) + "\n"
     path = os.path.join(obj, "bank_equ.s")
@@ -718,8 +725,8 @@ def build_enemybank(force, level_idx=None):
     en_data_s, en_data_l = map_area(map_path, "DATA")
     # Layout C6 nou: frames comprimits 0x4000, cache 0x5000, estat 0x5800,
     # dades 0x5820..<0x5A00, codi 0x5A00..<0x7900 (LUT de flip), BG pool 0x7A00.
-    if en_code_s is not None and (en_code_s + en_code_l) > 0x7900:
-        print("\n[FATAL] Banc C6 _CODE (0x%04X..0x%04X) envaeix la LUT de flip (0x7900)!" %
+    if en_code_s is not None and (en_code_s + en_code_l) > 0x7700:
+        print("\n[FATAL] Banc C6 _CODE (0x%04X..0x%04X) envaeix el scratch de flip (0x7700)!" %
               (en_code_s, en_code_s + en_code_l))
         sys.exit(1)
     if en_data_s is not None and (en_data_s + en_data_l) > ENEMY_BASE:
@@ -1200,7 +1207,7 @@ def build_music(force):
     # Escriuen a VRAM => han de viure a la RAM 1 i cridar-se amb 0xC0. Com que
     # son comuns a tots els nivells, van a MUSBANK (0x4C10, despres del player)
     # i no al bloc de codi del nivell.
-    hb_base, hb_data = 0x4C10, 0x4FA8
+    hb_base, hb_data = 0x4C01, 0x4FC8
     hb_src = os.path.join(PROJ, "src", "hud_bank.c")
     hb_rel = os.path.join(obj, "hud_bank.rel")
     hb_headers = [os.path.join(PROJ, n) for n in

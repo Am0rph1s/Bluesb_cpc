@@ -120,6 +120,9 @@ extern void zx0_decompress(const void* src, void* dst);
 #define ENEMY_CACHE_SLOTS  4
 #define ENEMY_CACHE_WHO    ((u8*)0x5800)
 #define ENEMY_CACHE_NEXT   (*(u8*)0x5810)
+// Scratch fix per girar una cela sense gastar 2 slots de la cache
+// (Pas B). Zona lliure de C6: el codi acaba a 0x76F4 i la LUT a 0x7900.
+#define ENEMY_FLIP_SCRATCH ((u8*)0x7700)
 // comptador real resident (diagnostic; es pot llegir des de l'emu)
 
 // Retorna la cela 'cell', girada horitzontalment si flip != 0. Les celes
@@ -128,24 +131,27 @@ extern void zx0_decompress(const void* src, void* dst);
 // a la cache. Si cal girar, es descomprimeix la cela font a un slot temporal
 // del ring (que queda lliure despres) i es mira cap al slot bo.
 static const u8* en2_cell(u8 cell, u8 flip) {
-    u8 s, key;
+    u8 s, key, opp;
     if (cell >= ENEMY_CELLS) cell = 0;
     key = flip ? (u8)(cell | 0x80) : cell;
+    opp = 0xFF;
     for (s = 0; s < ENEMY_CACHE_SLOTS; s++) {
         if (ENEMY_CACHE_WHO[s] == key)
-            return ENEMY_CACHE_BASE + ((u16)s << 9);
+            goto found;
+        if (ENEMY_CACHE_WHO[s] == (u8)(key ^ 0x80)) opp = s;
     }
     s = ENEMY_CACHE_NEXT;
+    if (s == opp) s = (u8)((s + 1) & (ENEMY_CACHE_SLOTS - 1));
     ENEMY_CACHE_NEXT = (u8)((s + 1) & (ENEMY_CACHE_SLOTS - 1));
-    if (flip) {
-        u8 t = ENEMY_CACHE_NEXT;
-        ENEMY_CACHE_NEXT = (u8)((t + 1) & (ENEMY_CACHE_SLOTS - 1));
+    if (opp != 0xFF) {
+        // L'orientacio oposada ja es a la cache: nomes cal girar-la.
+        en2_flip_cell(ENEMY_CACHE_BASE + ((u16)opp << 9),
+                      ENEMY_CACHE_BASE + ((u16)s << 9));
+    } else if (flip) {
         zx0_decompress((const void*)(*(const u16*)
                        (ENEMY_CELL_TABLE + ((u16)cell << 1))),
-                       ENEMY_CACHE_BASE + ((u16)t << 9));
-        ENEMY_CACHE_WHO[t] = 0xFF;
-        en2_flip_cell(ENEMY_CACHE_BASE + ((u16)t << 9),
-                      ENEMY_CACHE_BASE + ((u16)s << 9));
+                       ENEMY_FLIP_SCRATCH);
+        en2_flip_cell(ENEMY_FLIP_SCRATCH, ENEMY_CACHE_BASE + ((u16)s << 9));
     } else {
         zx0_decompress((const void*)(*(const u16*)
                        (ENEMY_CELL_TABLE + ((u16)cell << 1))),
@@ -153,6 +159,7 @@ static const u8* en2_cell(u8 cell, u8 flip) {
     }
     ENEMY_CACHE_WHO[s] = key;
     g_enemy_decomp_cnt++;
+found:
     return ENEMY_CACHE_BASE + ((u16)s << 9);
 }
 

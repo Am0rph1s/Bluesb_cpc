@@ -173,3 +173,12 @@ Guany del Pas A: **+1,0 fps (~9 ms/frame en scroll)**.
 Pendent: `quiet` segueix a 3 VSYNCs (16,7 fps) i caminant a ~14,7 fps. Per
 creuar a 16,7 fps calen ~10 ms mes: Pas C (parelles de columnes) i el dibuix
 d'enemics (C6, ~14 ms/frame).
+
+### Pas C (parelles de columnes): descartat
+
+Provat `HL+3` a `render_column`: amb `cam_row` senar les parelles de subfiles
+son tiles diferents i corrompia els grafics (captura `scratch/hud_b.png`).
+Guany teoric de C.1: ~0,125 ms/frame. El blit de parella (C.2) estalviaria
+~0,6 ms de mitjana pero necessita ~155 B de resident (n'hi ha 97) i un cami
+de VRAM de 4 bytes amb wrap. Es descarta: el coll d'ampolla real es el dibuix
+d'enemics (C6, ~14 ms/frame).

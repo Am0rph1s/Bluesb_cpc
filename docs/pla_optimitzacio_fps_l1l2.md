@@ -133,7 +133,7 @@ Cost del fast-path: ~26.900 T (6,7 ms) en lloc de 63.400 T (15,9 ms).
 | **Pas D** (P1b revertit + retall d'spans) | FET | `render_tile_span` fora; +186 B de `_CODE`; retall a C5 |
 | **Pas A** (HUD: còpia VRAM→VRAM) | FET | `hud_try_copy`/`hud_copy_strip` al resident; snapshot global de 4 B |
 | **Pas B** (cache d'enemics) | FET | scratch `0x7700` + reutilització `key^0x80`; assert `_CODE` ≤ `0x7700` |
-| **Pas C** (`render_column` parelles + `HL+3`) | PENDENT | el resident té ~97 B; cal mesurar abans |
+| **Pas C** (`render_column` parelles + `HL+3`) | **DESCARTAT amb números** | vegeu sota |
 | **Pas 0** (mesura de `quiet`) | PENDENT | `quiet` segueix a 16,7 fps (3 VSYNCs) |
 
 ### Mesura A/B del Pas A (en calent, mateix build i mateixa ruta)
@@ -170,6 +170,33 @@ l'scroll (15,9 ms) i ara en costa 6,7 ms, però com que el frame segueix a ~70 m
   `0x3E10`.
 * `build_bank_equ` genera un placeholder per `_hud_try_copy` a la 1a iteració
   (el HUD es construeix abans del resident); la 2a ja hi posa l'adreça bona.
+
+### Pas C: analitzat i descartat (amb números)
+
+**C.1 (`HL+3`)**: `render_column` llegeix 20 subfiles; quan `cam_row` és parell,
+cada parella de subfiles és el mateix tile i la meitat inferior és a `HL+3`
+(`_render_tile_fast_de` deixa HL a `+29` i la subfila següent és a `+32`).
+Però:
+
+* Quan `cam_row` és **senar**, el bucle del mapa avança la fila en el subfile
+  senar → les parelles són tiles **diferents** → caldria mantenir el bucle
+  original per a aquest cas (2 bucles, +60 B de resident).
+* Guany: s'estalvia un `calc_tile_hl` (~40 T) + el toggle (~10 T) per parella
+  = ~500 T per columna ≈ **0,125 ms/frame** (3% del cost de la columna).
+* **Provat i revertit**: amb `cam_row` senar corrompia els gràfics
+  (`scratch/hud_b.png` del build de prova). No compensa el risc.
+
+**C.2 (`_render_column_pair`, 4 bytes/scanline)**: el blit de 4 bytes costa
+~120 T (amb `djnz`) contra 2 × 75 T = 150 T → estalvia ~30 T/scanline
+≈ 5.000 T per parella de columnes = **~1,25 ms quan la paritat és parella
+(~50%) → ~0,6 ms de mitjana**. Necessita ~**155 B de resident** (rutina 65 +
+bucle 50 + dispatch/fallback 40) quan n'hi ha **97** (movent `_DATA` a `0x39E0`
+en quedarien 145 i la pila baixaria a 430 B). El risc és alt (adreçament VRAM de
+4 bytes, wrap `0x800`, paritat) per a un guany per sota de la resolució.
+
+**Conclusió**: el coll d'ampolla real ja no és el scroll sinó el **dibuix i la
+restauració d'enemics** (C6, ~14 ms/frame segons el perfil). Val més atacar-lo
+que micro-optimitzar `render_column`.
 
 ### Següent objectiu
 

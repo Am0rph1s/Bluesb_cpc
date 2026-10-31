@@ -309,12 +309,14 @@ void en2_update(void) {
 
     Enemy* e = s_enemies;
     const Spawn* sp = s_spawn;
+    i16 act_xmin = (i16)(view_x - 78);
+    i16 act_ymin8 = (i16)((view_y - 132) << 3);
     for (i = 0; i < ENEMY_N; i++, e++, sp++) {
         i16 y;
         i16 nx, dx;
 
-        if (sp->x < (i16)(view_x - 78) || sp->x > (i16)(view_x + 222) ||
-            sp->y8 < (i16)((view_y - 132) << 3) || sp->y8 > (i16)((view_y + 318) << 3))
+        if ((u16)(sp->x - act_xmin) > 300 ||
+            (u16)(sp->y8 - act_ymin8) > (450 << 3))
             continue;
 
         if (e->dead) {
@@ -590,6 +592,7 @@ void en2_draw(void) {
         const u8* frame;
         i8 s;
         if (e->dead == 2 || e->slot[page] >= 0) continue; // eliminat o ja dibuixat
+        if ((u16)(e->x - view_x + 15) >= 175) continue;
         world_x = e->x;
         world_y = (i16)(e->y8 >> 3);
         clip_x0 = world_x > view_x ? world_x : view_x;
@@ -682,6 +685,7 @@ void en2_check_player_hit(void) {
     i16 px = (i16)bc_a;
     i16 py = (i16)bc_b;
     u8 crouch = (u8)bc_c;
+    i16 px_min = (i16)(px - 9);
     u8 i;
     Enemy* e;
 
@@ -713,12 +717,10 @@ void en2_check_player_hit(void) {
     e = s_enemies;
     for (i = 0; i < ENEMY_N; i++, e++) {
         u8 k, he;
-        i16 dxc;
+        if ((u16)(e->x - px_min) >= 19) continue;
         if (e->dead) continue;
         k = s_spawn[i].kind;
         if (en2_collide_class(k) != 2) continue;
-        dxc = (i16)(e->x - px);
-        if (dxc <= -10 || dxc >= 10) continue;
         // level_obj_h[kind] en px (vertical 1:1): 4=28, 8/19=16,
         // 24 (rata/gos de L3)=10, resta 30.
         he = (k == 24) ? 10 : ((k == 8 || k == 19) ? 16 : ((k == 4) ? 28 : 30));

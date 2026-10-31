@@ -231,7 +231,7 @@ void gameover_banner_b(void) {
     }
 }
 
-// Dany d'àcid kind=10, b6=2/3/4 (1:1 DOS tiles.c:907-919: yfriction 14/10/5,
+// Dany d'acid kind=10, b6=2/3/4 (1:1 DOS tiles.c:907-919: yfriction 14/10/5,
 // xvelocity=-100, special_anim=22 + SOUND_11; level.c:1583-1593: -1 cor,
 // blinking_counter=75). vy = -yfric*4 (enemy.c:685: 12 -> -48).
 void acid_hurt_b(void) {

@@ -45,6 +45,7 @@ CELLS = [
     (9, 23),   # tipus 32 walk A
     (10, 24),  # tipus 32 walk B
     (11, 25),  # tipus 33 walk A
+    (12, 26),  # tipus 33 walk B
 ]
 
 
@@ -81,7 +82,7 @@ def main():
     # Projectils: la cela 13 d'ENEMI1.BIN te ou/bala/plat alineats.
     l1 = open(L1_BIN, "rb").read()
     assert len(l1) >= 14 * 512, len(l1)
-    cells[12] = l1[13 * 512:14 * 512]
+    cells[13] = l1[13 * 512:14 * 512]
 
     out = b"".join(cells)
     assert len(out) == 16 * 512

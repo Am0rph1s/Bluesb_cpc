@@ -412,12 +412,16 @@ void en2_update(void) {
             }
         } else if (sp->kind == 8 || sp->kind == 19) {
             if (sp->kind == 8) {
-                i16 min_x, max_x;
-                min_x = (sp->x < 500) ? 388 : 564;
-                max_x = (i16)(min_x + 48);
-                if (nx < min_x) { e->x = min_x; e->dir = 1; }
-                else if (nx > max_x) { e->x = max_x; e->dir = -1; }
-                else { e->x = nx; }
+                // 1:1 DOS object_func_op0 / object_func_op15 (peix a l'aigua):
+                // Gira en tocar límit d'aigua (tile_type 12 a L4), paret (1) o sortir de l'aigua.
+                u16 frow = (u16)(((e->y8 >> 3) + ENEMY_HT - 4) >> 4);
+                u16 cchk = (u16)((nx + 8 + (e->dir > 0 ? 8 : -8)) >> 3);
+                u8 tt = (frow < LEVEL_MAP_H && cchk < LEVEL_MAP_W) ? tile_type(cchk, frow) : 1;
+                if (tt == 12 || tt == 1 || (tt != 11 && tt != 0)) {
+                    e->dir = (i8)-e->dir;
+                } else {
+                    e->x = nx;
+                }
             } else {
                 // 1:1 DOS object_func_op8 (ocells: type 19 -> op 9 -> case 8):
                 //   if (tile_type(xpos16 + 2 - facing_left*4, ypos16) != 1)
@@ -612,7 +616,7 @@ void en2_draw(void) {
 
         // SelecciÃ³ de cela i flip dinÃ mic amb cache de cela:
         {
-            u8 step = (e->dead || sp->kind == 8 || sp->vx == 0) ? 0 : (u8)((e->tick >> 2) & 1);
+            u8 step = (e->dead || sp->vx == 0 || sp->base_cell == sp->aim_cell) ? 0 : (u8)((e->tick >> 2) & 1);
             u8 cell = (u8)(sp->base_cell + step);
             if (e->shoot_timer) {
                 if (sp->kind == 4) cell = sp->aim_cell;              // pose de tret

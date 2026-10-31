@@ -1,8 +1,8 @@
 # Handoff Global — Blues Brothers CPC (Estat Actual i Guia de Continuació)
 
 > **Document unificat de referència per reprendre el desenvolupament**
-> **Data d'actualització**: 29 d'octubre de 2026
-> **Branca**: `fix-c1-l3-unlock` — estat 29/10/2026 (layout C5 dinàmic; vegeu `git log`)
+> **Data d'actualització**: 31 d'octubre de 2026
+> **Branca**: `fix-c1-l3-unlock` — estat 31/10/2026 (Opció A d'enemics completada; vegeu `git log`)
 > **Repo**: `https://github.com/Am0rph1s/Bluesb_cpc`
 > **Target**: Amstrad CPC 6128 (128 KB RAM) — Z80, Mode 0 (16 colors), SDCC 4.5.0 + sdasz80, build amb Python 3.
 
@@ -61,15 +61,16 @@ Són només per a depuració i no afecten el flux normal.
 ```
 +---------------------------------------------------------------------------------+
 | BLOC 0 (Resident 0x0000..0x3FFF, sempre mapejat a RAM 0)                         |
-|  - 0x0100..0x385C: _CODE del resident (motor genèric, vídeo, ISR, blit)          |
-|  - 0x3880..0x3CDE: _DATA resident (globals, s_lv, càmera, estat del jugador)     |
-|  - Pila Z80 (SP=0x3FFE)                                                          |
+|  - 0x0100..0x38CB: _CODE del resident (motor genèric, vídeo, ISR, blit)          |
+|  - 0x39A0..0x3E10: _DATA resident (globals, s_lv, càmera, estat del jugador)     |
+|  - Marge lliure _CODE fins _DATA: 213 B                                          |
+|  - Pila Z80 (SP=0x3FFE, ~494 B lliures)                                          |
 +---------------------------------------------------------------------------------+
 | FINESTRA BANCADA (0x4000..0x7FFF) commutada via 0x7F00                          |
 |                                                                                 |
 |  Banc C1 (0x4000..0x7FFF): Àudio compartit + imatge variable del nivell         |
 |    - 0x4000..0x4C00: Player àudio AKG (MAI escriure-hi dades)                    |
-|    - 0x4C10..0x4FA5: HUD blitter ASM (src/hud_bank.c)                            |
+|    - 0x4C01..0x4F96: HUD blitter ASM (src/hud_bank.c, 917 B)                     |
 |    - 0x4FA8..0x4FE1: _DATA de HUD (src/hud_bank.c)                               |
 |    - 0x5000..: cançó + HUD + GAMEOVER + portes + restore (layout variable)       |
 |    - 0x7680..0x76CC: LevelParams v3 (77 B)                                       |
@@ -85,11 +86,11 @@ Són només per a depuració i no afecten el flux normal.
 |  Banc C6 (0x4000..0x7FFF): Enemics                                           |
 |    - 0x4000: taula de celes + blocs ZX0                                          |
 |    - 0x4B00: taula de restauració de tiles del nivell                            |
-|    - 0x5000..0x57FF: cache de 4 celes (scratch)                                   |
+|    - 0x5000..0x57FF: cache de 4 celes (scratch a slot lliure t, zero buffer fix) |
 |    - 0x5800..0x581F: estat de la cache                                           |
-|    - 0x5820..0x5BFF: _DATA d'enemics                                             |
-|    - 0x5C00..<0x7900: codi d'enemics (enemy.c)                                   |
-|    - 0x7900..0x79FF: LUT de flip                                                |
+|    - 0x5820..0x59FF: _DATA d'enemics                                             |
+|    - 0x5A00..0x77A3: codi d'enemics (src/enemy.c) — 349 B lliures fins a LUT     |
+|    - 0x7900..0x79FF: LUT de flip (256 B)                                         |
 |    - 0x7A00..0x7FFF: pool de fons (6 x 256 B)                                    |
 |  Banc C7 (0x4000..0x7FFF): Frames del jugador (Jake/Elwood)                      |
 +---------------------------------------------------------------------------------+
@@ -188,11 +189,17 @@ El codi de món (src/moving_bank.c) s'enllaça just darrere les dades del nivell
 
 ## 5. Rendiment i Optimització del Framerate (Octubre 2026)
 
-- **Estat del motor**: Sòlid a **25 Hz** (40 ms / 2 VSYNCs) tant en repòs com en **scroll horitzontal**.
-- **Fase 1 (Completada - commit `127e306`)**:
+- **Estat del motor**:
+  - **QUIET (Jake immòbil)**: **22,6 – 22,7 fps** (2 VSYNCs / ~44 ms per frame, +81% vs 12,5 fps original).
+  - **CAMINANT (Contra paret)**: **12,4 – 18,1 fps** (+72% vs 10,5 fps).
+  - **CAMINANT (Scroll actiu)**: **9,1 – 13,6 fps** (4-5 VSYNCs, +31% vs 8,4–10,4 fps).
+- **Fase 1 (Completada - commit `127e306` + `8030c9d`)**:
   - `_hud_blit_col` i el bucle de redibuix del HUD s'han mogut del resident al Banc C1 (`src/hud_bank.c`) i reescrits en ASM directe (Mode 0, càlcul incremental de VRAM amb màscara wrap 2 KB).
-  - Ha recuperat **388 línies de raster d'espera VSYNC** durant el scroll horitzontal.
-  - Actualment `_CODE` acaba a `0x385C` (14.172 B), amb **36 B** de marge.
+  - **Opció A d'Enemics (commit `8030c9d`)**:
+    - `en2_draw()`: Descart ràpid horitzontal `(u16)(e->x - view_x + 15) >= 175` que estalvia clipping i reserves de slot d'enemics fora de pantalla.
+    - `en2_update()`: Caixa d'activació 1:1 DOS precalculada en 2 comprovacions unsigned de 16 bits.
+    - `en2_check_player_hit()`: Pre-filtrat `(u16)(e->x - (px - 9)) >= 19` que descarta 21 de cada 22 enemics a la primera instrucció abans d'avaluar tipus o altures.
+  - Actualment resident `_CODE` acaba a `0x38CB` (14.283 B), amb **213 B** de marge fins a `_DATA` (`0x39A0`).
 - **Fases 2 i 3 (Pausades / Documentades)**:
   - *Fase 2 (Render ràpid de tiles)*: reordenació del tileset a la càrrega del nivell + blit via `POP`.
   - *Fase 3 (Còpia front->back en caiguda / Split CRTC)*: descartada a curt termini per complexitat de sprites superposats i sincronització de raster.

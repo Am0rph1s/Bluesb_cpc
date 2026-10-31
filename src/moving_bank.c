@@ -778,8 +778,10 @@ void moving_bank_conveyor(void) {
                 u8 hi = (u8)((g_cam_x4 + 39) >> 1);
                 if (c0 < lo) c0 = lo;
                 if (c1 > hi) c1 = hi;
-                for (c = c0; c <= c1; c++) {
+                if (c0 <= c1) {
+                    for (c = c0; c <= c1; c++) {
                     render_tile_world(tile, c, sp->row, g_cam_x4, g_cam_row);
+                    }
                 }
             }
         }

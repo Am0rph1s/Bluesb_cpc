@@ -26,18 +26,12 @@ extern u8 s_dying_timer;
 extern u8 s_dazed_timer;
 
 static u8 s_hud_layout[PLAY_CHARS];
-// Snapshot GLOBAL del contingut (lives, vinyls, hearts, instrument).
-// Nomes cal un: quan canvia, la pagina de torn es reconstrueix i l'altra
-// copia d'ella al frame seguent. Amb adreces absolutes el check es ~3 B.
-static u8 s_hud_snap[4];
+static u8 s_hud_lives[2], s_hud_vinyls[2], s_hud_hearts[2], s_hud_inst[2];
 static u16 s_hud_vram_start[2];
 
 static u16 s_cur_off20;
 static u16 s_cur_off21;
 static u8  s_base_hi;
-
-// Pas A: copia del HUD des de l'altra pagina (resident, sempre mapejat).
-extern u8 hud_try_copy(u8 page, u16 src_ma, u16 dst_ma);
 
 static void hud_set_vinyl_digits(u8 val) {
     u8 tens = 9;
@@ -164,8 +158,8 @@ void hud_init_b(void) {
     s_hud_layout[18] = 5;
     s_hud_layout[19] = 6;
     s_hud_layout[39] = 2;
-    *(u16*)&s_hud_snap[0] = 0xFFFF;
-    *(u16*)&s_hud_snap[2] = 0xFFFF;
+    p = s_hud_lives;
+    for (i = 0; i < 8; i++) *p++ = 0xFF;
     s_hud_vram_start[0] = s_hud_vram_start[1] = 0xFFFF;
 }
 
@@ -175,23 +169,18 @@ void hud_render_b(void) {
     u8 i;
     u8* p;
     if (!force &&
-        s_hud_snap[0] == g_lives_count &&
-        s_hud_snap[1] == g_vinyls_count &&
-        s_hud_snap[2] == g_hearts_count &&
-        s_hud_snap[3] == g_has_instrument) {
-        if (s_hud_vram_start[page] == g_vram_start) return;
-        // Nomes ha canviat l'offset de l'anell (scroll) i el contingut es el
-        // mateix: copiem el HUD de l'altra pagina en lloc de reconstruir-lo.
-        if (hud_try_copy(page, s_hud_vram_start[page ^ 1], g_vram_start)) {
-            s_hud_vram_start[page] = g_vram_start;
-            return;
-        }
+        s_hud_vram_start[page] == g_vram_start &&
+        s_hud_lives[page] == g_lives_count &&
+        s_hud_vinyls[page] == g_vinyls_count &&
+        s_hud_hearts[page] == g_hearts_count &&
+        s_hud_inst[page] == g_has_instrument) {
+        return;
     }
     s_hud_vram_start[page] = g_vram_start;
-    s_hud_snap[0] = g_lives_count;
-    s_hud_snap[1] = g_vinyls_count;
-    s_hud_snap[2] = g_hearts_count;
-    s_hud_snap[3] = g_has_instrument;
+    s_hud_lives[page]  = g_lives_count;
+    s_hud_vinyls[page] = g_vinyls_count;
+    s_hud_hearts[page] = g_hearts_count;
+    s_hud_inst[page]   = g_has_instrument;
 
     // Vides 1 digit (maxim real 8; clamp defensiu a 9).
     { u8 lv = (g_lives_count > 9) ? 9 : g_lives_count;

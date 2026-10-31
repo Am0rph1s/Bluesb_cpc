@@ -295,37 +295,3 @@ rr_draw_loop$:
 
     jp      _cpc_bank_restore
 
-;; ============================================================
-;; void hud_copy_strip(u16 src, u16 dst)
-;; Copia el HUD (2 files de caracters = 16 scanlines de 80 B) d'una
-;; pagina de VRAM a l'altra. Les scanlines d'una fila de caracters son
-;; a passos de 0x800 (interleavejat CPC), per aixo el bucle.
-;; __sdcccall(1): HL = src, DE = dst
-;; ============================================================
-_hud_copy_strip::
-    ld      c, #2                 ;; 2 files de caracters (20 i 21)
-hcs_row$:
-    push    bc
-    ld      b, #8                 ;; 8 scanlines per fila de caracters
-hcs_sl$:
-    push    bc
-    ld      bc, #80
-    ldir                          ;; HL += 80, DE += 80
-    ld      bc, #(0x800-80)
-    add     hl, bc                ;; seguent scanline (+0x800)
-    ex      de, hl
-    add     hl, bc
-    ex      de, hl
-    pop     bc
-    djnz    hcs_sl$
-    ;; Despres de 8 scanlines HL/DE han avancat 8*0x800 = 0x4000; la fila
-    ;; seguent comenca a +80: restem 0x3F80 (sumem 0xC080 en 16 bits).
-    ld      bc, #0xC080
-    add     hl, bc
-    ex      de, hl
-    add     hl, bc
-    ex      de, hl
-    pop     bc
-    dec     c
-    jr      nz, hcs_row$
-    ret

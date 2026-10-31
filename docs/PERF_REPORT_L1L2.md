@@ -182,3 +182,10 @@ Guany teoric de C.1: ~0,125 ms/frame. El blit de parella (C.2) estalviaria
 ~0,6 ms de mitjana pero necessita ~155 B de resident (n'hi ha 97) i un cami
 de VRAM de 4 bytes amb wrap. Es descarta: el coll d'ampolla real es el dibuix
 d'enemics (C6, ~14 ms/frame).
+
+### Correccio: el cami rapid del HUD s'ha revertit
+
+El Pas A (copia VRAM->VRAM del HUD) corrompia la fila inferior del HUD durant
+l'scroll (sortien barres en lloc del logo). S'ha revertit i el HUD torna a
+reconstruir-se a cada frame d'scroll (correcte, verificat amb captures:
+`scratch/fix_w0..w5_z.png`). Es perden els +1,0 fps mesurats en scroll.

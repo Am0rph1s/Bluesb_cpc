@@ -84,27 +84,6 @@ void render_tile_world(u8 tile_index, u16 col, u16 row,
     bank_restore(prev_b);
 }
 
-// Fast path del HUD (Pas A): si el contingut no ha canviat, en lloc de
-// reconstruir les 40 columnes es copia el HUD ja renderitzat de l'altra
-// pagina de VRAM (16 scanlines de 80 B a passos de 0x800). ~26.900 T
-// enfront de ~63.400 T de la reconstruccio.
-// Retorna 1 si ha copiat (i el cridant nomes ha d'actualitzar el seu
-// s_hud_vram_start), 0 si cal reconstruir.
-extern void hud_copy_strip(u16 src, u16 dst);
-
-u8 hud_try_copy(u8 page, u16 src_ma, u16 dst_ma) {
-    u16 base, so, dof;
-    if (src_ma == 0xFFFF) return 0;     // l'altra pagina encara no te HUD
-    so = (u16)((((u16)src_ma + 800u) & 0x3FFu) << 1);
-    dof = (u16)((((u16)dst_ma + 800u) & 0x3FFu) << 1);
-    // Si la tira (2 files x 80 B) creua el final del ring de 0x800, cal
-    // reconstruir (la copia lineal no gestiona el wrap).
-    if (so > 0x760u || dof > 0x760u) return 0;
-    base = (u16)(page ? 0x8000 : 0xC000);
-    hud_copy_strip((u16)((base ^ 0x4000) + so), (u16)(base + dof));
-    return 1;
-}
-
 extern void render_column(u16 cam_x4, u16 cam_row, u16 sx);
 
 void render_all(u16 cam_x4, u16 cam_row) {

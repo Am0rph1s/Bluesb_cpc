@@ -1207,7 +1207,7 @@ def build_music(force):
     # Escriuen a VRAM => han de viure a la RAM 1 i cridar-se amb 0xC0. Com que
     # son comuns a tots els nivells, van a MUSBANK (0x4C10, despres del player)
     # i no al bloc de codi del nivell.
-    hb_base, hb_data = 0x4C01, 0x4FC8
+    hb_base, hb_data = 0x4C01, 0x4FA8
     hb_src = os.path.join(PROJ, "src", "hud_bank.c")
     hb_rel = os.path.join(obj, "hud_bank.rel")
     hb_headers = [os.path.join(PROJ, n) for n in

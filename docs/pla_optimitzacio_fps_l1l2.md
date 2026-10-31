@@ -131,7 +131,7 @@ Cost del fast-path: ~26.900 T (6,7 ms) en lloc de 63.400 T (15,9 ms).
 | Pas | Estat | Resultat |
 |---|---|---|
 | **Pas D** (P1b revertit + retall d'spans) | FET | `render_tile_span` fora; +186 B de `_CODE`; retall a C5 |
-| **Pas A** (HUD: còpia VRAM→VRAM) | FET | `hud_try_copy`/`hud_copy_strip` al resident; snapshot global de 4 B |
+| **Pas A** (HUD: còpia VRAM→VRAM) | **REVERTIT** | corrompia la fila inferior del HUD en scroll (vegeu sota) |
 | **Pas B** (cache d'enemics) | FET | scratch `0x7700` + reutilització `key^0x80`; assert `_CODE` ≤ `0x7700` |
 | **Pas C** (`render_column` parelles + `HL+3`) | **DESCARTAT amb números** | vegeu sota |
 | **Pas 0** (mesura de `quiet`) | PENDENT | `quiet` segueix a 16,7 fps (3 VSYNCs) |
@@ -170,6 +170,26 @@ l'scroll (15,9 ms) i ara en costa 6,7 ms, però com que el frame segueix a ~70 m
   `0x3E10`.
 * `build_bank_equ` genera un placeholder per `_hud_try_copy` a la 1a iteració
   (el HUD es construeix abans del resident); la 2a ja hi posa l'adreça bona.
+
+### Pas A: revertit (corrompia la fila inferior del HUD)
+
+El camí ràpid (còpia del HUD des de l'altra pàgina de VRAM en lloc de
+reconstruir-lo) va entrar a `11ac841` i va ser el causant del bug reportat:
+**amb scroll, la fila inferior del HUD (la del logo) sortia amb barres en lloc
+del logo**, mentre la superior (icones) es veia bé.
+
+Diagnòstic:
+* El *rebuild* (`hud_blit_columns`) és correcte: descodificant la VRAM
+  (`scratch/vram_hud.png`) s'hi veuen les icones i el logo.
+* Amb el camí ràpid actiu, les captures en scroll mostren la fila inferior
+  corrompuda (`scratch/hud_bottom.png`); amb el rebuild, el logo
+  (`scratch/fix_w2_z.png`, `fix_w5_z.png`).
+
+S'ha revertit el camí ràpid: `main.c` torna a forçar el HUD quan hi ha scroll,
+`hud_bank.c` torna als comptadors per pàgina i s'eliminen `hud_try_copy`/
+`hud_copy_strip`. Es recuperen ~110 B de resident (`_CODE` `0x38CB`, **213 B**
+de marge). Cost: es perd l'estalvi mesurat del Pas A (+1,0 fps en scroll);
+la correcció visual mana.
 
 ### Pas C: analitzat i descartat (amb números)
 

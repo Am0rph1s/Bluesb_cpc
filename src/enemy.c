@@ -120,16 +120,12 @@ extern void zx0_decompress(const void* src, void* dst);
 #define ENEMY_CACHE_SLOTS  4
 #define ENEMY_CACHE_WHO    ((u8*)0x5800)
 #define ENEMY_CACHE_NEXT   (*(u8*)0x5810)
-// Scratch fix per girar una cela sense gastar 2 slots de la cache
-// (Pas B). Zona lliure de C6: el codi acaba a 0x76F4 i la LUT a 0x7900.
-#define ENEMY_FLIP_SCRATCH ((u8*)0x7700)
-// comptador real resident (diagnostic; es pot llegir des de l'emu)
-
 // Retorna la cela 'cell', girada horitzontalment si flip != 0. Les celes
 // girades es cachegen igual que les normals (clau = cell | 0x80), aixi que
 // nomes es descomprimeixen i giren un cop; els frames seguents les troben
-// a la cache. Si cal girar, es descomprimeix la cela font a un slot temporal
-// del ring (que queda lliure despres) i es mira cap al slot bo.
+// a la cache. Si cal girar i no tenim la versio oposada, es descomprimeix
+// la cela font a un slot lliure de la cache (t) i es gira directament
+// cap al slot de desti s. El slot t queda registrat amb cell (sense flip).
 static const u8* en2_cell(u8 cell, u8 flip) {
     u8 s, key, opp;
     if (cell >= ENEMY_CELLS) cell = 0;
@@ -148,10 +144,15 @@ static const u8* en2_cell(u8 cell, u8 flip) {
         en2_flip_cell(ENEMY_CACHE_BASE + ((u16)opp << 9),
                       ENEMY_CACHE_BASE + ((u16)s << 9));
     } else if (flip) {
+        u8 t = ENEMY_CACHE_NEXT;
+        if (t == s) t = (u8)((t + 1) & (ENEMY_CACHE_SLOTS - 1));
+        ENEMY_CACHE_NEXT = (u8)((t + 1) & (ENEMY_CACHE_SLOTS - 1));
         zx0_decompress((const void*)(*(const u16*)
                        (ENEMY_CELL_TABLE + ((u16)cell << 1))),
-                       ENEMY_FLIP_SCRATCH);
-        en2_flip_cell(ENEMY_FLIP_SCRATCH, ENEMY_CACHE_BASE + ((u16)s << 9));
+                       ENEMY_CACHE_BASE + ((u16)t << 9));
+        ENEMY_CACHE_WHO[t] = cell;
+        en2_flip_cell(ENEMY_CACHE_BASE + ((u16)t << 9),
+                      ENEMY_CACHE_BASE + ((u16)s << 9));
     } else {
         zx0_decompress((const void*)(*(const u16*)
                        (ENEMY_CELL_TABLE + ((u16)cell << 1))),

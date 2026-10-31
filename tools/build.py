@@ -725,8 +725,8 @@ def build_enemybank(force, level_idx=None):
     en_data_s, en_data_l = map_area(map_path, "DATA")
     # Layout C6 nou: frames comprimits 0x4000, cache 0x5000, estat 0x5800,
     # dades 0x5820..<0x5A00, codi 0x5A00..<0x7900 (LUT de flip), BG pool 0x7A00.
-    if en_code_s is not None and (en_code_s + en_code_l) > 0x7700:
-        print("\n[FATAL] Banc C6 _CODE (0x%04X..0x%04X) envaeix el scratch de flip (0x7700)!" %
+    if en_code_s is not None and (en_code_s + en_code_l) > 0x7900:
+        print("\n[FATAL] Banc C6 _CODE (0x%04X..0x%04X) envaeix la LUT de flip (0x7900)!" %
               (en_code_s, en_code_s + en_code_l))
         sys.exit(1)
     if en_data_s is not None and (en_data_s + en_data_l) > ENEMY_BASE:

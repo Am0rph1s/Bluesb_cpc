@@ -12,7 +12,7 @@ static const DiskFileDesc g_file_front = { 2448, 6, g_front_chs };
 
 #define CRC_FSPLASH 0xD44F
 
-#define CRC_MUSBANK 0xC098
+#define CRC_MUSBANK 0xD941
 
 #define CRC_FSELECT 0x9A85
 

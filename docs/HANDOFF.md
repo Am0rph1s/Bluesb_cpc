@@ -193,8 +193,14 @@ El codi de món (src/moving_bank.c) s'enllaça just darrere les dades del nivell
   - **QUIET (Jake immòbil)**: **22,6 – 22,7 fps** (2 VSYNCs / ~44 ms per frame, +81% vs 12,5 fps original).
   - **CAMINANT (Contra paret)**: **12,4 – 18,1 fps** (+72% vs 10,5 fps).
   - **CAMINANT (Scroll actiu)**: **9,1 – 13,6 fps** (4-5 VSYNCs, +31% vs 8,4–10,4 fps).
-- **Fase 1 (Completada - commit `127e306` + `8030c9d`)**:
+- **Fase 1 (Completada - commit `127e306` + `8030c9d` + optimització HUD)**:
   - `_hud_blit_col` i el bucle de redibuix del HUD s'han mogut del resident al Banc C1 (`src/hud_bank.c`) i reescrits en ASM directe (Mode 0, càlcul incremental de VRAM amb màscara wrap 2 KB).
+  - **Optimització ASM de `hud_blit_columns()` (Banc C1)**:
+    - Pre-incorporació de `_s_base_hi` directament a `_s_cur_off20` i `_s_cur_off21` abans del bucle (estalvia 2.720 T i 10 B dins el bucle de 40 columnes).
+    - Unroll de 2 línies per iteració a `hb_blit6$` (`c=3` en lloc de `c=6`) utilitzant `set 3, d` a la línia A (estalvia 5.520 T).
+    - Agrupació de la doble crida `hb_blit_ff$` amb `hb_blit_ff2$` a la fila 20 (estalvia 1.080 T).
+    - Estalvi total: **~9.300 T per frame d'scroll** (~2,3 ms recuperats).
+    - Codi de HUD: 922 B (`0x4C01..0x4F9B`), deixant 13 B de marge abans de `_DATA` (`0x4FA8`).
   - **Opció A d'Enemics (commit `8030c9d`)**:
     - `en2_draw()`: Descart ràpid horitzontal `(u16)(e->x - view_x + 15) >= 175` que estalvia clipping i reserves de slot d'enemics fora de pantalla.
     - `en2_update()`: Caixa d'activació 1:1 DOS precalculada en 2 comprovacions unsigned de 16 bits.

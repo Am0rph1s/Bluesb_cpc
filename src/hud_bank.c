@@ -54,6 +54,10 @@ static void hud_blit_columns(void) __naked {
         and  #0x03
         ld   h, a
         add  hl, hl
+        ; Afegeix directament la base de VRAM (0xC0 o 0x80)
+        ld   a, (_s_base_hi)
+        add  a, h
+        ld   h, a
         ld   (_s_cur_off20), hl
         ld   de, #80
         add  hl, de
@@ -80,18 +84,11 @@ static void hud_blit_columns(void) __naked {
 
         ; --- Row 20 (ra=0..7) ---
         ld   de, (_s_cur_off20)
-        ld   a, (_s_base_hi)
-        add  a, d
-        ld   d, a
-        call hb_blit_ff$     ; ra=0 (0xFF)
-        call hb_blit_ff$     ; ra=1 (0xFF)
+        call hb_blit_ff2$    ; ra=0..1 (0xFF)
         call hb_blit6$       ; ra=2..7 (6 linies grafics)
 
         ; --- Row 21 (ra=0..7) ---
         ld   de, (_s_cur_off21)
-        ld   a, (_s_base_hi)
-        add  a, d
-        ld   d, a
         call hb_blit6$       ; ra=0..5 (6 linies grafics)
         call hb_blit_ff$     ; ra=6 (0xFF)
         ; ra=7 (0xFF)
@@ -117,6 +114,8 @@ static void hud_blit_columns(void) __naked {
         pop  ix
         ret
 
+    hb_blit_ff2$:
+        call hb_blit_ff$
     hb_blit_ff$:
         ld   a, #0xFF
         ld   (de), a
@@ -129,8 +128,19 @@ static void hud_blit_columns(void) __naked {
         ret
 
     hb_blit6$:
-        ld   c, #6
+        ld   c, #3
     hb_blit6_loop$:
+        ; Linia A:
+        ld   a, (hl)
+        inc  hl
+        ld   (de), a
+        inc  e
+        ld   a, (hl)
+        inc  hl
+        ld   (de), a
+        dec  e
+        set  3, d
+        ; Linia B:
         ld   a, (hl)
         inc  hl
         ld   (de), a

@@ -998,6 +998,8 @@ void main(void) {
         g_map_level = 1;
     } else if (cpct_isKeyPressed(Key_3)) {
         g_map_level = 2;
+    } else if (cpct_isKeyPressed(Key_4)) {
+        g_map_level = 3;
     }
     while (1) {
         {

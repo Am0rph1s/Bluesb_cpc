@@ -175,6 +175,8 @@ DATA_FILES = [
     ("L3WORLD", "PAK", os.path.join(PROJ, "obj", "L3WORLD.PAK")),
     ("L3ENEMI", "ZX0", os.path.join(PROJ, "obj", "L3ENEMI.ZX0")),
     ("L3C1",    "PAK", os.path.join(PROJ, "obj", "L3C1.PAK")),
+    ("L4WORLD", "PAK", os.path.join(PROJ, "obj", "L4WORLD.PAK")),
+    ("L4ENEMI", "ZX0", os.path.join(PROJ, "obj", "L4ENEMI.ZX0")),
 ]
 
 
@@ -760,6 +762,12 @@ def build_enemybank(force, level_idx=None):
         if force or is_stale(frames_path, [gen3, sqv3]):
             run([sys.executable, gen3])
             mark_fresh(frames_path, [gen3, sqv3])
+    if level_idx == 3:
+        gen4 = os.path.join(PROJ, "tools", "gen_enemy4_frames.py")
+        sqv4 = os.path.join(PROJ, "assets", "bbdata", "ENEMI4.SQV")
+        if force or is_stale(frames_path, [gen4, sqv4]):
+            run([sys.executable, gen4])
+            mark_fresh(frames_path, [gen4, sqv4])
     frames = open(frames_path, "rb").read()
     code = open(code_path, "rb").read()
     assert len(frames) % 512 == 0 and len(frames) // 512 >= 14, len(frames)
@@ -1273,6 +1281,7 @@ def build_music(force):
     mainbin = build_c1_pre(0, songs["main"][0])
     build_c1_pre(1, songs["theme1"][0])
     build_c1_pre(2, songs["theme2"][0])
+    build_c1_pre(3, songs["main"][0])
     # EQU pel GAME (mus.s crida _akg_init/_akg_play en finestra C1).
     ext_s = os.path.join(obj, "mus_ext.s")
     need = {"_akg_init": plabels.get("PLY_AKG_Init"), "_akg_play": plabels.get("PLY_AKG_Play"),
@@ -1710,6 +1719,8 @@ LEVELS = [
     # pero si 6 sales i 24 portes. Aixi el paquet cap a l'scratch de 14.560 B.
     dict(id=2, tag="L3", song="theme2", doors=24, has_code=False, has_elev=False,
          has_rooms=True),
+    dict(id=3, tag="L4", song="main", doors=20, has_code=False, has_elev=False,
+         has_rooms=True),
 ]
 
 
@@ -2103,6 +2114,7 @@ def main():
         build_bank(force, 0)  # Banc 5 per nivell
         build_bank(force, 1)
         build_bank(force, 2)
+        build_bank(force, 3)
         build_levelcode(force, 0)  # Banc 1: codi del nivell (ascensors)
         build_levelcode(force, 1)  # Banc 1: codi del nivell (premses)
         # L3 no porta codi d'excepcions (has_code=False): estalvia ~1,1 KB al
@@ -2110,6 +2122,7 @@ def main():
         build_enemybank(force, 0)  # Banc C3 (walkers; reutilitza bank_equ.rel)
         build_enemybank(force, 1)
         build_enemybank(force, 2)
+        build_enemybank(force, 3)
         build_level_bundles(force)  # JAKE / ELWOOD (Banc C7)
         build_level_packages(force)  # LnWORLD.PAK / LnENEMI + GAMEOVER (manifest)
         build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)

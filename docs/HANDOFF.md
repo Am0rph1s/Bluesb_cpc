@@ -35,6 +35,7 @@
 py -3 tools/pack_level.py 0                       # Nivell 1
 py -3 tools/pack_level.py 1 --outdir obj/lvl1     # Nivell 2
 py -3 tools/pack_level.py 2 --outdir obj/lvl2     # Nivell 3
+py -3 tools/pack_level.py 3 --outdir obj/lvl3     # Nivell 4
 
 # 2. Compilar el joc complet i generar bluesb.dsk
 py -3 tools/build.py                              # Build incremental
@@ -51,7 +52,7 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
 .\zesarux.exe --machine CPC6128 --enable-dsk --dsk-file ..\..\bluesb.dsk --enable-remoteprotocol --remoteprotocol-port 10000
 ```
 
-Dreceres de test a `src/main.c`: mantenir **`2`** en arrencar entra directament a L2; **`3`** entra a L3.
+Dreceres de test a `src/main.c`: mantenir **`2`** en arrencar entra directament a L2; **`3`** entra a L3; **`4`** entra a L4.
 Són només per a depuració i no afecten el flux normal.
 
 ---
@@ -107,6 +108,7 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
 | L1 | 0x5000 (1.619) | 0x5658 | 0x5A00 | 0x5F50 | 0x5FB0 | 0x5FE8 (1.135 B) | 0x6900 | 0x6D00 | 0x7680 | 13.401 B |
 | L2 | 0x5000 (2.721) | 0x5AA8 | 0x5E50 | 0x63A0 | 0x63A0 | 0x63A8 (1.135 B) | 0x6900 (PRESS 792 B) | 0x6D00 | 0x7680 | 13.284 B |
 | L3 | 0x5000 (4.670) | 0x6240 | 0x65E8 | 0x6B38 | 0x6B98 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 11.369 + 3.520 B |
+| L4 | 0x5000 (1.619) | 0x5658 | 0x5A00 | 0x5F50 | 0x5FA0 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 13.361 B |
 
 - L3 **no porta codi d'excepcions**: no té ascensors ni premses encara. Això és el que fa que
   `L3WORLD.PAK` = 11.369 B (23 sectors) i `L3C1.PAK` = 3.520 B (8 sectors); C1 va separat amb `load_level_file(lvl,2)`.
@@ -121,6 +123,7 @@ El codi de món (src/moving_bank.c) s'enllaça just darrere les dades del nivell
 | L1 | 9.216 | 1.000 | 1.195 | 0x6C93 | 4.601 B | **348 B** |
 | L2 | 9.216 | 0 | 1.025 | 0x6801 | 4.644 B | **1.468 B** |
 | L3 | 9.216 | 1.200 | 1.070 | 0x6CDE | 4.494 B | **379 B** |
+| L4 | 7.808 | 600 | 1.105 | 0x6529 | 4.494 B | **2.245 B** |
 
 ### 3.3 C6 (enemics)
 
@@ -180,6 +183,13 @@ El codi de món (src/moving_bank.c) s'enllaça just darrere les dades del nivell
   1. `type 4`/op3 (4 llançadors) i movers `type 5`/op4 + `type 23`/op11.
   2. Validació de portes/sales/àcid i recorregut complet del nivell.
   3. `ENEMY_N=20`: si s'hi afegeixen els 4 llançadors caldrà 22 slots o reduir el codi de C6.
+
+### Nivell 4 (`egou` / clavegueres) — **INTEGRAT I VERIFICAT**
+- Afegit a `LEVELS` i `DATA_FILES`: `L4WORLD.PAK` (13.361 B, 28 sectors) i `L4ENEMI.ZX0` (7.023 B, 14 sectors).
+- `pack_level.py 3 --outdir obj/lvl3` genera tileset (14.144 B), mapa (7.808 B), sales (600 B, 3 sales), TRIG (1.105 B), restore (356 B) i params (77 B).
+- Format C1: Cançó principal Peter Gunn (`main`, 1.619 B), HUD, GAMEOVER, 20 portes i restore de 3 sales. Càpiga directament dins de `L4WORLD.PAK` sense necessitar C1 separat.
+- C6: `tools/gen_enemy4_frames.py` extreu 16 celes d'`ENEMI4.SQV` a `assets/bbdata/ENEMI4.BIN` (8.192 B). `gen_enemy_spawn.py` mapeja 21 enemics actius (tipus 25, 28, 34, 32, 33).
+- **Verificat en emulador** (drecera tecla `4` mantinguda al boot): `g_map_level=3`, `magic=0xB0`, punt d'inici exacte 1:1 DOS `(start_px=24, start_py=2)` (`px8=192`, `py8=16`), càrrega fluida i pantalla de clavegueres mostrada correctament.
 
 ### 4.4 Mecànica universal: Llançament de caixes (1:1 DOS)
 - **Llançament des d'escales, reixes i aigua**: d'acord amb level.c:1940-1942 i do_level_throw_crate (level.c:845-871), si el jugador porta una caixa sobre el cap (s_carry_kind == 1), prémer el botó d'acció (grab) la llança immediatament amb velocitat +/-128, tant a terra com enfilat a una escala (tt == 7), a una reixa (tt == 6, L3) o submergit a l'aigua (tt == 11).

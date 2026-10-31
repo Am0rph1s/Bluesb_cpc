@@ -185,10 +185,15 @@ El codi de món (src/moving_bank.c) s'enllaça just darrere les dades del nivell
   3. `ENEMY_N=20`: si s'hi afegeixen els 4 llançadors caldrà 22 slots o reduir el codi de C6.
 
 ### Nivell 4 (`egou` / clavegueres) — **INTEGRAT I VERIFICAT**
-- Afegit a `LEVELS` i `DATA_FILES`: `L4WORLD.PAK` (13.361 B, 28 sectors) i `L4ENEMI.ZX0` (7.023 B, 14 sectors).
+- Afegit a `LEVELS` i `DATA_FILES`: `L4WORLD.PAK` (13.361 B, 28 sectors) i `L4ENEMI.ZX0` (7.105 B, 16 sectors).
 - `pack_level.py 3 --outdir obj/lvl3` genera tileset (14.144 B), mapa (7.808 B), sales (600 B, 3 sales), TRIG (1.105 B), restore (356 B) i params (77 B).
 - Format C1: Cançó principal Peter Gunn (`main`, 1.619 B), HUD, GAMEOVER, 20 portes i restore de 3 sales. Càpiga directament dins de `L4WORLD.PAK` sense necessitar C1 separat.
-- C6: `tools/gen_enemy4_frames.py` extreu 16 celes d'`ENEMI4.SQV` a `assets/bbdata/ENEMI4.BIN` (8.192 B). `gen_enemy_spawn.py` mapeja 21 enemics actius (tipus 25, 28, 34, 32, 33).
+- C6: `tools/gen_enemy4_frames.py` extreu 16 celes d'`ENEMI4.SQV` a `assets/bbdata/ENEMI4.BIN` (8.192 B). `gen_enemy_spawn.py` mapeja 21 enemics actius:
+  - Tipus 25: Policia de claveguera de patrulla (sense tret de pistola, `data[25]=0` 1:1 DOS).
+  - Tipus 28: Walker estàndard de claveguera (`kind 18`, `vx=24`).
+  - Tipus 34: Walker ràpid de claveguera (`kind 18`, `vx=32`).
+  - Tipus 32: Peix d'aigua (`kind 8`, `vx=16`, celes 9/10): flota a l'aigua i patrulla girant al límit de piscina (`tile_type 12`).
+  - Tipus 33: Walker petit (`kind 18`, `vx=24`, celes 11/12).
 - **Verificat en emulador** (drecera tecla `4` mantinguda al boot): `g_map_level=3`, `magic=0xB0`, punt d'inici exacte 1:1 DOS `(start_px=24, start_py=2)` (`px8=192`, `py8=16`), càrrega fluida i pantalla de clavegueres mostrada correctament.
 
 ### 4.4 Mecànica universal: Llançament de caixes (1:1 DOS)

@@ -26,6 +26,8 @@ LEVEL_NAMES = ["magasin", "ent", "prison", "egou", "ville", "concert"]
 # a 25 fps són 3,2 s amb finestres d'1,6 s, com els 2,67 s del DOS a 30 Hz).
 # Truncar a 6 donava cicles de 24 loops (0,96 s) sense finestra útil.
 DOS_ANIM_SEQS = {
+    67: [110, 110, 110, 110, 110, 110, 111, 112, 113, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 113, 112, 111, 110], # Comporta superior L4 (44 frames)
+    68: [51, 51, 51, 51, 51, 51, 51, 51, 51, 110, 111, 112, 113, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 113, 112, 111, 110, 51, 51, 51, 51], # Comporta inferior L4 (44 frames)
     19: [147, 146, 167, 146],  # level_tiledata_1cce (4 frames; 167 = buit b6=255)
     20: [133, 132, 131],  # level_tiledata_1cd4: cinta dreta L2 (cap/cua)
     21: [143, 144, 145],  # level_tiledata_1cd9: cinta esquerra L2 (cap/cua)

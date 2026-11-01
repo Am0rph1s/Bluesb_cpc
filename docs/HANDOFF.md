@@ -55,6 +55,21 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
 Dreceres de test a `src/main.c`: mantenir **`2`** en arrencar entra directament a L2; **`3`** entra a L3; **`4`** entra a L4.
 Són només per a depuració i no afecten el flux normal.
 
+### Actualització 01/11/2026: Trampolins L2 (3 Altures 1:1 DOS) i Comportes L4 Automàtiques
+1. **Trampolins de L2 (op 24, 3 altures 1:1 DOS)**:
+   - Contrastat amb `tiles.c:391` (`trigger_func_op24`) i `level.c:1516-1533` (`yfriction = (yvelocity & 255) + 6`).
+   - Implementació a `src/main.c`: `is_floor_solid` retorna 2 per `op == 24`; detecció unificada d'aterratge aplica `s_vy = -(s_vy + 48)` (clamped a `VY_MAX_UP = 21 * SUB = 168`), `s_on_ground = 0`.
+   - Eliminat el clampeig restrictiu cap amunt `if (s_vy < -VY_MAX) s_vy = -VY_MAX` (abans tallava salts a 120 subpíxels).
+   - Verificat a ZEsarUX (`tools/test_l2_trampoline.py`): Rebot 1 (62 px), Rebot 2 (99 px), Rebot 3 (impuls màxim -168 / -21 px/f). Captures `l2_trampoline_bounce1.png` i `l2_trampoline_bounce2.png`.
+2. **Comportes Automàtiques de L4 (egou / clavegueres)**:
+   - Identificat a DOS `level_tilesdata_1e8c`: seqüències `b4=67` (comporta superior, len=44) i `b4=68` (comporta inferior, len=44).
+   - Integrades a `DOS_ANIM_SEQS` a `tools/pack_level.py`. Generats 8 spans animats de comporta (4 comportes de 2 tiles: cols 60 i 88 al mapa, cols 85 i 117 a les sales secretes).
+   - Els tiles compactats s'alternen cíclicament entre sòlids (100, 101, 102, 112, `flags=3`) i oberts (49, 99, `flags=0`).
+   - Verificat a ZEsarUX (`tools/test_l4_gates.py`): monitoratge de la fase de 44 frames, captures `level4_gate_closed.png`, `level4_gate_open.png`, i travessament verificat de Jake d'un costat a l'altre (`level4_gate_passed.png`, x=460 -> x=550).
+3. **Pressupost de memòria**:
+   - Resident Bloc 0: `_CODE : 0x0100..0x38B7 (14263 B)` amb **233 B de marge** fins a `_DATA` (`0x39A0`).
+   - Paquet de dades: `L4WORLD.PAK: 13883 B` (dins del límit de 14208 B, 325 B lliures).
+
 ---
 
 ## 3. Arquitectura de Memòria de 128 KB

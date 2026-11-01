@@ -50,6 +50,7 @@ extern volatile u8 g_ticks;
 #define SPEED_AIR   24
 #define MOVE_ACC    7
 #define VY_MAX      (15 * SUB)
+#define VY_MAX_UP   (21 * SUB)
 #define GRAV        16
 #define JUMP_VY     (-112)
 #define DEAD_L      48
@@ -206,6 +207,7 @@ u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
     if (vy >= 0) {
         if (op == 14 || op == 15) return !crouch;
         if (op >= 30 && op <= 39) return 1;
+        if (op == 24) return 2;
     }
     return 0;
 }
@@ -639,7 +641,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                         s_vy = (i16)(s_vy + GRAV);
                     }
                     if (s_vy > VY_MAX) s_vy = VY_MAX;
-                    if (s_vy < -VY_MAX) s_vy = -VY_MAX;
+                    if (s_vy < -VY_MAX_UP) s_vy = -VY_MAX_UP;
                 } else {
                     s_vy = 0;
                 }
@@ -692,35 +694,22 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                     u16 target_row = (u16)(curr_feet >> 4);
                     if (!landed && target_row < max_r) {
                         i16 surf = (i16)(target_row << 4);
-                        if (is_floor_solid(c_mid1, target_row, s_vy, crouch) ||
-                            is_floor_solid(c_mid2, target_row, s_vy, crouch)) {
-                            // 1:1 DOS: només s'hi enganxa si els peus CREUEN
-                            // la superfície dins del frame (abans hi havia un
-                            // marge de +8 px que deixava pujar mig tile més).
-                            if (prev_feet <= surf && curr_feet >= surf) {
+                        if (prev_feet <= surf && curr_feet >= surf) {
+                            u8 s = is_floor_solid(c_mid1, target_row, s_vy, crouch) |
+                                   is_floor_solid(c_mid2, target_row, s_vy, crouch);
+                            if (s) {
                                 py = (i16)(surf - PH);
                                 s_py8 = (i16)(py * SUB);
-                                s_vy = 0;
-                                s_on_ground = 1;
-                                s_ground_elevator = -1;
-                                landed = 1;
-                            }
-                        }
-                    }
-                    if (!landed) {
-                        u16 feet_under = (u16)((curr_feet + 1) >> 4);
-                        if (feet_under < max_r) {
-                            i16 surf_u = (i16)(feet_under << 4);
-                            if (is_floor_solid(c_mid1, feet_under, s_vy, crouch) ||
-                                is_floor_solid(c_mid2, feet_under, s_vy, crouch)) {
-                                if (prev_feet <= surf_u && curr_feet >= surf_u) {
-                                    py = (i16)(surf_u - PH);
-                                    s_py8 = (i16)(py * SUB);
+                                if (s & 2) {
+                                    s_vy = (i16)(-(s_vy + (6 * SUB)));
+                                    if (s_vy < -VY_MAX_UP) s_vy = -VY_MAX_UP;
+                                    s_on_ground = 0;
+                                } else {
                                     s_vy = 0;
                                     s_on_ground = 1;
-                                    s_ground_elevator = -1;
-                                    landed = 1;
                                 }
+                                s_ground_elevator = -1;
+                                landed = 1;
                             }
                         }
                     }

@@ -1143,7 +1143,11 @@ void main(void) {
                     s_dazed_timer = 0;
                     s_invuln_timer = 255;
                 } else {
-                    s_dazed_timer = 20;  // 1:1 DOS special_anim = 18 (estrelletes al cap)
+                    // 1:1 DOS level.c:1652, 1664: if (sprite_type != 4) special_anim = 18;
+                    // A l'aigua (climbing == 2) mai es disparen estrelletes.
+                    if (s_climb_prev != 2) {
+                        s_dazed_timer = 20;  // 1:1 DOS special_anim = 18 (estrelletes al cap)
+                    }
                 }
             }
         }

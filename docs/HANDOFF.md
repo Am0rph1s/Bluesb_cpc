@@ -1,8 +1,8 @@
 # Handoff Global — Blues Brothers CPC (Estat Actual i Guia de Continuació)
 
 > **Document unificat de referència per reprendre el desenvolupament**
-> **Data d'actualització**: 31 d'octubre de 2026
-> **Branca**: `fix-c1-l3-unlock` — estat 31/10/2026 (Opció A d'enemics completada; vegeu `git log`)
+> **Data d'actualització**: 1 de novembre de 2026
+> **Branca**: `fix-c1-l3-unlock` — estat 01/11/2026 (Natació 1:1 DOS i L4 integrat; vegeu `git log`)
 > **Repo**: `https://github.com/Am0rph1s/Bluesb_cpc`
 > **Target**: Amstrad CPC 6128 (128 KB RAM) — Z80, Mode 0 (16 colors), SDCC 4.5.0 + sdasz80, build amb Python 3.
 
@@ -268,6 +268,14 @@ Ubicada a `C1:0x7680` al paquet i copiada a `s_lv` a RAM resident:
 - **Els docs antics poden estar desfasats**. Font de veritat: `tools/build.py`, `obj/C1LAY<n>.BIN`,
   `obj/bluesb.map` i els headers generats (`src/disk_tables.h`, `src/crt_addrs.h`, `src/starter_tables.h`).
   En particular, `HANDOFF` antic parlava de params a `0x6900` i frames a `0x6E00`: **ja no és així**.
+
+- **Natació a l'Aigua (1:1 DOS `level.c:610-637, 1512-1534`, `sprite_type 4`)**:
+  - Tiles d'aigua: tant `tt == 11` (aigua fons) com `tt == 12` (superfície/onada) són aigua oficial a DOS.
+  - Ascens: prémer Jump/Up (`direction_ud == 1`) activa `s_vy = -16` (DOS `unk3D = 2`) només si el cap de Jake està submergit (`head_in_water`).
+  - Línia de flotació: quan el cap arriba a la superfície (`head_in_water == 0`, DOS `tile0_num == 0 -> unk3D = 1`), l'ascens s'atura (`s_vy = 0`) i es clampa `py` a la superfície (`(head_r + 1) << 4`). Jake no pot sortir nedant per l'aire ni picar amb els blocs superiors (`di == 10`).
+  - Danys i estrelletes: a DOS `level.c:1652, 1664` (`if (sprite_type != 4) special_anim = 18;`), a l'aigua mai no es disparen estrelles al cap (`s_dazed_timer`).
+  - Descens i fons: Down/Crouch submergeix ràpidament (`s_vy = 16`); anar quiet deriva suaument (`s_vy = 4`). Si els peus toquen terra ferm de fons (`is_floor_solid`), s'atura (`s_on_ground = 1`).
+  - Sortida: s'agafa directament l'escala (`tt == 7`) en contacte o caminant cap a terra ferm.
 
 ---
 

@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // enemy.c - Walkers del nivell 1 (kinds DOS 8/15/19 -> op1), BANC C6
 // ------------------------------------------------------------
 // S'enllaÃ§a a 0x5A00 (darrere els frames a 0x4000) amb taula de
@@ -410,14 +410,14 @@ void en2_update(void) {
             } else if ((e->tick & 127) == 0) {
                 e->dir = (i8)-e->dir;
             }
-        } else if (sp->kind == 8 || sp->kind == 19) {
-            if (sp->kind == 8) {
+        } else if ((sp->kind & ~1) == 8 || sp->kind == 19) {
+            if (sp->kind != 19) {
                 // 1:1 DOS object_func_op0 / object_func_op15 (peix a l'aigua):
-                // Gira en tocar límit d'aigua (tile_type 12 a L4), paret (1) o sortir de l'aigua.
+                // Gira en tocar límit d'aigua (tt == 12 o sortir tt != 11) o paret (tt == 1).
                 u16 frow = (u16)(((e->y8 >> 3) + ENEMY_HT - 4) >> 4);
                 u16 cchk = (u16)((nx + 8 + (e->dir > 0 ? 8 : -8)) >> 3);
                 u8 tt = (frow < LEVEL_MAP_H && cchk < LEVEL_MAP_W) ? tile_type(cchk, frow) : 1;
-                if (tt == 12 || tt == 1 || (tt != 11 && tt != 0)) {
+                if (tt != 11) {
                     e->dir = (i8)-e->dir;
                 } else {
                     e->x = nx;

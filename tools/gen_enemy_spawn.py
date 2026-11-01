@@ -47,11 +47,19 @@ SPAWN_TYPES = {
     4: (4, 24, 5, 11, 11),   # policia amb pistola: com L1 (patrulla + tret)
     6: (24, 24, 13, 13, 13),  # rata/gos L3 op1: walker amb hitbox h=10 (level_obj_h[6])
     # L4 EGOU (vegeu tools/gen_enemy4_frames.py per a les celes)
-    25: (18, 24, 0, 2, 2),    # policia L4 (op2: patrulla, SENSE tret de bales)
-    28: (18, 24, 3, 5, 5),    # walker L4 (op1)
-    34: (18, 32, 6, 8, 8),    # walker rapid L4 (op16)
-    32: (8,  16, 9, 10, 10),  # peix d'aigua L4 (op15: nada a l'aigua, kind 8)
-    33: (18, 24, 11, 12, 12), # walker petit L4 (op16)
+    # Celes: 0,1: policia; 2,3: patruller; 4,5: peix gran/monstre; 6,7: rata gran;
+    #        8: rata petita; 9: estatic; 10,11: walker mitja; 12: aranya;
+    #        14,15: peix petit decoratiu (class 0, kind 8)
+    25: (18, 24, 0, 1, 1),    # policia L4 (op2: patrulla)
+    26: (9,  24, 4, 5, 5),    # peix gran / monstre marí L4 (op6: neda i fa mal, class 2)
+    27: (18, 32, 6, 7, 7),    # rata gran L4 (op13: walker rapid)
+    28: (18, 24, 2, 3, 3),    # patruller L4 (op1)
+    29: (24, 32, 8, 8, 8),    # rata petita L4 (op13: walker rapid hitbox h=10/16)
+    30: (22, 0,  9, 9, 9),    # estatic L4 (op14)
+    31: (18, 32, 10, 11, 11), # walker mitja L4 (op13: walker rapid)
+    32: (22, 0,  12, 12, 12), # aranya L4 (op15: aranya de sostre)
+    33: (8,  24, 14, 15, 15), # peix petit decoratiu d'aigua L4 (op16, class 0, no fa mal)
+    34: (9,  24, 4, 5, 5),    # peix gran d'aigua L4 (op16, class 2, fa mal)
 }
 
 
@@ -76,6 +84,10 @@ def generate(level_idx, out_path):
         y = ys[slot] - 32
         rows.append((slot, t, x, y, kind, vx, base, aim, throw))
         n += 1
+
+    if len(rows) > 22:
+        rows = rows[:22]
+    n = len(rows)
 
     lines = [
         "#ifndef ENEMY_SPAWN_H",

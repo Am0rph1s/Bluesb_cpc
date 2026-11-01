@@ -5,13 +5,16 @@ Mateixa cela 16x32 / 512 B que ENEMI1/ENEMI2/ENEMI3.BIN.
 Les imatges surten d'ENEMI4.SQV.
 
 Celes (16):
-  0, 1, 2   tipus 25 policia (op2): walk 0/1, tret 2
-  3, 4, 5   tipus 28 walker (op1): walk 15/16, atac 17
-  6, 7, 8   tipus 34 walker (op16): walk 6/7, pose 8
-  9, 10     tipus 32 walker (op15): walk 23/24
-  11        tipus 33 walker (op16): walk 25/26
-  12        projectils (copia d'ENEMI1.BIN: ou/bala/plat)
-  13, 14, 15 lliures
+  0, 1      tipus 25 policia (op2): walk 0/1
+  2, 3      tipus 28 patruller (op1): walk 15/16
+  4, 5      tipus 34 / 26 peix gran d'aigua (op16/op6): swim 6/7 (fa mal)
+  6, 7      tipus 27 rata gran (op13): walk 9/10
+  8         tipus 29 rata petita (op13): walk 18
+  9         tipus 30 estatic (op14): pose 13
+  10, 11    tipus 31 walker mitja (op13): walk 20/21
+  12        tipus 32 aranya (op15): pose 23
+  13        projectils (copia d'ENEMI1.BIN: ou/bala/plat)
+  14, 15    tipus 33 peix petit d'aigua (op16): swim 25/26 (decoratiu, class 0)
 
 Regenerar:
   py -3 tools/gen_enemy4_frames.py
@@ -33,19 +36,21 @@ L1_BIN = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 
 # (cela, frame SQV)
 CELLS = [
-    (0, 0),    # tipus 25 walk A
-    (1, 1),    # tipus 25 walk B
-    (2, 2),    # tipus 25 tret
-    (3, 15),   # tipus 28 walk A
-    (4, 16),   # tipus 28 walk B
-    (5, 17),   # tipus 28 pose
-    (6, 6),    # tipus 34 walk A
-    (7, 7),    # tipus 34 walk B
-    (8, 8),    # tipus 34 pose
-    (9, 23),   # tipus 32 walk A
-    (10, 24),  # tipus 32 walk B
-    (11, 25),  # tipus 33 walk A
-    (12, 26),  # tipus 33 walk B
+    (0, 0),    # tipus 25 policia walk A
+    (1, 1),    # tipus 25 policia walk B
+    (2, 15),   # tipus 28 patruller walk A
+    (3, 16),   # tipus 28 patruller walk B
+    (4, 6),    # tipus 34 / 26 peix gran / monstre walk A
+    (5, 7),    # tipus 34 / 26 peix gran / monstre walk B
+    (6, 9),    # tipus 27 rata gran walk A
+    (7, 10),   # tipus 27 rata gran walk B
+    (8, 18),   # tipus 29 rata petita
+    (9, 13),   # tipus 30 estatic
+    (10, 20),  # tipus 31 walker mitja walk A
+    (11, 21),  # tipus 31 walker mitja walk B
+    (12, 23),  # tipus 32 aranya
+    (14, 25),  # tipus 33 peix petit decoratiu swim A
+    (15, 26),  # tipus 33 peix petit decoratiu swim B
 ]
 
 

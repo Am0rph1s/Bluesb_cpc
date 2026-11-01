@@ -184,17 +184,30 @@ El codi de món (src/moving_bank.c) s'enllaça just darrere les dades del nivell
   2. Validació de portes/sales/àcid i recorregut complet del nivell.
   3. `ENEMY_N=20`: si s'hi afegeixen els 4 llançadors caldrà 22 slots o reduir el codi de C6.
 
-### Nivell 4 (`egou` / clavegueres) — **INTEGRAT I VERIFICAT**
+### Nivell 4 (`egou` / clavegueres) — **INTEGRAT I ENEMICS 1:1 DOS VERIFICATS**
 - Afegit a `LEVELS` i `DATA_FILES`: `L4WORLD.PAK` (13.361 B, 28 sectors) i `L4ENEMI.ZX0` (7.105 B, 16 sectors).
 - `pack_level.py 3 --outdir obj/lvl3` genera tileset (14.144 B), mapa (7.808 B), sales (600 B, 3 sales), TRIG (1.105 B), restore (356 B) i params (77 B).
 - Format C1: Cançó principal Peter Gunn (`main`, 1.619 B), HUD, GAMEOVER, 20 portes i restore de 3 sales. Càpiga directament dins de `L4WORLD.PAK` sense necessitar C1 separat.
-- C6: `tools/gen_enemy4_frames.py` extreu 16 celes d'`ENEMI4.SQV` a `assets/bbdata/ENEMI4.BIN` (8.192 B). `gen_enemy_spawn.py` mapeja 21 enemics actius:
-  - Tipus 25: Policia de claveguera de patrulla (sense tret de pistola, `data[25]=0` 1:1 DOS).
-  - Tipus 28: Walker estàndard de claveguera (`kind 18`, `vx=24`).
-  - Tipus 34: Walker ràpid de claveguera (`kind 18`, `vx=32`).
-  - Tipus 32: Peix d'aigua (`kind 8`, `vx=16`, celes 9/10): flota a l'aigua i patrulla girant al límit de piscina (`tile_type 12`).
-  - Tipus 33: Walker petit (`kind 18`, `vx=24`, celes 11/12).
-- **Verificat en emulador** (drecera tecla `4` mantinguda al boot): `g_map_level=3`, `magic=0xB0`, punt d'inici exacte 1:1 DOS `(start_px=24, start_py=2)` (`px8=192`, `py8=16`), càrrega fluida i pantalla de clavegueres mostrada correctament.
+- **Natació 1:1 DOS**:
+  - Tiles d'aigua unificades (`tt == 11` fons, `tt == 12` línia de flotació/superfície).
+  - Cap submergit puja a velocitat DOS `s_vy = -16`; la línia de flotació s'atura a `s_vy = 0` sense saltar a l'aire ni xocar amb sostres exteriors.
+  - Supressió total d'estrelletes/dazed a l'aigua (1:1 DOS `level.c:1652, 1664`).
+- **Enemics 1:1 DOS (C6, 16 cel·les d'ENEMI4.SQV a `assets/bbdata/ENEMI4.BIN`)**:
+  - D'acord amb `tools/blues_dos/bb/staticres.c` (`level_data`, `level_objtypes`, `level_obj_type`, `level_obj_h`) i `objects.c`:
+    - **Tipus 25** (Policia de claveguera, op 2): patrulla sense tret, celes 0/1 (`kind 18`, `vx=24`).
+    - **Tipus 28** (Patruller estàndard, op 1): walk celes 2/3 (`kind 18`, `vx=24`).
+    - **Tipus 26 i 34** (Peix gran / monstre aquàtic de claveguera, op 6/16): swim celes 4/5 (`kind 9`, `vx=24`). Neda a l'aigua i **fa mal** (`class 2` 1:1 DOS `level_obj_type[34] == 2`).
+    - **Tipus 27** (Rata gran ràpida, op 13): walk ràpid celes 6/7 (`kind 18`, `vx=32`).
+    - **Tipus 29** (Rata petita ràpida, op 13): walk ràpid cela 8 (`kind 24`, `vx=32`, hitbox reduïda).
+    - **Tipus 30** (Enemic estàtic, op 14): pose cela 9 (`kind 22`, `vx=0`).
+    - **Tipus 31** (Walker mitjà, op 13): walk celes 10/11 (`kind 18`, `vx=32`).
+    - **Tipus 32** (Aranya vertical de sostre, op 15): cela 12 (`kind 22`, `vx=0`).
+    - **Tipus 33** (**Peix petit d'aigua**, op 16): swim celes 14/15 (`kind 8`, `vx=24`). **DECORACIÓ PURA, NO FA MAL** (`class 0` 1:1 DOS `level_obj_type[33] == 0`), no interactua amb caixes ni fereix Jake.
+    - **Cela 13**: Projectils compartits (ou/bala/plat d'ENEMI1.BIN).
+- **Verificat en emulador**:
+  - Drecera de boot tecla `4` arrenca directament a Nivell 4 (`magic=0xB0`, `g_map_level=3`).
+  - Verificació a l'aquari superior: Jake toca el peix petit i els cors no baixen (`h_before=1, h_after=1`, dany 0).
+  - Verificació a la claveguera inferior: Peix gran visible amb sprite 32x32 autèntic de DOS nedant a l'aigua. Captures generades a `level4_small_fish.png` i `level4_big_fish.png`.
 
 ### 4.4 Mecànica universal: Llançament de caixes (1:1 DOS)
 - **Llançament des d'escales, reixes i aigua**: d'acord amb level.c:1940-1942 i do_level_throw_crate (level.c:845-871), si el jugador porta una caixa sobre el cap (s_carry_kind == 1), prémer el botó d'acció (grab) la llança immediatament amb velocitat +/-128, tant a terra com enfilat a una escala (tt == 7), a una reixa (tt == 6, L3) o submergit a l'aigua (tt == 11).

@@ -207,23 +207,39 @@ static void b5_update_entities_and_spans(void) {
 #elif LEVEL_PRESS_COUNT == 0 && LEVEL_ELEVATOR_COUNT > 0
     MovingElevator* e = g_mag_elevators;
     for (i = 0; i < LEVEL_ELEVATOR_COUNT; i++, e++) {
-        u8 row, step;
+        u8 row;
         e->delta_y = 0;
         e->frame = 0;
         if (e->wait < ELEVATOR_WAIT) { e->wait++; continue; }
         row = (u8)(e->y >> 4);
-        step = (((e->anim_tick & 7) < 3) ? 3 : 2);
+#if LEVEL_ID == 5
         if (e->direction < 0) {
-            if (row >= 4 && b5_tile_type(e->map_col, (u8)(row - 4)) == 10) {
+            if (row >= 5 && b5_tile_type(e->map_col, (u8)(row - 5)) != 0) {
                 e->direction = 1; e->wait = 1; continue;
             }
-            e->delta_y = (i8)-(i8)step;
+            e->delta_y = -2;
         } else {
-            if (b5_tile_type(e->map_col, (u8)(row + 1)) == 10) {
+            if (b5_tile_type(e->map_col, (u8)(row + 1)) != 0) {
                 e->direction = -1; e->wait = 1; continue;
             }
-            e->delta_y = (i8)step;
+            e->delta_y = 2;
         }
+#else
+        {
+            u8 step = (((e->anim_tick & 7) < 3) ? 3 : 2);
+            if (e->direction < 0) {
+                if (row >= 4 && b5_tile_type(e->map_col, (u8)(row - 4)) == 10) {
+                    e->direction = 1; e->wait = 1; continue;
+                }
+                e->delta_y = (i8)-(i8)step;
+            } else {
+                if (b5_tile_type(e->map_col, (u8)(row + 1)) == 10) {
+                    e->direction = -1; e->wait = 1; continue;
+                }
+                e->delta_y = (i8)step;
+            }
+        }
+#endif
         e->y = (i16)(e->y + e->delta_y);
         e->anim_tick++;
     }
@@ -365,6 +381,22 @@ void moving_bank_update(void) {
             s_pipe_up = 1;
             s_px8 = (i16)((s_px8 & ~63) +
                            (op == 17 ? 28 : (op == 18 ? 68 : -4)));
+        }
+    }
+#elif LEVEL_ID == 5
+    {
+        const u8* tp = b5_trig_ptr(col, row);
+        u8 op = tp ? tp[2] : 255;
+        g_on_ice = 0;
+        if (op == 40) {
+            static u16 s_concert_counter = 0;
+            s_dance_timer = 2;
+            s_vx = 0;
+            if (s_concert_counter < 400) {
+                s_concert_counter++;
+            } else {
+                g_level_complete = 1;
+            }
         }
     }
 #elif LEVEL_HAS_CONVEYOR

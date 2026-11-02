@@ -12,7 +12,7 @@ static const DiskFileDesc g_file_front = { 2448, 6, g_front_chs };
 
 #define CRC_FSPLASH 0xD44F
 
-#define CRC_MUSBANK 0x77A9
+#define CRC_MUSBANK 0x744C
 
 #define CRC_FSELECT 0x9A85
 
@@ -31,28 +31,32 @@ static const u8 g_elwood_chs[12] = {
 static const DiskFileDesc g_file_elwood = { 2818, 6, g_elwood_chs };
 #define CRC_ELWOOD 0x98D2
 
-#define CRC_L1WORLD 0x0989
+#define CRC_L1WORLD 0x8EA2
 
-#define CRC_L1ENEMI 0xB7E3
+#define CRC_L1ENEMI 0x6571
 
-#define CRC_L2WORLD 0x0542
+#define CRC_L2WORLD 0xEB2F
 
-#define CRC_L2ENEMI 0x312B
+#define CRC_L2ENEMI 0x43FA
 
-#define CRC_L3WORLD 0xC09F
+#define CRC_L3WORLD 0xB35C
 
-#define CRC_L3ENEMI 0x6D68
+#define CRC_L3ENEMI 0x9B97
 
 #define CRC_L3C1 0xFE58
 
-#define CRC_L4WORLD 0x3E2E
+#define CRC_L4WORLD 0xD8EE
 
-#define CRC_L4ENEMI 0x1722
+#define CRC_L4ENEMI 0x54F3
 
-#define CRC_L5WORLD 0xFA7C
+#define CRC_L5WORLD 0x434F
 
-#define CRC_L5ENEMI 0x9B14
+#define CRC_L5ENEMI 0xD0D7
 
 #define CRC_L5C1 0xE735
+
+#define CRC_L6WORLD 0xB77F
+
+#define CRC_L6ENEMI 0xD8AD
 
 #endif

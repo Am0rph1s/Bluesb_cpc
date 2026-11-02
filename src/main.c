@@ -203,7 +203,7 @@ u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
     // jugador s'hi recoloca a sobre). A L1 només hi ha 20/21/27/28; a L2
     // hi ha 29 (64 tiles del terra), 0, 2 i 3.
     if (op == 0 || op == 1 || op == 2 || op == 3 || op == 20 || op == 27 ||
-        op == 28 || op == 29) return 1;
+        op == 28 || op == 29 || op == 40) return 1;
     if (vy >= 0) {
         if (op == 14 || op == 15) return !crouch;
         if (op >= 30 && op <= 35) return 1;
@@ -871,6 +871,16 @@ static void load_level_packages(void) {
         }
         // Parametres del nivell (geometria, tiles, start, checkpoint...)
         level_params_load();
+        if (lvl != 0) {
+            u8 prev = bank_set(0xC6);
+            u8 code_ready = (*(const u8*)0x5A00 == 0xC3);
+            bank_restore(prev);
+            if (!code_ready) {
+                if (!load_level_file(0, 1)) {
+                    cpct_setBorder(0x43); while (1) { }
+                }
+            }
+        }
         if (!load_level_file(lvl, 1)) {
             cpct_setBorder(0x43); while (1) { }
         }
@@ -983,6 +993,8 @@ void main(void) {
         g_map_level = 3;
     } else if (cpct_isKeyPressed(Key_5)) {
         g_map_level = 4;
+    } else if (cpct_isKeyPressed(Key_6)) {
+        g_map_level = 5;
     }
     while (1) {
         {
@@ -1393,8 +1405,13 @@ void main(void) {
             } else {
                 s_complete_wait = 0;
                 g_level_complete = 0;
-                if (g_map_level < 5) g_map_level++;
-                else g_map_level = 0;
+                if (g_map_level < 5) {
+                    g_map_level++;
+                    g_front_map_only = 1;
+                } else {
+                    g_map_level = 0;
+                    g_front_map_only = 0;
+                }
                 mus_stop();
                 g_mus_hold = 1;
                 palette_black();
@@ -1402,7 +1419,6 @@ void main(void) {
                 load_front_bank();
                 s_back_page = 1;
                 g_vram_base_hi = 0x80;
-                g_front_map_only = 1;
                 g_keep_counters = 1;   // el nivell seguent hereta comptadors
                 break;
             }

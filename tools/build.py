@@ -180,6 +180,8 @@ DATA_FILES = [
     ("L5WORLD", "PAK", os.path.join(PROJ, "obj", "L5WORLD.PAK")),
     ("L5ENEMI", "ZX0", os.path.join(PROJ, "obj", "L5ENEMI.ZX0")),
     ("L5C1",    "PAK", os.path.join(PROJ, "obj", "L5C1.PAK")),
+    ("L6WORLD", "PAK", os.path.join(PROJ, "obj", "L6WORLD.PAK")),
+    ("L6ENEMI", "ZX0", os.path.join(PROJ, "obj", "L6ENEMI.ZX0")),
 ]
 
 
@@ -495,7 +497,7 @@ def build_bank(force, level_idx=None):
             lvl_s = os.path.join(vdir, "bank5_table.s")
             with open(src, "r", encoding="utf-8") as sf:
                 s_text = sf.read()
-            if level_idx in (2, 3, 4):  # Nivells sense cintes transportadores
+            if level_idx in (2, 3, 4, 5):  # Nivells sense cintes transportadores
                 if "_moving_bank_push::" in s_text:
                     p_idx = s_text.index("_moving_bank_push::")
                     s_text = s_text[:p_idx] + "_moving_bank_push::\n    ld hl, #0\n    ld (_bc_r), hl\n    xor a\n    ld (_g_on_ice), a\n    ret\n"
@@ -682,6 +684,24 @@ def build_levelcode(force, level_idx=None):
     return code_path
 
 
+def parse_spawn_header(path):
+    txt = open(path, "r", encoding="utf-8", errors="replace").read()
+    pattern = r"\{\s*(-?\d+)\s*,\s*(-?\d+)(?:\s*<<\s*3)?\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\}"
+    spawns = bytearray()
+    for m in re.finditer(pattern, txt):
+        x = int(m.group(1))
+        y = int(m.group(2))
+        full = m.group(0)
+        y8 = (y << 3) if "<<" in full else y
+        kind = int(m.group(3))
+        vx = int(m.group(4))
+        b_cell = int(m.group(5))
+        a_cell = int(m.group(6))
+        t_cell = int(m.group(7))
+        spawns += struct.pack("<hhBBBBB", x, y8, kind, vx, b_cell, a_cell, t_cell)
+    assert len(spawns) == 26 * 9, f"Expected 234 bytes, got {len(spawns)}"
+    return spawns
+
 def build_enemybank(force, level_idx=None):
     """Imatge C6 (walkers L1): frames ENEMI1.BIN a 0x4000 + codi linkat a
     ENEMY_BASE (taula engine/enemy_table.s primera: slots fixos 0x5200+3k)
@@ -727,15 +747,12 @@ def build_enemybank(force, level_idx=None):
         spawn_h = os.path.join(vdir, "enemy_spawn.h")
         spawn_src = os.path.join(PROJ, "tools", "blues_dos", "bb", "staticres.c")
         spawn_gen = os.path.join(HERE, "gen_enemy_spawn.py")
-        if os.path.basename(vdir) != "lvl0":
-            if force or is_stale(spawn_h, [spawn_src, spawn_gen]):
-                run([sys.executable, spawn_gen,
-                     "--level", str(level_idx), "--out", spawn_h])
-                mark_fresh(spawn_h, [spawn_src, spawn_gen])
+        if force or is_stale(spawn_h, [spawn_src, spawn_gen]):
+            run([sys.executable, spawn_gen,
+                 "--level", str(level_idx), "--out", spawn_h])
+            mark_fresh(spawn_h, [spawn_src, spawn_gen])
         rel = os.path.join(vdir, "enemy.rel")
-        headers = [hdr] + [os.path.join(PROJ, name) for name in ENEMY_C_HEADERS["src/enemy.c"]]
-        if os.path.basename(vdir) != "lvl0":
-            headers.append(spawn_h)
+        headers = [hdr] + [os.path.join(PROJ, name) for name in ENEMY_C_HEADERS["src/enemy.c"]] + [spawn_h]
         if force or is_stale(rel, [src_c] + headers):
             run([SDCC, "-I" + vdir] + INCLUDES + CFLAGS + ["-c", src_c, "-o", rel])
             mark_fresh(rel, [src_c] + headers)
@@ -797,6 +814,12 @@ def build_enemybank(force, level_idx=None):
         if force or is_stale(frames_path, [gen5, sqv5]):
             run([sys.executable, gen5])
             mark_fresh(frames_path, [gen5, sqv5])
+    if level_idx == 5:
+        gen6 = os.path.join(PROJ, "tools", "gen_enemy6_frames.py")
+        sqv6 = os.path.join(PROJ, "assets", "bbdata", "ENEMI6.SQV")
+        if force or is_stale(frames_path, [gen6, sqv6]):
+            run([sys.executable, gen6])
+            mark_fresh(frames_path, [gen6, sqv6])
     frames = open(frames_path, "rb").read()
     code = open(code_path, "rb").read()
     assert len(frames) % 512 == 0 and len(frames) // 512 >= 14, len(frames)
@@ -852,7 +875,15 @@ def build_enemybank(force, level_idx=None):
               % (len(rt), EN_RESTORE, EN_CACHE))
         sys.exit(1)
     im[EN_RESTORE - 0x4000:EN_RESTORE - 0x4000 + len(rt)] = rt
-    im = bytes(im) + code
+    EN_SPAWN = 0x4E00
+    sp_path = os.path.join(obj, f"lvl{rt_lvl}", "enemy_spawn.h")
+    if os.path.exists(sp_path):
+        sp_bin = parse_spawn_header(sp_path)
+        im[EN_SPAWN - 0x4000:EN_SPAWN - 0x4000 + len(sp_bin)] = sp_bin
+    if level_idx in (None, 0):
+        im = bytes(im) + code
+    else:
+        im = bytes(im[:0x1000])
     total = len(im)
     print("ENEMY cells: %d B ZX0 (de %d B en cru) en %d blocs; cache %d x 512 B a 0x%04X"
           % (len(blocks), len(frames), ncell, EN_CACHE_SLOTS, EN_CACHE))
@@ -1312,6 +1343,7 @@ def build_music(force):
     build_c1_pre(2, songs["theme2"][0])
     build_c1_pre(3, songs["main"][0])
     build_c1_pre(4, songs["theme1"][0])
+    build_c1_pre(5, songs["theme2"][0])
     # EQU pel GAME (mus.s crida _akg_init/_akg_play en finestra C1).
     ext_s = os.path.join(obj, "mus_ext.s")
     need = {"_akg_init": plabels.get("PLY_AKG_Init"), "_akg_play": plabels.get("PLY_AKG_Play"),
@@ -1753,6 +1785,8 @@ LEVELS = [
          has_rooms=True),
     dict(id=4, tag="L5", song="theme1", doors=2, has_code=True, has_elev=True,
          has_rooms=True, frames_base=0x6B00),
+    dict(id=5, tag="L6", song="theme2", doors=6, has_code=True, has_elev=True,
+         has_rooms=False, frames_base=0x7000),
 ]
 
 
@@ -1823,7 +1857,7 @@ def build_level_packages(force=False):
         lay_src = os.path.join(obj, "C1LAY%d.BIN" % lid)
         code_src = os.path.join(obj, "LEVELCODE_%d.BIN" % lid)
         code_data_src = os.path.join(obj, "LEVELDATA_%d.BIN" % lid)
-        elev_src = os.path.join(PROJ, "assets", "bbdata", "PRESS.BIN" if lid == 1 else ("SCAFFOLD.BIN" if lid == 4 else "ELEV.BIN"))
+        elev_src = os.path.join(PROJ, "assets", "bbdata", "PRESS.BIN" if lid == 1 else ("SCAFFOLD.BIN" if lid == 4 else ("LIFT6.BIN" if lid == 5 else "ELEV.BIN")))
         en_src = os.path.join(obj, "ENEMI_%d.BIN" % lid)
         parm_src = os.path.join(PROJ, "assets", "bbdata", "LEVELPARM%d.BIN" % lid)
 
@@ -2149,9 +2183,11 @@ def main():
         build_bank(force, 2)
         build_bank(force, 3)
         build_bank(force, 4)
+        build_bank(force, 5)
         build_levelcode(force, 0)  # Banc 1: codi del nivell (ascensors)
         build_levelcode(force, 1)  # Banc 1: codi del nivell (premses)
         build_levelcode(force, 4)  # Banc 1: codi del nivell (bastides)
+        build_levelcode(force, 5)  # Banc 1: codi del nivell (ascensors escenari)
         # L3 no porta codi d'excepcions (has_code=False): estalvia ~1,1 KB al
         # paquet, que es l'únic que no hi cabia a l'scratch de 14.560 B.
         build_enemybank(force, 0)  # Banc C3 (walkers; reutilitza bank_equ.rel)
@@ -2159,6 +2195,7 @@ def main():
         build_enemybank(force, 2)
         build_enemybank(force, 3)
         build_enemybank(force, 4)
+        build_enemybank(force, 5)
         build_level_bundles(force)  # JAKE / ELWOOD (Banc C7)
         build_level_packages(force)  # LnWORLD.PAK / LnENEMI + GAMEOVER (manifest)
         build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)

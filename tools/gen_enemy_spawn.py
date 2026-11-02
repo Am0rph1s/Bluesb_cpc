@@ -70,8 +70,56 @@ SPAWN_TYPES_L5 = {
     39: (18, 24, 11, 11, 11), # walker (op1)
 }
 
+# L6 CONCERT (vegeu tools/gen_enemy6_frames.py)
+SPAWN_TYPES_L6 = {
+    3: (18, 24, 0, 0, 0),     # guarda walker (op1 / frames 0..1)
+    4: (4,  24, 5, 11, 11),   # policia (op2 / patrulla frames 5..6, tret frame 11)
+}
+
 
 def generate(level_idx, out_path):
+    if level_idx == 0:
+        # Nivell 1: spawns oficials preservats
+        l1_spawns = [
+            (456, 1088, 15, 36, 1, 14, 15),
+            (624, 1088, 15, 36, 1, 14, 15),
+            (592, 960, 15, 36, 1, 14, 15),
+            (744, 1088, 4, 24, 3, 14, 15),
+            (280, 1088, 4, 24, 3, 14, 15),
+            (272, 960, 4, 24, 3, 14, 15),
+            (768, 496, 4, 0, 3, 14, 15),
+            (688, 320, 4, 24, 3, 14, 15),
+            (428, 480, 8, 16, 0, 14, 15),
+            (548, 496, 8, 16, 0, 14, 15),
+            (232, 64, 19, 24, 5, 14, 15),
+            (512, 48, 19, 24, 5, 14, 15),
+            (808, 64, 19, 24, 5, 14, 15),
+            (352, 320, 18, 24, 7, 14, 15),
+            (496, 320, 18, 24, 7, 14, 15),
+            (72, 592, 17, 20, 9, 14, 15),
+            (432, 960, 20, 24, 11, 14, 15),
+            (624, 768, 20, 24, 11, 14, 15),
+            (72, 464, 20, 24, 11, 14, 15),
+            (584, 720, 20, 24, 11, 14, 15),
+            (816, 768, 23, 0, 9, 15, 15),
+        ]
+        lines = [
+            "#ifndef ENEMY_SPAWN_H",
+            "#define ENEMY_SPAWN_H",
+            "// Spawns L1 MAGASIN",
+            "static const Spawn s_spawn[ENEMY_N] = {",
+        ]
+        for s in l1_spawns:
+            lines.append(f"    {{ {s[0]}, {s[1]} << 3, {s[2]}, {s[3]}, {s[4]}, {s[5]}, {s[6]} }},")
+        for _ in range(len(l1_spawns), 26):
+            lines.append("    { -1000, 0, 19, 0, 5, 14, 15 }, // inactiu")
+        lines.append("};")
+        lines.append("#endif")
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        open(out_path, "w").write("\n".join(lines) + "\n")
+        print(f"{out_path}: {len(l1_spawns)} walkers actius")
+        return
+
     arrays = parse_staticres_arrays(
         os.path.join(PROJ, "tools", "blues_dos", "bb", "staticres.c"))
     lname = LEVEL_NAMES[level_idx]
@@ -80,7 +128,7 @@ def generate(level_idx, out_path):
     data = arrays["level_data"]
     types = data[level_idx * MAX_OBJECTS:(level_idx + 1) * MAX_OBJECTS]
 
-    spawn_types = SPAWN_TYPES_L5 if level_idx == 4 else SPAWN_TYPES_DEFAULT
+    spawn_types = SPAWN_TYPES_L6 if level_idx == 5 else (SPAWN_TYPES_L5 if level_idx == 4 else SPAWN_TYPES_DEFAULT)
 
     rows = []
     n = 0

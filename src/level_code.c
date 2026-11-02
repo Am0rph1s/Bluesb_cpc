@@ -19,6 +19,9 @@
 #if LEVEL_ID == 4
 #define LC_FRAMES_BASE  ((const u8*)0x6B00)   // SCAFFOLD.BIN a C1:0x6B00
 #define LC_BG_BASE      ((u8*)0x6D20)         // buffers de fons
+#elif LEVEL_ID == 5
+#define LC_FRAMES_BASE  ((const u8*)0x7000)   // LIFT6.BIN a C1:0x7000
+#define LC_BG_BASE      ((u8*)0x7100)         // buffers de fons (224 B)
 #else
 #define LC_FRAMES_BASE  ((const u8*)0x6900)   // ELEV.BIN o PRESS.BIN
 #define LC_BG_BASE      ((u8*)0x6D00)         // buffers de fons
@@ -56,6 +59,14 @@ extern LevelParams s_lv;          // parametres del nivell (RAM baixa)
 #define LC_SPR_W_BYTES       12
 #define LC_SPR_H             33
 #define LC_OBJ_H             PRESS_OBJECT_H                  // 30
+#elif LEVEL_ID == 5
+// Nivell 6: Ascensors d'escenari (Stage Lifts)
+#define LC_MOVER_COUNT       2
+#define LC_MOVER_BASE        0
+#define LC_BG_SIZE           (ELEVATOR_W_BYTES * ELEVATOR_H) // 8 * 14 = 112
+#define LC_SPR_W_BYTES       ELEVATOR_W_BYTES
+#define LC_SPR_H             ELEVATOR_H                      // 14
+#define LC_OBJ_H             ELEVATOR_OBJECT_H               // 14
 #else
 // Nivell 1: Ascensors (Elevators)
 #define LC_MOVER_COUNT       MAG_ELEVATOR_COUNT

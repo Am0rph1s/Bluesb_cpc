@@ -1,8 +1,8 @@
 # Handoff Global — Blues Brothers CPC (Estat Actual i Guia de Continuació)
 
 > **Document unificat de referència per reprendre el desenvolupament**
-> **Data d'actualització**: 1 de novembre de 2026
-> **Branca**: `fix-c1-l3-unlock` — estat 01/11/2026 (Natació 1:1 DOS i L4 integrat; vegeu `git log`)
+> **Data d'actualització**: 2 de novembre de 2026
+> **Branca**: `fix-c1-l3-unlock` — estat 02/11/2026 (Tots els 6 nivells integrats en un sol disc DSK amb 26 KB lliures; vegeu `git log`)
 > **Repo**: `https://github.com/Am0rph1s/Bluesb_cpc`
 > **Target**: Amstrad CPC 6128 (128 KB RAM) — Z80, Mode 0 (16 colors), SDCC 4.5.0 + sdasz80, build amb Python 3.
 
@@ -54,6 +54,28 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
 
 Dreceres de test a `src/main.c`: mantenir **`2`** en arrencar entra directament a L2; **`3`** entra a L3; **`4`** entra a L4.
 Són només per a depuració i no afecten el flux normal.
+
+### Actualització 02/11/2026: Nivell 6 (Concert), Seqüència Endgame i Disc Únic (26 KB Lliures)
+1. **Disc Únic DSK (6 Nivells en 180 KB amb 26 KB de Marge Lliure)**:
+   - Desacoblament de codi i dades a `ENEMI`: `ENEMYCODE.BIN` (7.505 B) es comparteix resident a `C6:0x5A00..0x782F` carregat per L1.
+   - Les taules `s_spawn` es generen binàries (234 B per nivell) a `C6:0x4E00..0x4EE9`.
+   - `L2ENEMI..L6ENEMI` només empaqueten dades (`0x4000..0x4FFF`, 4.096 B crus -> 2..3 KB ZX0 = 6 sectors).
+   - Estalvi total al disc: ~16-20 KB alliberats. Resultat del DSK: **152 / 178 blocs usats (26 KB lliures)**!
+2. **Nivell 6 (Concert, `level_idx = 5`) 1:1 DOS**:
+   - Mapa 128x49 (6.272 B raw), 184 tiles compactats, 6 portes, 6 spans d'animació de focus d'escenari (seqüències 74 i 75).
+   - 2 ascensors d'escenari (`object_func_op19`, 16x14 Mode 0 a `assets/bbdata/LIFT6.BIN`) a `center_x=528` (`map_col=66`), `y=448` i `688`.
+   - 9 enemics (6 guàrdies tipus 3 i 3 policies tipus 4 de `ENEMI6.SQV` convertits a Mode 0).
+   - Cançó `theme2` (4.670 B) a `C1:0x5000` i layout C1 adaptat (`frames_base = 0x7000`, `code = 0x6B58..0x6F0E`).
+3. **Seqüència Endgame 1:1 DOS (`trigger_func_op40`)**:
+   - Al terra de l'escenari (fila 24, cols 95..104, tile 76, `op == 40`), actua com a terra sòlid (`is_floor_solid` retorna 1).
+   - En tocar el terra, `s_dance_timer = 2` manté en Jake ballant el ball dels Blues Brothers contínuament (`s_vx = 0`).
+   - Comptador de concert `s_concert_counter` arriba a 400 frames (~8 segons a 50 Hz), fixa `g_level_complete = 1`.
+   - El cicle de finalització fa wrap `g_map_level = 0`, `g_front_map_only = 0` i torna netament a la pantalla de menú/títol.
+4. **Verificació a ZEsarUX**:
+   - Arrencada verificada amb drecera `Key_6` (`level6_boot.png`).
+   - Moviment per la teulada nevada de l'edifici (`level6_gameplay.png`, `level6_jump.png`).
+   - Teleport a l'escenari amb el ball dels Blues Brothers i els focus sobre la cortina (`level6_stage_dance1.png`, `level6_stage_dance2.png`).
+   - `smoke_test.py` passa el 100% de les comprovacions DSK + BOOT.
 
 ### Actualització 02/11/2026: Fix Col·lisió Comportes L4 i Línia de Flotació Natació (1:1 DOS)
 1. **Fix Col·lisió i Bug de Retrocés a les Comportes de L4**:

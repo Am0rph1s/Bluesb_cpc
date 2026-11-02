@@ -23,6 +23,7 @@
 #include "cpctelera.h"
 #include "moving.h"
 #include "enemy.h"
+#include "level_params.h"
 #define LEVEL_PKG_DEFS_ONLY
 #include "level_pkg.h"
 
@@ -172,54 +173,7 @@ found:
 // "slot DOS" del comentario es l'index de staticres.c del qual surt.
 // Aterratge validat amb `py -3 tools/sim_enemies.py` (MAP0/TRIG0 reals).
 // 3 iaies, 5 policies, 2 peixos, 3 ocells, 2 grangers, 1 cambrera, 4 rockers.
-#if LEVEL_ID == 0
-static const Spawn s_spawn[ENEMY_N] = {
-    // 3 Iaies (kind 15, DOS op0): slots 1, 2, 5
-    { 456, 1088 << 3, 15, 36,  1 , 14, 15 }, //  0: Iaia 1 (PB Store)
-    { 624, 1088 << 3, 15, 36,  1 , 14, 15 }, //  1: Iaia 2 (PB Bar)
-    { 592,  960 << 3, 15, 36,  1 , 14, 15 }, //  2: Iaia 3 (1r pis botiga)
-
-    // 5 Policies (kind 4, DOS op2): slots 3, 0, 7, 29, 18
-    { 744, 1088 << 3,  4, 24,  3 , 14, 15 }, //  3: Policia 1 (PB dreta botigues) [slot 3]
-    { 280, 1088 << 3,  4, 24,  3 , 14, 15 }, //  4: Policia 2 (carrer, PB Store) [slot 0]
-                                   //     Abans hi havia (816,784) vx=0, fila sense
-                                   //     parell a staticres.c: on_ground=1 inicial ->
-                                   //     no queia mai i pivotava al replÃ  d'ascensors.
-    { 272,  960 << 3,  4, 24,  3 , 14, 15 }, //  5: Policia 3 (1r pis sota escala) [slot 7]
-    { 768,  496 << 3,  4,  0,  3 , 14, 15 }, //  6: Policia 4 (2n pis replÃ  ascensors) [slot 29]
-    { 688,  320 << 3,  4, 24,  3 , 14, 15 }, //  7: Policia 5 (3r pis) [slot 18]
-
-    // 2 Peixos (kind 8, DOS op0): slots 24 i 12 dels 4 oficials (11/12/24/25)
-    { 428,  480 << 3,  8, 16,  0 , 14, 15 }, //  8: Peix 1 (Peixera 1) [slot 24]
-    { 548,  496 << 3,  8, 16,  0 , 14, 15 }, //  9: Peix 2 (Peixera 2) [slot 12]
-
-    // 3 Ocells (kind 19, DOS op8): slots 26, 27, 28
-    { 232,   64 << 3, 19, 24,  5 , 14, 15 }, // 10: Ocell 1 (NÃºvols esquerra) [slot 26]
-    { 512,   48 << 3, 19, 24,  5 , 14, 15 }, // 11: Ocell 2 (NÃºvols centre) [slot 27]
-    { 808,   64 << 3, 19, 24,  5 , 14, 15 }, // 12: Ocell 3 (NÃºvols dreta) [slot 28]
-
-    // 2 Grangers (kind 18, DOS op1): slots 16, 17
-    { 352,  320 << 3, 18, 24,  7 , 14, 15 }, // 13: Granger 1 (escala vinils esq) [slot 16]
-    { 496,  320 << 3, 18, 24,  7 , 14, 15 }, // 14: Granger 2 (escala vinils dreta) [slot 17]
-
-    // 1 Cambrera (kind 17, DOS op10): slot 10
-    {  72,  592 << 3, 17, 20,  9 , 14, 15 }, // 15: Cambrera (Bar/Restaurant) [slot 10]
-
-    // 4 Rockers (kind 20, DOS op1): slots 6, 15, 9, 13
-    // (els slots 4 i 8 son dins d'habitacions, files 80: no a l'exterior)
-    { 432,  960 << 3, 20, 24, 11 , 14, 15 }, // 16: Rocker 1 (1r pis davant botiga) [slot 6]
-    { 624,  768 << 3, 20, 24, 11 , 14, 15 }, // 17: Rocker 2 (2n pis dreta) [slot 15]
-    {  72,  464 << 3, 20, 24, 11 , 14, 15 }, // 18: Rocker 3 (prop Bar/Restaurant) [slot 9]
-    { 584,  720 << 3, 20, 24, 11 , 14, 15 }, // 19: Rocker 4 (2n pis) [slot 13]
-    // Cambrera ESTÀTICA (DOS slot 14, type 16 -> object_func_op4): dos
-    // (xpos 1648, ypos 800) -> CPC x 816, top 768. Frame neutral = cel·la 9
-    // (ENEMI1 SQV 33 = DOS frame 179). Kind 22 = estàtica (no camina).
-    { 816,  768 << 3, 23,  0,  9 , 15, 15 }, // 20: Cambrera (replà ascensor) [slot 14]
-    { -1000, 0, 19, 0, 5, 14, 15 }, // inactiu (ENEMY_N=22)
-};
-#else
-#include "enemy_spawn.h"
-#endif
+#define s_spawn ((const Spawn*)0x4E00)
 
 
 static void en2_spawn_proj(u8 kind, u8 ht, u8 row_off, i16 x, i16 y, i16 vx, i16 vy, u8 cd) {
@@ -277,7 +231,7 @@ static i16 en2_fall(Enemy* e, i16 y, u8 kind) {
         y = (i16)(e->y8 >> 3);
         feet = (i16)(y + ENEMY_HT);
         trow = (u8)(feet >> 4);
-        if (trow < LEVEL_MAP_H) {
+        if (trow < s_lv.map_h) {
             // Columna del CENTRE (xpos16 a DOS), no les del cos.
             u16 cc = (u16)((e->x + 8) >> 3);
             i16 surf = (i16)(trow << 4);
@@ -296,7 +250,7 @@ static i16 en2_fall(Enemy* e, i16 y, u8 kind) {
         }
     } else if ((e->tick & 3) == 0) {
         u8 trow = (u8)((y + ENEMY_HT) >> 4);
-        if (trow < LEVEL_MAP_H) {
+        if (trow < s_lv.map_h) {
             u16 cc = (u16)((e->x + 8) >> 3);
             if (!is_floor_solid(cc, trow, 0, 0)) {
                 e->on_ground = 0;
@@ -422,7 +376,7 @@ void en2_update(void) {
                 // Gira en tocar límit d'aigua (tt == 12 o sortir tt != 11) o paret (tt == 1).
                 u16 frow = (u16)(((e->y8 >> 3) + ENEMY_HT - 4) >> 4);
                 u16 cchk = (u16)((nx + 8 + (e->dir > 0 ? 8 : -8)) >> 3);
-                u8 tt = (frow < LEVEL_MAP_H && cchk < LEVEL_MAP_W) ? tile_type(cchk, frow) : 1;
+                u8 tt = (frow < s_lv.map_h && cchk < s_lv.map_w) ? tile_type(cchk, frow) : 1;
                 if (tt != 11) {
                     e->dir = (i8)-e->dir;
                 } else {
@@ -446,7 +400,7 @@ void en2_update(void) {
         } else {
             // WALKERS (Iaia 15, Policia 4, Granger 18, Cambrera 17, Rocker 20):
             if (nx < 0) { nx = 0; e->dir = 1; }
-            if (nx > (i16)(LEVEL_W_PX - ENEMY_W)) { nx = (i16)(LEVEL_W_PX - ENEMY_W); e->dir = -1; }
+            if (nx > (i16)(s_lv.map_w_px - ENEMY_W)) { nx = (i16)(s_lv.map_w_px - ENEMY_W); e->dir = -1; }
 // Tiles: DOS mira SEMPRE la columna del centre (xpos16), mai les
             // del cos. En CPC el centre es x+8 (mitja amplada de 16 px).
             //   penya-segat (op0/op8): tile_type==1 (aire) a centre+-2,
@@ -532,7 +486,7 @@ e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
             } else if (s_proj.kind == 10) {
                 u16 trow = (u16)((py + s_proj.ht) >> 4);
                 u16 tcol = (u16)((s_proj.x + 4) >> 3);
-                if (trow < LEVEL_MAP_H && is_floor_solid(tcol, trow, 0, 0)) {
+                if (trow < s_lv.map_h && is_floor_solid(tcol, trow, 0, 0)) {
                     s_proj.kind = 0;
                 }
             }

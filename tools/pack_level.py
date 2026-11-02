@@ -52,6 +52,9 @@ DOS_ANIM_SEQS = {
     71: [109, 110, 111],
     72: [103, 105, 107, 105, 107, 103],
     73: [104, 106, 108, 104, 106, 108],
+    # L6 CONCERT (focus escenari)
+    74: [230, 232, 234, 232, 234, 230],
+    75: [231, 233, 235, 233, 231, 235],
     78: [170, 247],       # level_tiledata_1e50: vora esquerra peixera
     4: [149, 149, 149, 149, 149, 149, 149, 149, 149, 146, 147, 146, 147, 146, 147, 146],
     5: [146, 147, 146, 147, 146, 147, 146, 149, 149, 149, 149, 149, 149, 149, 149, 149],
@@ -151,15 +154,19 @@ def build_level_pkg(level_idx=0, out_dir=None):
         max_cam_row = max(0, (map_h * 2) - 20)
         if cam0_row > max_cam_row:
             cam0_row = max_cam_row
-        # Spawn NATURAL del nivell 1 (13/10/26): slot DOS 39 (jugador 1) =
-        # xpos 64 (peus) -> 32 ; ypos 1136 (peus) - PH 30 = 1106 (cap).
-        # Havia quedat (184,860) d'un debug de globus: en Jake naixia al
-        # costat dels globus en comptes del carrer. (generic: xpos>>1,
-        # ypos-PH).
         start_px = 32
         start_py = 1106
         cam0_x4 = 0
         cam0_row = 124
+    elif level_idx == 5:
+        # L6 CONCERT: 2 stage elevators (slots 0 i 1, tipus 40)
+        elev_x = [528, 528]
+        elev_y = [448, 688]
+        elev_col = [66, 66]
+        start_px = 24
+        start_py = 320
+        cam0_x4 = 0
+        cam0_row = 34
     else:
         elev_x = [(x >> 1) for _, x, _ in elevators]
         elev_y = [y for _, _, y in elevators]

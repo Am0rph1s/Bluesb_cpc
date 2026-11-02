@@ -267,7 +267,7 @@ static void enter_door(u8 dst_col, u8 dst_row) {
     s_dying_timer = 0;
     s_jump_prev = 0;
 
-    if (dst_row >= 72) {
+    if (dst_row >= s_lv.room_row0) {
         // Entering Room
         u8 room_idx = (u8)(dst_col / s_lv.room_cols);
         s_in_room = 1;
@@ -864,9 +864,9 @@ static void load_level_packages(void) {
         if (!load_level_file(lvl, 0)) {
             cpct_setBorder(0x42); while (1) { }
         }
-        // L3 porta la imatge C1 en un paquet separat (L3C1.PAK) per no
-        // excedir els 28 sectors de L3WORLD. Els altres nivells la duen dins.
-        if (lvl == 2 && !load_level_file(lvl, 2)) {
+        // L3 i L5 porten la imatge C1 en un paquet separat (L3C1.PAK, L5C1.PAK) per no
+        // excedir els 28 sectors de WORLD. Els altres nivells la duen dins.
+        if ((lvl == 2 || lvl == 4) && !load_level_file(lvl, 2)) {
             cpct_setBorder(0x44); while (1) { }
         }
         // Parametres del nivell (geometria, tiles, start, checkpoint...)
@@ -981,6 +981,8 @@ void main(void) {
         g_map_level = 2;
     } else if (cpct_isKeyPressed(Key_4)) {
         g_map_level = 3;
+    } else if (cpct_isKeyPressed(Key_5)) {
+        g_map_level = 4;
     }
     while (1) {
         {

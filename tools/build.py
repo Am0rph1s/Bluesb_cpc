@@ -177,6 +177,9 @@ DATA_FILES = [
     ("L3C1",    "PAK", os.path.join(PROJ, "obj", "L3C1.PAK")),
     ("L4WORLD", "PAK", os.path.join(PROJ, "obj", "L4WORLD.PAK")),
     ("L4ENEMI", "ZX0", os.path.join(PROJ, "obj", "L4ENEMI.ZX0")),
+    ("L5WORLD", "PAK", os.path.join(PROJ, "obj", "L5WORLD.PAK")),
+    ("L5ENEMI", "ZX0", os.path.join(PROJ, "obj", "L5ENEMI.ZX0")),
+    ("L5C1",    "PAK", os.path.join(PROJ, "obj", "L5C1.PAK")),
 ]
 
 
@@ -486,7 +489,22 @@ def build_bank(force, level_idx=None):
     bank_rels = []
     for rel_src in BANK_ASM_SOURCES:
         src = os.path.join(PROJ, rel_src)
-        rel = os.path.join(obj, os.path.splitext(os.path.basename(src))[0] + ".rel")
+        if level_idx is not None:
+            vdir = os.path.join(obj, "lvl%d" % level_idx)
+            os.makedirs(vdir, exist_ok=True)
+            lvl_s = os.path.join(vdir, "bank5_table.s")
+            with open(src, "r", encoding="utf-8") as sf:
+                s_text = sf.read()
+            if level_idx in (2, 3, 4):  # Nivells sense cintes transportadores
+                if "_moving_bank_push::" in s_text:
+                    p_idx = s_text.index("_moving_bank_push::")
+                    s_text = s_text[:p_idx] + "_moving_bank_push::\n    ld hl, #0\n    ld (_bc_r), hl\n    xor a\n    ld (_g_on_ice), a\n    ret\n"
+            with open(lvl_s, "w", encoding="utf-8") as df:
+                df.write(s_text)
+            rel = os.path.join(vdir, "bank5_table.rel")
+            src = lvl_s
+        else:
+            rel = os.path.join(obj, os.path.splitext(os.path.basename(src))[0] + ".rel")
         if force or is_stale(rel, [src]):
             run([SDASZ80, "-plosgff", rel, src])
             mark_fresh(rel, [src])
@@ -614,12 +632,17 @@ def build_levelcode(force, level_idx=None):
         mark_fresh(asm_rel, [asm_src])
     rels.append(asm_rel)
     c_src = os.path.join(PROJ, "src", "level_code.c")
-    c_rel = os.path.join(obj, "level_code.rel")
+    lid = 0 if level_idx is None else level_idx
+    c_rel = os.path.join(obj, f"level_code_{lid}.rel")
+    vdir = os.path.join(obj, f"lvl{lid}")
+    inc_vdir = ["-I" + vdir] if os.path.exists(vdir) else []
     headers = [os.path.join(PROJ, n) for n in
                ("engine/cpctelera.h", "engine/bank.h", "src/moving.h", "src/sprite.h",
                 "src/level_params.h")]
+    if os.path.exists(os.path.join(vdir, "level_pkg.h")):
+        headers.append(os.path.join(vdir, "level_pkg.h"))
     if force or is_stale(c_rel, [c_src] + headers):
-        run([SDCC] + INCLUDES + CFLAGS + ["-c", c_src, "-o", c_rel])
+        run([SDCC, f"-DLEVEL_ID={lid}"] + inc_vdir + INCLUDES + CFLAGS + ["-c", c_src, "-o", c_rel])
         mark_fresh(c_rel, [c_src] + headers)
     rels.append(c_rel)
     rels.append(equ_rel)
@@ -638,7 +661,7 @@ def build_levelcode(force, level_idx=None):
     # no pot arribar a LC1_FRAMES_BASE; si no en te (L3), pot arribar fins als
     # parametres de C1:0x7680.
     lv_cfg = next((x for x in LEVELS if x["id"] == (0 if level_idx is None else level_idx)), None)
-    code_limit = LC1_FRAMES_BASE if (lv_cfg is None or lv_cfg["has_elev"]) else LC1_PARAMS_BASE
+    code_limit = (lv_cfg.get("frames_base", LC1_FRAMES_BASE) if lv_cfg else LC1_FRAMES_BASE) if (lv_cfg is None or lv_cfg["has_elev"]) else LC1_PARAMS_BASE
     if code_s is not None and (code_s + code_l) > code_limit:
         print("\n[FATAL] El codi del nivell (Banc 1) arriba al limit 0x%04X!" % code_limit)
         sys.exit(1)
@@ -768,6 +791,12 @@ def build_enemybank(force, level_idx=None):
         if force or is_stale(frames_path, [gen4, sqv4]):
             run([sys.executable, gen4])
             mark_fresh(frames_path, [gen4, sqv4])
+    if level_idx == 4:
+        gen5 = os.path.join(PROJ, "tools", "gen_enemy5_frames.py")
+        sqv5 = os.path.join(PROJ, "assets", "bbdata", "ENEMI5.SQV")
+        if force or is_stale(frames_path, [gen5, sqv5]):
+            run([sys.executable, gen5])
+            mark_fresh(frames_path, [gen5, sqv5])
     frames = open(frames_path, "rb").read()
     code = open(code_path, "rb").read()
     assert len(frames) % 512 == 0 and len(frames) // 512 >= 14, len(frames)
@@ -813,7 +842,7 @@ def build_enemybank(force, level_idx=None):
     rt_lvl = 0 if level_idx is None else level_idx
     rt_path = os.path.join(PROJ, "assets", "bbdata", "RESTORE%d.BIN" % rt_lvl)
     rt = open(rt_path, "rb").read()
-    EN_RESTORE = 0x4B00
+    EN_RESTORE = 0x4B80
     if EN_BLOCKS + len(blocks) > EN_RESTORE:
         print("\n[FATAL] Blocs ZX0 d'enemics (fins 0x%04X) xoquen amb la taula de restauracio (0x%04X)!"
               % (EN_BLOCKS + len(blocks), EN_RESTORE))
@@ -1282,6 +1311,7 @@ def build_music(force):
     build_c1_pre(1, songs["theme1"][0])
     build_c1_pre(2, songs["theme2"][0])
     build_c1_pre(3, songs["main"][0])
+    build_c1_pre(4, songs["theme1"][0])
     # EQU pel GAME (mus.s crida _akg_init/_akg_play en finestra C1).
     ext_s = os.path.join(obj, "mus_ext.s")
     need = {"_akg_init": plabels.get("PLY_AKG_Init"), "_akg_play": plabels.get("PLY_AKG_Play"),
@@ -1721,6 +1751,8 @@ LEVELS = [
          has_rooms=True),
     dict(id=3, tag="L4", song="main", doors=20, has_code=False, has_elev=False,
          has_rooms=True),
+    dict(id=4, tag="L5", song="theme1", doors=2, has_code=True, has_elev=True,
+         has_rooms=True, frames_base=0x6B00),
 ]
 
 
@@ -1791,7 +1823,7 @@ def build_level_packages(force=False):
         lay_src = os.path.join(obj, "C1LAY%d.BIN" % lid)
         code_src = os.path.join(obj, "LEVELCODE_%d.BIN" % lid)
         code_data_src = os.path.join(obj, "LEVELDATA_%d.BIN" % lid)
-        elev_src = os.path.join(PROJ, "assets", "bbdata", "PRESS.BIN" if lid == 1 else "ELEV.BIN")
+        elev_src = os.path.join(PROJ, "assets", "bbdata", "PRESS.BIN" if lid == 1 else ("SCAFFOLD.BIN" if lid == 4 else "ELEV.BIN"))
         en_src = os.path.join(obj, "ENEMI_%d.BIN" % lid)
         parm_src = os.path.join(PROJ, "assets", "bbdata", "LEVELPARM%d.BIN" % lid)
 
@@ -1810,7 +1842,7 @@ def build_level_packages(force=False):
             # L3: els tiles comprimeixen 321 B mes amb quick=False; cal per
             # cabre en 28 sectors (el FDC nomes pot llegir 14.336 B a l'scratch).
             t_zx, _ = zx0_compress(bytes(t_raw), classic=True,
-                                   quick=ZX0_QUICK if lv["id"] != 2 else False)
+                                   quick=ZX0_QUICK if lv["id"] not in (2, 4) else False)
 
             # C5: [mapa][sales][TRIG compacte][codi del mon + taula salts 0x7FE8].
             # El codi comenca exactament a code_base = 0x4000 + mapa + sales + TRIG
@@ -1826,7 +1858,7 @@ def build_level_packages(force=False):
             assert c5_base + len(code_raw) <= 0x8000, (c5_base, len(code_raw))
             rooms_trig_raw = rooms_raw + trigc_raw
             map_zx, _ = zx0_compress(bytes(map_raw), classic=True,
-                                     quick=ZX0_QUICK if lv["id"] != 2 else False)
+                                     quick=ZX0_QUICK if lv["id"] not in (2, 4) else False)
             rt_zx, _ = zx0_compress(bytes(rooms_trig_raw), classic=True, quick=ZX0_QUICK)
             code_zx, _ = zx0_compress(bytes(code_raw), classic=True, quick=ZX0_QUICK)
             c5_used = len(map_raw) + len(rooms_trig_raw) + len(code_raw)
@@ -1849,8 +1881,9 @@ def build_level_packages(force=False):
                 m_data += bytes(c1_code_base - 0x5000 - len(m_data))
                 m_data += open(code_src, "rb").read()
                 if lv["has_elev"]:
-                    assert len(m_data) <= (LC1_FRAMES_BASE - 0x5000), len(m_data)
-                    m_data += bytes(LC1_FRAMES_BASE - 0x5000 - len(m_data))
+                    fb = lv.get("frames_base", LC1_FRAMES_BASE)
+                    assert len(m_data) <= (fb - 0x5000), (len(m_data), hex(fb))
+                    m_data += bytes(fb - 0x5000 - len(m_data))
                     m_data += open(elev_src, "rb").read()
                 else:
                     # Sense frames de mecanismes: el codi pot arribar fins als
@@ -1886,13 +1919,13 @@ def build_level_packages(force=False):
                 (0xC5, True, rooms_off, bytes(rt_zx), len(rooms_trig_raw)),
                 (0xC5, True, c5_base, bytes(code_zx), len(code_raw)),
             ]
-            # L3: C1 separat (L3C1.PAK) per alliberar L3WORLD i poder afegir
-            # animacions/triggers de sala sense passar de 28 sectors.
-            if lv["id"] != 2:
+            # L3 / L5: C1 separat (L3C1.PAK / L5C1.PAK) per alliberar WORLD i poder afegir
+            # animacions/triggers de sala sense passar de 28 sectors (scratch 14208 B).
+            if lv["id"] not in (2, 4):
                 world_secs.append((0xC1, True, 0x5000, bytes(m_zx), len(m_data)))
             write_package(world_dst, lv["id"], flags, world_secs)
             mark_fresh(world_dst, srcs)
-            if lv["id"] == 2:
+            if lv["id"] in (2, 4):
                 write_package(c1_dst, lv["id"], flags,
                               [(0xC1, True, 0x5000, bytes(m_zx), len(m_data))])
                 print("PAK: %sC1 %d B" % (tag, os.path.getsize(c1_dst)))
@@ -2115,14 +2148,17 @@ def main():
         build_bank(force, 1)
         build_bank(force, 2)
         build_bank(force, 3)
+        build_bank(force, 4)
         build_levelcode(force, 0)  # Banc 1: codi del nivell (ascensors)
         build_levelcode(force, 1)  # Banc 1: codi del nivell (premses)
+        build_levelcode(force, 4)  # Banc 1: codi del nivell (bastides)
         # L3 no porta codi d'excepcions (has_code=False): estalvia ~1,1 KB al
         # paquet, que es l'únic que no hi cabia a l'scratch de 14.560 B.
         build_enemybank(force, 0)  # Banc C3 (walkers; reutilitza bank_equ.rel)
         build_enemybank(force, 1)
         build_enemybank(force, 2)
         build_enemybank(force, 3)
+        build_enemybank(force, 4)
         build_level_bundles(force)  # JAKE / ELWOOD (Banc C7)
         build_level_packages(force)  # LnWORLD.PAK / LnENEMI + GAMEOVER (manifest)
         build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)

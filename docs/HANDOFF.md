@@ -140,6 +140,7 @@ El build calcula els offsets i els desa a `obj/C1LAY<n>.BIN` y a `LevelParams`.
 | L2 | 0x5000 (2.721) | 0x5AA8 | 0x5E50 | 0x63A0 | 0x63A0 | 0x63A8 (1.135 B) | 0x6900 (PRESS 792 B) | 0x6D00 | 0x7680 | 13.284 B |
 | L3 | 0x5000 (4.670) | 0x6240 | 0x65E8 | 0x6B38 | 0x6B98 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 11.369 + 3.520 B |
 | L4 | 0x5000 (1.619) | 0x5658 | 0x5A00 | 0x5F50 | 0x5FA0 | **cap** (`code_exc_off=0`) | — | — | 0x7680 | 13.361 B |
+| L5 | 0x5000 (2.721) | 0x5AA8 | 0x5E50 | 0x63A0 | 0x63A8 | 0x63F0 (1.706 B) | 0x6B00 (SCAFFOLD 528 B) | 0x6D20 | 0x7680 | 11.580 + 3.599 B |
 
 - L3 **no porta codi d'excepcions**: no té ascensors ni premses encara. Això és el que fa que
   `L3WORLD.PAK` = 11.369 B (23 sectors) i `L3C1.PAK` = 3.520 B (8 sectors); C1 va separat amb `load_level_file(lvl,2)`.
@@ -155,6 +156,7 @@ El codi de món (src/moving_bank.c) s'enllaça just darrere les dades del nivell
 | L2 | 9.216 | 0 | 1.025 | 0x6801 | 4.644 B | **1.468 B** |
 | L3 | 9.216 | 1.200 | 1.070 | 0x6CDE | 4.494 B | **379 B** |
 | L4 | 7.808 | 600 | 1.105 | 0x6529 | 4.494 B | **2.245 B** |
+| L5 | 12.160 | 200 | 1.070 | 0x7476 | 2.822 B | **108 B** |
 
 ### 3.3 C6 (enemics)
 

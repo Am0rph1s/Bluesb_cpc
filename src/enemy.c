@@ -75,7 +75,7 @@ typedef struct {
 // omple l'spawn a runtime.
 static Enemy s_enemies[ENEMY_N];
 static Projectile s_proj;
-static u8 s_proj_bg[2][64];
+#define PROJ_BG_ADDR(p) (0x7800 + ((u16)(p) << 6))
 
 // Pool de fons a BANC C6 0x7A00 (6x256 = 1536 B, 0x7A00..0x7FFF).
 #define BG_BASE ((u16)0x7A00)
@@ -266,7 +266,7 @@ void en2_init(void) {
 // Y: gravetat + snap al terra (mateix que en Jake, alcada 32). Retorna la
 // nova y en pixels. Es treu del bucle per poder-lo reutilitzar pels enemics
 // estatics (tipus 11 de L2), que no es mouen en X pero si que cauen.
-static i16 en2_fall(Enemy* e, i16 y) {
+static i16 en2_fall(Enemy* e, i16 y, u8 kind) {
     if (!e->on_ground) {
         i16 prev_feet = (i16)(y + ENEMY_HT);
         i16 feet;
@@ -284,8 +284,14 @@ static i16 en2_fall(Enemy* e, i16 y) {
             if (is_floor_solid(cc, trow, 0, 0) &&
                 prev_feet <= (surf + 8) && feet >= surf) {
                 e->y8 = (i16)((surf - ENEMY_HT) << 3);
-                e->vy = 0;
-                e->on_ground = 1;
+                if (kind == 25) {
+                    // 1:1 DOS object_func_op18: yfriction = 2 (hop continu)
+                    e->vy = -16;
+                    e->on_ground = 0;
+                } else {
+                    e->vy = 0;
+                    e->on_ground = 1;
+                }
             }
         }
     } else if ((e->tick & 3) == 0) {
@@ -484,13 +490,13 @@ e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
                 }
             }
             // Y: gravetat + snap (mateix que en Jake, alcada 32)
-            y = en2_fall(e, y);
+            y = en2_fall(e, y, sp->kind);
         }
 
         // Estatics sense moviment X: op7 sense case (tipus 11 de L2) i el
         // pistoler op3 (kind 4, vx=0) han de caure al terra (DOS yacc=2).
         if (sp->kind == 22 || sp->kind == 23 || (sp->kind == 4 && sp->vx == 0)) {
-            y = en2_fall(e, y);
+            y = en2_fall(e, y, sp->kind);
         }
 
         // Triggers de projectil (ou, bala, plat):
@@ -558,7 +564,7 @@ void en2_restore(void) {
     // 1. Restaura projectil:
     if (s_proj.drawn_row_count[page]) {
         g_moving_dst = s_proj.drawn_dst[page];
-        g_moving_background = (u16)(&s_proj_bg[page][0]);
+        g_moving_background = PROJ_BG_ADDR(page);
         g_moving_span = s_proj.drawn_byte_count[page];
         g_moving_rows = s_proj.drawn_row_count[page];
         moving_restore_box();
@@ -663,7 +669,7 @@ void en2_draw(void) {
 
                 g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
                 s_proj.drawn_dst[page] = g_moving_dst;
-                g_moving_background = (u16)(&s_proj_bg[page][0]);
+                g_moving_background = PROJ_BG_ADDR(page);
                 g_moving_sprite = (u16)frame;
                 g_moving_span = byte_count;
                 g_moving_rows = row_count;
@@ -726,8 +732,8 @@ void en2_check_player_hit(void) {
         k = s_spawn[i].kind;
         if (en2_collide_class(k) != 2) continue;
         // level_obj_h[kind] en px (vertical 1:1): 4=28, 8/19=16,
-        // 24 (rata/gos de L3)=10, resta 30.
-        he = (k == 24) ? 10 : ((k == 8 || k == 19) ? 16 : ((k == 4) ? 28 : 30));
+        // 24 (rata/gos de L3)=10, 25 (gos saltador L5)=18, resta 30.
+        he = (k == 24) ? 10 : ((k == 25) ? 18 : ((k == 8 || k == 19) ? 16 : ((k == 4) ? 28 : 30)));
         // ATENCIO: en 16 bits. Amb (u8) un enemic 256 px mes amunt tornava
         // a entrar a la finestra per wrap i feia mal al Jake al seu inici.
         if ((u16)((e->y8 >> 3) - py + he - 4) < (u16)(26 + he)) {

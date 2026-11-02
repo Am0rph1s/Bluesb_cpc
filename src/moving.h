@@ -22,6 +22,12 @@
 // Premses (op11, level_obj_w[22] = 10 px DOS -> 5 px CPC): mateixa finestra
 // de suport que al DOS (do_level_handle_object_bonus_collision).
 #define PRESS_HALF_W 5
+// Bastides (op17, L5): 24x22 px Mode 0 (12 bytes/fila).
+#define SCAFFOLD_W_BYTES 12
+#define SCAFFOLD_H 22
+#define SCAFFOLD_OBJECT_H 20
+#define SCAFFOLD_HALF_W 12
+#define SCAFFOLD_BG_SIZE (SCAFFOLD_W_BYTES * SCAFFOLD_H)
 
 typedef struct {
     i16 center_x;               // coordenades de joc Mode 0 (px)

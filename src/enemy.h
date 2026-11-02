@@ -8,14 +8,14 @@
 // Tot el modul viu al BANC C6 (frames 0x4000 + codi 0x5200 + dades);
 // el resident hi crida via call_banked (slots enemy_table.s) i li
 // dona tiles via helpers centrals (CP-2.2: banked no niua).
-#define ENEMY_N 22
+#define ENEMY_N 26
 #define ENEMY_W 16
 #define ENEMY_HT 32
 #define ENEMY_WB 8
 #define ENEMY_FRAME_SIZE 512
 #define ENEMY_FRAMES_BASE ((const u8*)0x4000)
 // Taula de restauracio de tiles en reinici per mort (generada pel packer; dins C6)
-#define ENEMY_RESTORE_TABLE ((const u8*)0x4B00)
+#define ENEMY_RESTORE_TABLE ((const u8*)0x4B80)
 
 void enemy_init(void);
 void enemy_update(void);

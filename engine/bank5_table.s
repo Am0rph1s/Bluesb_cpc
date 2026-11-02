@@ -67,7 +67,7 @@ _b5_trig_ptr::
     jr      nc, trig_null$
     ld      c, a
     ld      a, l
-    cp      #72
+    cp      #100
     jr      nc, trig_null$
     srl     a
     ld      h, a
@@ -119,7 +119,7 @@ _b5_set_tile::
     cp      #128
     ret     nc
     ld      a, b
-    cp      #72
+    cp      #100
     ret     nc
 b5_set_tile_ebc$:
     ld      a, b
@@ -163,7 +163,7 @@ _b5_world_reset_tile::
     ret     nc
     ld      e, a                ;; E = col
     ld      a, l
-    cp      #72
+    cp      #100
     ret     nc
     ld      b, a                ;; B = row
     srl     a

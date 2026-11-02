@@ -48,6 +48,10 @@ DOS_ANIM_SEQS = {
          10, 10, 10, 10, 10, 10, 10, 10, 10],  # level_tiledata_1de5 (20: 11 on + 9 off)
     76: [131, 199],       # level_tiledata_1e48: superfície d'aigua (peixeres)
     77: [149, 217],       # level_tiledata_1e4c: vora dreta peixera
+    # L5 VILLE (fanals i retols)
+    71: [109, 110, 111],
+    72: [103, 105, 107, 105, 107, 103],
+    73: [104, 106, 108, 104, 106, 108],
     78: [170, 247],       # level_tiledata_1e50: vora esquerra peixera
     4: [149, 149, 149, 149, 149, 149, 149, 149, 149, 146, 147, 146, 147, 146, 147, 146],
     5: [146, 147, 146, 147, 146, 147, 146, 149, 149, 149, 149, 149, 149, 149, 149, 149],
@@ -112,6 +116,41 @@ def build_level_pkg(level_idx=0, out_dir=None):
         elev_x = [760, 808, 760, 808, 304]
         elev_y = [384, 464, 592, 736, 784]
         elev_col = [95, 101, 95, 101, 38]
+    elif level_idx == 4:
+        scaffolds = []
+        for slot in range(7):
+            dos_x = xpos_arr[slot]
+            dos_y = ypos_arr[slot]
+            cpc_x = (dos_x >> 1) - 12
+            scaffolds.append((slot, cpc_x, dos_y, (cpc_x + 12) >> 3))
+        elev_x = [s[1] for s in scaffolds]
+        elev_y = [s[2] for s in scaffolds]
+        elev_col = [s[3] for s in scaffolds]
+        start_px = (xpos_arr[39] >> 1) - 8
+        start_py = ypos_arr[39] - 30
+        dos_x = xpos_arr[39]
+        dos_y = ypos_arr[39]
+        cam_col = (dos_x >> 4) - ((320 // 16) // 2)
+        if cam_col < 0:
+            cam_col = 0
+        cam0_x4 = cam_col * 2
+        max_cam_x4 = max(0, (map_w * 2) - 40)
+        if cam0_x4 > max_cam_x4:
+            cam0_x4 = max_cam_x4
+        cam_top = ((dos_y >> 4) - ((160 // 16) // 2 + 1)) << 4
+        if cam_top < 0:
+            cam_top = 0
+        level_h_px = map_h * 16
+        if cam_top + 176 > level_h_px:
+            cam_top = level_h_px - 176
+        else:
+            cam_top += 16
+        if cam_top < 0:
+            cam_top = 0
+        cam0_row = cam_top >> 3
+        max_cam_row = max(0, (map_h * 2) - 20)
+        if cam0_row > max_cam_row:
+            cam0_row = max_cam_row
         # Spawn NATURAL del nivell 1 (13/10/26): slot DOS 39 (jugador 1) =
         # xpos 64 (peus) -> 32 ; ypos 1136 (peus) - PH 30 = 1106 (cap).
         # Havia quedat (184,860) d'un debug de globus: en Jake naixia al
@@ -251,7 +290,10 @@ def build_level_pkg(level_idx=0, out_dir=None):
     # Els grafics DOS de comporta oberta (175/178) no hi caben al paquet de
     # 28 sectors. S'obre amb el tile buit 15, que ja es al tileset.
     switch_targets.add(15)
-    used |= {208, 159, 96}          # vinil, instrument, tile buit
+    if level_idx == 4:
+        used |= {24, 65, 2}          # vinil, instrument, tile buit L5
+    else:
+        used |= {208, 159, 96}       # vinil, instrument, tile buit L1..L4
     tile_order = sorted(used)
     for t in sorted(switch_targets - used):
         tile_order.append(t)
@@ -281,9 +323,14 @@ def build_level_pkg(level_idx=0, out_dir=None):
     ]
     if inst_tile:
         inst_tile = remap[inst_tile]
-    tile_vinyl_c = remap[208]
-    tile_instr_c = remap[159]
-    tile_empty_c = remap[96]
+    if level_idx == 4:
+        tile_vinyl_c = remap[24]
+        tile_instr_c = remap[65]
+        tile_empty_c = remap[2]
+    else:
+        tile_vinyl_c = remap[208]
+        tile_instr_c = remap[159]
+        tile_empty_c = remap[96]
     # Taula compacta de switches: (b6, n_states, n_changes, offset) + tiles.
     switch_b6_c, switch_ns, switch_nc, switch_off, switch_tiles = [], [], [], [], []
     for b6 in switch_b6s:
@@ -348,7 +395,10 @@ def build_level_pkg(level_idx=0, out_dir=None):
         f"#define LEVEL_ELEVATOR_STORAGE {elev_storage}",
         f"#define LEVEL_PRESS_COUNT {len(press_x)}",
         f"#define LEVEL_PRESS_STORAGE {max(1, len(press_x))}",
-        f"#define LEVEL_HAS_ACID {(1 if any((t in (2, 3, 4)) for t in set(trig_bin[x * 10 + 6] for x in set(map_bin))) else 0)}",
+        f"#define LEVEL_SCAFFOLD_COUNT {len(elev_x) if level_idx == 4 else 0}",
+        f"#define LEVEL_HAS_WATER {(1 if level_idx == 3 else 0)}",
+        f"#define LEVEL_HAS_CONVEYOR {(1 if any((t in (6, 7)) for t in set(trig_bin[x * 10 + 2] for x in set(map_bin))) else 0)}",
+        f"#define LEVEL_HAS_ACID {(1 if any((t in (2, 3, 4, 5)) for t in set(trig_bin[x * 10 + 6] for x in set(map_bin))) else 0)}",
         f"#define LEVEL_HAS_BALLOON {(1 if any((trig_bin[x * 10] == 8) for x in set(map_bin)) else 0)}",
         f"#define LEVEL_HAS_UMBRELLA {(1 if any((trig_bin[x * 10] == 9) for x in set(map_bin)) else 0)}",
         f"#define LEVEL_INST_COL      {inst_col}",
@@ -542,7 +592,8 @@ def build_level_pkg(level_idx=0, out_dir=None):
                 if b6 < 64:
                     i = b6_lut[b6]
                     if i != 0xFF and trig_entries[i][0] in (11, 12):
-                        canviable = True
+                        if trig_entries[i][6] == 0:
+                            canviable = True
             if canviable and not (c == inst_col and r == inst_row):
                 restore.append((c, r, t))
     blob = struct.pack("<H", len(restore))

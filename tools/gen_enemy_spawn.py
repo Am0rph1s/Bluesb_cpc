@@ -36,7 +36,8 @@ LEVEL_NAMES = ["magasin", "ent", "prison", "egou", "ville", "concert"]
 MAX_OBJECTS = 41
 
 # type DOS -> (kind CPC, vx, base_cell, aim_cell, throw_cell)
-SPAWN_TYPES = {
+# Per defecte (L1..L4)
+SPAWN_TYPES_DEFAULT = {
     11: (22, 0, 0, 0, 0),    # estatic (op7 sense case al DOS)
     12: (18, 24, 1, 3, 3),   # walker op1 (xmaxvelocity 40)
     13: (21, 32, 4, 6, 6),   # llançador op7 (xmaxvelocity 32)
@@ -47,9 +48,6 @@ SPAWN_TYPES = {
     4: (4, 24, 5, 11, 11),   # policia amb pistola: com L1 (patrulla + tret)
     6: (24, 24, 13, 13, 13),  # rata/gos L3 op1: walker amb hitbox h=10 (level_obj_h[6])
     # L4 EGOU (vegeu tools/gen_enemy4_frames.py per a les celes)
-    # Celes: 0,1: policia; 2,3: patruller; 4,5: peix gran/monstre; 6,7: rata gran;
-    #        8: rata petita; 9: estatic; 10,11: walker mitja; 12: aranya;
-    #        14,15: peix petit decoratiu (class 0, kind 8)
     25: (18, 24, 0, 1, 1),    # policia L4 (op2: patrulla)
     26: (9,  24, 4, 5, 5),    # peix gran / monstre marí L4 (op6: neda i fa mal, class 2)
     27: (18, 32, 6, 7, 7),    # rata gran L4 (op13: walker rapid)
@@ -62,6 +60,16 @@ SPAWN_TYPES = {
     34: (9,  24, 4, 5, 5),    # peix gran d'aigua L4 (op16, class 2, fa mal)
 }
 
+# L5 VILLE (vegeu tools/gen_enemy5_frames.py)
+SPAWN_TYPES_L5 = {
+    4:  (4,  24, 0, 2, 2),    # policia (op2: patrulla + tret)
+    21: (17, 20, 3, 5, 5),    # cambrera llançadora (op10)
+    36: (17, 20, 6, 8, 8),    # home llançador (op10)
+    37: (18, 24, 9, 9, 9),    # patruller (op0)
+    38: (25, 24, 14, 14, 14), # gos saltador (op18)
+    39: (18, 24, 11, 11, 11), # walker (op1)
+}
+
 
 def generate(level_idx, out_path):
     arrays = parse_staticres_arrays(
@@ -72,21 +80,24 @@ def generate(level_idx, out_path):
     data = arrays["level_data"]
     types = data[level_idx * MAX_OBJECTS:(level_idx + 1) * MAX_OBJECTS]
 
+    spawn_types = SPAWN_TYPES_L5 if level_idx == 4 else SPAWN_TYPES_DEFAULT
+
     rows = []
     n = 0
     for slot in range(MAX_OBJECTS):
         t = types[slot]
-        if t not in SPAWN_TYPES:
+        if t not in spawn_types:
             continue
-        kind, vx, base, aim, throw = SPAWN_TYPES[t]
+        kind, vx, base, aim, throw = spawn_types[t]
         # DOS: centre X i base dels peus. CPC: top-left, PH=32.
         x = (xs[slot] >> 1) - 8
         y = ys[slot] - 32
         rows.append((slot, t, x, y, kind, vx, base, aim, throw))
         n += 1
 
-    if len(rows) > 22:
-        rows = rows[:22]
+    max_enemies = 26
+    if len(rows) > max_enemies:
+        rows = rows[:max_enemies]
     n = len(rows)
 
     lines = [
@@ -101,8 +112,8 @@ def generate(level_idx, out_path):
         lines.append("    { %d, %d << 3, %d, %d, %d, %d, %d }, "
                      "// slot %d type 0x%02X" %
                      (x, y, kind, vx, base, aim, throw, slot, t))
-    # ENEMY_N es 22; la resta queden fora de pantalla i no es dibuixen.
-    for i in range(n, 22):
+    # ENEMY_N es 26; la resta queden fora de pantalla i no es dibuixen.
+    for i in range(n, max_enemies):
         lines.append("    { -1000, 0, 19, 0, 5, 14, 15 }, // inactiu")
     lines.append("};")
     lines.append("#endif")
@@ -113,7 +124,7 @@ def generate(level_idx, out_path):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--level", type=int, required=True, choices=range(1, 6))
+    p.add_argument("--level", type=int, required=True, choices=range(0, 6))
     p.add_argument("--out", required=True)
     a = p.parse_args()
     generate(a.level, a.out)

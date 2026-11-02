@@ -92,9 +92,10 @@ void moving_respawn(void) { call_banked(0xC5, BC_RESPAWN); }
 void moving_popup_restore(u8 page) { bc_a = page; call_banked(0xC5, BC_RESTORE); }
 
 // Slots del codi del nivell al Banc 1: la BASE ve del paquet
-// (s_lv.code_exc_off); engine/bank1_table.s hi posa draw a +0 i restore a +3.
-#define LC1_DRAW    ((void*)(u16)(s_lv.code_exc_off))
-#define LC1_RESTORE ((void*)(u16)(s_lv.code_exc_off + 3))
+// (s_lv.code_exc_off); engine/bank1_table.s hi posa draw a +0, restore a +3 i conveyor a +6.
+#define LC1_DRAW     ((void*)(u16)(s_lv.code_exc_off))
+#define LC1_RESTORE  ((void*)(u16)(s_lv.code_exc_off + 3))
+#define LC1_CONVEYOR ((void*)(u16)(s_lv.code_exc_off + 6))
 
 void moving_restore(u8 page, u8 force) {
     (void)force;
@@ -111,7 +112,13 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
     call_banked(0xC0, LC1_DRAW);
 }
 
-void moving_draw_conveyor_tiles(void) { call_banked(0xC5, BC_CONVEYOR); }
+void moving_draw_conveyor_tiles(void) {
+    if (s_lv.level_id == 4) {
+        call_banked(0xC0, LC1_CONVEYOR);
+    } else {
+        call_banked(0xC5, BC_CONVEYOR);
+    }
+}
 
 i16 moving_conveyor_push(void) { call_banked(0xC5, BC_PUSH); return bc_r; }
 

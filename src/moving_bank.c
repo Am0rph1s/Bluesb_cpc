@@ -479,8 +479,7 @@ static u8 b5_solid_ceil(u8 col, u8 row) {
     u8 op;
     if (!tp) return 0;
     op = tp[2];
-    return (op == 0 || op == 2 || op == 3 || op == 20 || op == 21 ||
-            op == 27 || op == 28 || op == 29);
+    return (op <= 3 || op == 20 || (op >= 27 && op <= 29));
 }
 
 void moving_bank_update(void) {
@@ -517,34 +516,16 @@ void moving_bank_update(void) {
 
     col = (u8)((px + 8) >> 3);
     row = (u8)((py + PH - 1) >> 4);
-    // DOS op30 i op36..39 posen unk2D=2 (acceleracio 2 en lloc de 10):
-    // gel i terra mullat de les dutxes es comporten igual. op32..35 son
-    // rampes (unk2D=0, lliscament propi) i no entren aqui.
-    {
-        const u8* fp = b5_trig_ptr(col, row);
-        u8 op = fp ? fp[2] : 255;
-        g_on_ice = (op == 30 || (op >= 36 && op <= 39)) ? 1 : 0;
-    }
-
-    // --- TUBERIA (op 17/18/19): 1:1 DOS trigger_func_op17/18/19 (tiles.c) ---
-    // El trigger s'aplica al tile on es troba el jugador (columna del centre,
-    // fila dels peus). Si el jugador puja amb força (vy < -2 px/frame) el
-    // trigger li dona un impuls cap amunt (vy -= 3) i posa yacc = -3 (el
-    // motor fa la gravetat invertida: s_pipe_up). Tambe l'alinea
-    // horitzontalment: (xpos & ~15) + 7 (op17) / +17 (op18) / -1 (op19).
-    // (El DOS treballa en 16 px per tile i nosaltres en 8: les correccions
-    // d'X es multipliquen per 4 (subpixels per pixel DOS).)
     s_pipe_up = 0;
     {
         const u8* tp = b5_trig_ptr(col, row);
         u8 op = tp ? tp[2] : 255;
-        if (op == 17 || op == 18 || op == 19) {
-            if (s_vy < -2 * SUB) {
-                s_vy = (i16)(s_vy - 3 * SUB);
-                s_pipe_up = 1;
-                s_px8 = (i16)((s_px8 & ~63) +
-                               (op == 17 ? 28 : (op == 18 ? 68 : -4)));
-            }
+        g_on_ice = (op == 30 || (op >= 36 && op <= 39));
+        if (op >= 17 && op <= 19 && s_vy < -2 * SUB) {
+            s_vy = (i16)(s_vy - 3 * SUB);
+            s_pipe_up = 1;
+            s_px8 = (i16)((s_px8 & ~63) +
+                           (op == 17 ? 28 : (op == 18 ? 68 : -4)));
         }
     }
 
@@ -590,11 +571,11 @@ void moving_bank_update(void) {
     // 1:1 DOS level.c:1512: tant tt==11 com tt==12 son aigua (sprite_type 4).
     tt = b5_tile_type(col, row);
     {
-        u8 is_water = (tt == 11 || tt == 12);
-        // Si ja estavem nedant, comprovem tambe el cos (py+16) per no sortir per 1 px a la superficie
+        // 1:1 DOS: tt 11..15 son aigua (11:lliure, 12:superficie, 13:fons, 14/15:rampes)
+        u8 is_water = (tt >= 11 && tt <= 15);
         if (!is_water && s_climb_prev == 2) {
             u8 mid_tt = b5_tile_type(col, (u8)((py + 16) >> 4));
-            if (mid_tt == 11 || mid_tt == 12) is_water = 1;
+            if (mid_tt >= 11 && mid_tt <= 15) is_water = 1;
         }
 
         // Tolerancia escala: si estem a prop d'una escala i premem amunt/avall,
@@ -616,76 +597,44 @@ void moving_bank_update(void) {
             // saltar). Si el terra no hi es, venim de costat/dalt i si que hi
             // ens hi enganxem.
             u8 at_base = (u8)(s_on_ground && b5_solid_ceil(col, (u8)(row + 1)));
-            if (tt == 7) {
-                // 1:1 DOS level.c:1495: nomes s'alinea horitzontalment si es prem amunt/avall
-                if (s_climb_prev != 1 && (jump || crouch)) {
+            if (tt == 6 || tt == 7) {
+                // 1:1 DOS level.c:1495: nomes s'alinea horitzontalment a escala (7) si es prem amunt/avall
+                if (tt == 7 && s_climb_prev != 1 && (jump || crouch)) {
                     px = (i16)(((u16)col << 3) - 4);
                     s_px8 = (i16)(px * SUB);
                 }
-                if (!s_climb_prev && !jump && !crouch && at_base) {
-                    // continua caminant normalment pel terra
-                } else {
+                if (s_climb_prev || jump || crouch || !at_base) {
                     climbing = 1;
-                    s_climb_t6 = 0;
+                    s_climb_t6 = (tt == 6);
                     s_on_ground = 0;
                     if (s_carry_kind == 2 || s_carry_kind == 8) carry_abort();
-                    if (jump) {
-                        s_vy = -16; // 1:1 DOS yvelocity = -2 => -2 * SUB = -16
-                    } else if (crouch) {
-                        s_vy = 16;  // 1:1 DOS yvelocity = 2 => 2 * SUB = 16
-                    } else {
-                        s_vy = 0;
-                    }
-                    s_ground_elevator = -1;
-                }
-            } else if (tt == 6) {
-                // Reixa de L3: sense imant horitzontal (DOS no fa el snap del 7)
-                if (!s_climb_prev && !jump && !crouch && at_base) {
-                    // continua caminant normalment pel terra
-                } else {
-                    climbing = 1;
-                    s_climb_t6 = 1;
-                    s_on_ground = 0;
-                    if (s_carry_kind == 2 || s_carry_kind == 8) carry_abort();
-                    if (jump) {
-                        s_vy = -16; // 1:1 DOS yvelocity = -2
-                    } else if (crouch) {
-                        s_vy = 16;  // 1:1 DOS yvelocity = 2
-                    } else {
-                        s_vy = 0;
-                    }
+                    if (jump) s_vy = -16;
+                    else if (crouch) s_vy = 16;
+                    else s_vy = 0;
                     s_ground_elevator = -1;
                 }
             } else {
                 // --- Natacio (DOS sprite_type 4, level.c:610-637 i 1520-1529) ---
-                u8 head_r = (u8)(py >> 4);
-                u8 head_tt = b5_tile_type(col, head_r);
-                u8 head_in_water = (head_tt == 11 || head_tt == 12);
-
                 climbing = 2;
                 s_climb_t6 = 0;
+                s_on_ground = 0;
                 if (s_carry_kind == 2 || s_carry_kind == 8) carry_abort();
                 if (jump) {
-                    if (head_in_water) {
+                    u8 cr = (u8)((py + 10) >> 4);
+                    if (b5_tile_type(col, cr) >= 11) {
                         s_vy = -16; // Neda cap amunt (1:1 DOS unk3D = 2)
                     } else {
-                        // 1:1 DOS level.c:628 tile0_num == 0 -> unk3D = 1: el cap es a la superficie
-                        // Atura l'ascens perque no pugui superar el nivell de l'aigua nedant per l'aire
+                        // 1:1 DOS level.c:628 tile0_num == 0 -> límit superficie
                         s_vy = 0;
-                        {
-                            i16 surf_py = (i16)((head_r + 1) << 4);
-                            if (py < surf_py) {
-                                py = surf_py;
-                                s_py8 = (i16)(py * SUB);
-                            }
-                        }
+                        py = (i16)(((cr + 1) << 4) - 8);
+                        s_py8 = (i16)(py * SUB);
                     }
                 } else if (crouch) {
                     s_vy = 16; // Submergeix-te cap al fons (1:1 DOS unk3D = 0)
-                } else if (!s_on_ground) {
+                } else if (tt != 13) {
                     s_vy = 4;  // Suau descens/flotacio en aigua (1:1 DOS unk3D = 1, yvelocity = 1)
                 } else {
-                    s_vy = 0;
+                    s_vy = 0;  // Aturat al fons d'aigua (1:1 DOS trigger_func_op21)
                 }
                 s_ground_elevator = -1;
             }

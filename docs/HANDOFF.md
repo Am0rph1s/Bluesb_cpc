@@ -55,6 +55,22 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
 Dreceres de test a `src/main.c`: mantenir **`2`** en arrencar entra directament a L2; **`3`** entra a L3; **`4`** entra a L4.
 Són només per a depuració i no afecten el flux normal.
 
+### Actualització 02/11/2026: Fix Col·lisió Comportes L4 i Línia de Flotació Natació (1:1 DOS)
+1. **Fix Col·lisió i Bug de Retrocés a les Comportes de L4**:
+   - *Causa arrel detectada*: La comprovació de paret a `src/main.c` incloïa indegudament `feet_row` (`tile_flags(c, feet_row)`). Quan Jake nedava pel canal (files 11-12), els peus tocaven la fila 13 (fons de canal, sòlid `flags=3`). A cada pas endavant, el codi creia trobar una paret frontal a la fila 13 i executava un snap destructiu `s_px8 = (((c_right << 3) - 11) * SUB)` que catapultava en Jake 8-11 px cap enrere a cada columna de terra de manera indefinida.
+   - *Solució 1:1 DOS* (`level.c:1763-1840`):
+     - Eliminada la comprovació de `feet_row` a la col·lisió horitzontal (com ja indicava el comentari resident: en CPC els peus no es miren amb `tile_flags`).
+     - Al xocar amb una paret o comporta tancada (`fl & 1` o `fl & 2`), s'aplica el model fidel de DOS (`_si = 0`): `s_vx = 0` sense reubicar ni catapultar `s_px8` enrere.
+     - Jake s'atura netament davant de la comporta tancada i la travessa suaument quan s'obre sense cap bug ni retrocés.
+2. **Línia de Flotació a la Superfície de l'Aigua (Entremig 1:1 DOS)**:
+   - Contrastat amb DOS `level.c:622` (`tile0_num = triggers_get_tile_type(..., ypos16 - 2)`).
+   - Abans es clampava rígidament a `surf_py = (head_r + 1) << 4`, deixant en Jake 100% submergit sota la línia de flotació.
+   - Ara es permet que el pit estigui a la línia de flotació i el cap emergeixi 8 píxels (mig tile) per sobre de l'aigua (`py = ((cr + 1) << 4) - 8`). Jake neda mostrant el cap i les ulleres de sol fora de l'aigua respirant a la superfície com a DOS, sense sortir de l'aigua per l'aire.
+3. **Pressupost de Memòria i Optimitacions**:
+   - Bloc 0 Resident: `_CODE : 0x0100..0x382A (14122 B)` -> **374 B de marge lliure** fins a `_DATA` (`0x39A0`). Guanyats +141 B lliures al resident!
+   - Banc C5 (`moving_bank.c`): Unificada la lògica d'escales/reixes (`tt == 6 || tt == 7`) i unificat `tp = b5_trig_ptr(col, row)`, assegurant que `_CODE` i `_DATA` càpiguen amb seguretat per sota de la taula de salts `0x7FE8`.
+   - DSK i paquets de disc generats i verificats al 100%.
+
 ### Actualització 01/11/2026: Trampolins L2 (3 Altures 1:1 DOS) i Comportes L4 Automàtiques
 1. **Trampolins de L2 (op 24, 3 altures 1:1 DOS)**:
    - Contrastat amb `tiles.c:391` (`trigger_func_op24`) i `level.c:1516-1533` (`yfriction = (yvelocity & 255) + 6`).

@@ -202,11 +202,11 @@ u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
     // 0/2/3/20/21/27/28/29 són les de plataforma (trigger_func_opX: el
     // jugador s'hi recoloca a sobre). A L1 només hi ha 20/21/27/28; a L2
     // hi ha 29 (64 tiles del terra), 0, 2 i 3.
-    if (op == 0 || op == 1 || op == 2 || op == 3 || op == 20 || op == 21 || op == 27 ||
+    if (op == 0 || op == 1 || op == 2 || op == 3 || op == 20 || op == 27 ||
         op == 28 || op == 29) return 1;
     if (vy >= 0) {
         if (op == 14 || op == 15) return !crouch;
-        if (op >= 30 && op <= 39) return 1;
+        if (op >= 30 && op <= 35) return 1;
         if (op == 24) return 2;
     }
     return 0;
@@ -584,19 +584,13 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
     {
         u16 head_row = (u16)((py + 16) >> 4);
         u16 top_row = (u16)(py >> 4);
-        u16 feet_row = (u16)((py + 29) >> 4);
         if (effective_vx > 0) {
             u16 next_px = (u16)((s_px8 + effective_vx) >> 3);
             u16 c_right = (u16)((next_px + 10) >> 3);
             u8 fl = tile_flags(c_right, head_row);
             if (!crouch) fl |= tile_flags(c_right, top_row);
-            // 1:1 DOS (level.c tile0_flags = ypos16): tambe es mira la fila
-            // dels peus. Un esglao (tile solid amb la superficie mes amunt
-            // que els peus) bloqueja; el terra pla no (superficie == peus).
-            fl |= tile_flags(c_right, feet_row);
             if (fl & 1) {
                 s_vx = 0;
-                s_px8 = (i16)(((c_right << 3) - 11) * SUB);
             } else {
                 s_px8 = (i16)(s_px8 + effective_vx);
             }
@@ -605,10 +599,8 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
             u16 c_left  = (u16)((next_px + 1) >> 3);
             u8 fl = tile_flags(c_left, head_row);
             if (!crouch) fl |= tile_flags(c_left, top_row);
-            fl |= tile_flags(c_left, feet_row);
             if (fl & 2) {
                 s_vx = 0;
-                s_px8 = (i16)(((c_left << 3) + 8 - 1) * SUB);
             } else {
                 s_px8 = (i16)(s_px8 + effective_vx);
             }
@@ -675,7 +667,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
             u16 c_mid2 = (u16)((px + 8) >> 3);
             u8 landed = 0;
 
-            if (s_vy >= 0 && climbing != 1) {
+            if (s_vy >= 0 && !climbing) {
                 i16 elevator_top;
                 i8 elevator_id;
                 bc_a = (u16)px; bc_b = (u16)prev_feet; bc_c = (u16)curr_feet;

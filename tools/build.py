@@ -425,8 +425,8 @@ def report_and_assert_memory_budget(map_path):
         print("\n[FATAL] _CODE ha envait _DATA per %d bytes! (code_end=0x%04X > data_start=0x%04X)" %
               (-code_margin, code_end, s_data))
         sys.exit(1)
-    if data_end > 0x3E10:
-        print("\n[FATAL] _DATA ha trepitjat el canari de pila (data_end=0x%04X > 0x3E10)! Mou CANARY_ADDR." %
+    if data_end > 0x3E30:
+        print("\n[FATAL] _DATA ha trepitjat el canari de pila (data_end=0x%04X > 0x3E30)! Mou CANARY_ADDR." %
               data_end)
         sys.exit(1)
     if stack_margin < 256:
@@ -875,7 +875,7 @@ def build_enemybank(force, level_idx=None):
               % (len(rt), EN_RESTORE, EN_CACHE))
         sys.exit(1)
     im[EN_RESTORE - 0x4000:EN_RESTORE - 0x4000 + len(rt)] = rt
-    EN_SPAWN = 0x4E00
+    EN_SPAWN = 0x5840
     sp_path = os.path.join(obj, f"lvl{rt_lvl}", "enemy_spawn.h")
     if os.path.exists(sp_path):
         sp_bin = parse_spawn_header(sp_path)
@@ -1761,7 +1761,7 @@ PAK_DESC        = 8
 PAK_SCRATCH_MAX = (28 * 512) - 128    # 14.208 B: 28 sectors; el FDC en llegeix 14.336 B dins l'scratch de 14.560 B
 # ATENCIO: SDCC empaqueta LevelParams sense alineacio (room_row_last=68,
 # trig_off=69, code_exc_off=71; sizeof=73). Els offsets ho han de reflectir.
-LVLPARM_SIZE    = 77                   # mida de LEVELPARMn.BIN (LevelParams v3)
+LVLPARM_SIZE    = 93                   # mida de LEVELPARMn.BIN (LevelParams v3 + 16B paleta)
 LVLPARM_ROOMS   = 56                   # offset del camp rooms_off dins el bloc
 LVLPARM_DOORS   = 58                   # offset del camp doors_off dins el bloc
 LVLPARM_RESTORE = 60                   # offset del camp restore_off dins el bloc

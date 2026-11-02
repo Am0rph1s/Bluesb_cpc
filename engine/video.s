@@ -15,6 +15,7 @@
     .globl _crtc_set_display_start
     .globl _palette_black
     .globl _palette_restore
+    .globl _palette_table
 
     .area _CODE
 
@@ -138,6 +139,7 @@ crtc_table:
 ;; Paleta Mode 0 - codis INKR crus de la GA del CPC.
 ;; Referencia: negre=0x54, gris=0x40, blau=0x44, blau cel=0x57,
 ;;   vermell brillant=0x4C, verd=0x56, groc=0x5E, blanc=0x40(bright?)
+_palette_table::
 palette_table:
     .db  0x4B, 0x47, 0x40, 0x40, 0x44, 0x5E, 0x5E, 0x4C
     .db  0x57, 0x56, 0x52, 0x54, 0x5F, 0x5C, 0x5C, 0x40

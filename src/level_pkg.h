@@ -12,10 +12,10 @@
 #define LEVEL_MAP_H         72
 #define LEVEL_W_PX          (128 * 8)
 #define LEVEL_MAX_CAM_ROW   124
-#define LEVEL_START_PX      32
+#define LEVEL_START_PX      24
 #define LEVEL_START_PY      1106
 #define LEVEL_CAM0_X4       0
-#define LEVEL_CAM0_ROW      124
+#define LEVEL_CAM0_ROW      122
 #define LEVEL_CHK_PX        352
 #define LEVEL_CHK_PY        464
 #define LEVEL_CHK_CAM_X4    68
@@ -25,6 +25,9 @@
 #define LEVEL_ELEVATOR_STORAGE 5
 #define LEVEL_PRESS_COUNT 0
 #define LEVEL_PRESS_STORAGE 1
+#define LEVEL_SCAFFOLD_COUNT 0
+#define LEVEL_HAS_WATER 0
+#define LEVEL_HAS_CONVEYOR 0
 #define LEVEL_HAS_ACID 0
 #define LEVEL_HAS_BALLOON 1
 #define LEVEL_HAS_UMBRELLA 1
@@ -46,7 +49,7 @@ static const u8 s_bank_press_map_col[LEVEL_PRESS_STORAGE] = { 0 };
 // s_anim_len porta sentinella 0 (bucle sense comptador).
 #define LEVEL_ANIM_SEQ_COUNT 7
 #define LEVEL_ANIM_DATA_LEN 18
-static const u8 s_anim_data[18] = { 236, 235, 234, 223, 224, 225, 231, 232, 233, 222, 221, 220, 130, 192, 148, 202, 164, 230 };
+static const u8 s_anim_data[18] = { 229, 228, 227, 216, 217, 218, 224, 225, 226, 215, 214, 213, 130, 188, 148, 198, 163, 223 };
 static const u8 s_anim_off[7] = { 0, 3, 6, 9, 12, 14, 16 };
 static const u8 s_anim_len[8] = { 3, 3, 3, 3, 2, 2, 2, 0 };
 
@@ -111,6 +114,10 @@ static const u8 s_b6_to_trig3[64] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     0xFF, 0xFF,    9, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 };
+
+// Switches/palanques (DOS triggers_update_tiles2, b6 < 10).
+#define LEVEL_SWITCH_COUNT 0
+
 
 #define LEVEL_POPUP_COUNT 3
 #define LEVEL_POPUP_STORAGE 3

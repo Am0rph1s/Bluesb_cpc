@@ -124,6 +124,7 @@ void main(void);
 extern void render_room(u8 room_idx);
 extern void palette_black(void);
 extern void palette_restore(void);
+extern u8 palette_table[16];
 
 typedef struct {
     u8 src_col;
@@ -871,6 +872,7 @@ static void load_level_packages(void) {
         }
         // Parametres del nivell (geometria, tiles, start, checkpoint...)
         level_params_load();
+        cpct_memcpy(palette_table, s_lv.palette, 16);
         if (lvl != 0) {
             u8 prev = bank_set(0xC6);
             u8 code_ready = (*(const u8*)0x5A00 == 0xC3);
@@ -1010,6 +1012,14 @@ void main(void) {
 
     mus_stop();
     g_mus_hold = 1;
+
+    cpct_scanKeyboard_f();
+    if (cpct_isKeyPressed(Key_1)) g_map_level = 0;
+    else if (cpct_isKeyPressed(Key_2)) g_map_level = 1;
+    else if (cpct_isKeyPressed(Key_3)) g_map_level = 2;
+    else if (cpct_isKeyPressed(Key_4)) g_map_level = 3;
+    else if (cpct_isKeyPressed(Key_5)) g_map_level = 4;
+    else if (cpct_isKeyPressed(Key_6)) g_map_level = 5;
 
     load_level_packages();
 

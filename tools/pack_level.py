@@ -25,6 +25,21 @@ LEVEL_NAMES = ["magasin", "ent", "prison", "egou", "ville", "concert"]
 # (no MCM6): el raig d'àcid fa 20 frames (10 on + 10 off = cicle 80 loops;
 # a 25 fps són 3,2 s amb finestres d'1,6 s, com els 2,67 s del DOS a 30 Hz).
 # Truncar a 6 donava cicles de 24 loops (0,96 s) sense finestra útil.
+LEVEL_PALETTES = [
+    # L1: Paleta oficial Mode 0 de video.s
+    [0x4B, 0x47, 0x40, 0x40, 0x44, 0x5E, 0x5E, 0x4C, 0x57, 0x56, 0x52, 0x54, 0x5F, 0x5C, 0x5C, 0x40],
+    # L2: Factoria
+    [0x4B, 0x47, 0x40, 0x46, 0x46, 0x47, 0x47, 0x47, 0x5F, 0x5E, 0x5E, 0x54, 0x5F, 0x58, 0x58, 0x4B],
+    # L3: Preso
+    [0x4B, 0x47, 0x40, 0x40, 0x46, 0x43, 0x47, 0x47, 0x57, 0x56, 0x52, 0x54, 0x5B, 0x4C, 0x5E, 0x4B],
+    # L4: Clavegueres
+    [0x4B, 0x47, 0x5E, 0x46, 0x46, 0x47, 0x5F, 0x40, 0x54, 0x40, 0x40, 0x54, 0x40, 0x5E, 0x46, 0x5B],
+    # L5: Ciutat / Teulades
+    [0x4B, 0x47, 0x5E, 0x40, 0x58, 0x47, 0x5F, 0x47, 0x57, 0x47, 0x40, 0x54, 0x5B, 0x54, 0x58, 0x4B],
+    # L6: Concert
+    [0x4B, 0x47, 0x40, 0x40, 0x44, 0x43, 0x5C, 0x47, 0x46, 0x5C, 0x4E, 0x54, 0x54, 0x5C, 0x4A, 0x5F],
+]
+
 DOS_ANIM_SEQS = {
     67: [110, 110, 110, 110, 110, 110, 111, 112, 113, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 113, 112, 111, 110], # Comporta superior L4 (44 frames)
     68: [51, 51, 51, 51, 51, 51, 51, 51, 51, 110, 111, 112, 113, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 113, 112, 111, 110, 51, 51, 51, 51], # Comporta inferior L4 (44 frames)
@@ -114,7 +129,33 @@ def build_level_pkg(level_idx=0, out_dir=None):
     press_y = [p[2] for p in presses]
     press_col = [p[3] for p in presses]
 
-    # Coordenades exactes Mode 0 dels 5 ascensors de Magasin (slots 19..23)
+    # Formula oficial DOS_CPC_COORDINATES per defecte:
+    start_px = (xpos_arr[39] >> 1) - 8
+    start_py = ypos_arr[39] - 30
+    dos_x = xpos_arr[39]
+    dos_y = ypos_arr[39]
+    cam_col = (dos_x >> 4) - ((320 // 16) // 2)
+    if cam_col < 0:
+        cam_col = 0
+    cam0_x4 = cam_col * 2
+    max_cam_x4 = max(0, (map_w * 2) - 40)
+    if cam0_x4 > max_cam_x4:
+        cam0_x4 = max_cam_x4
+    cam_top = ((dos_y >> 4) - ((160 // 16) // 2 + 1)) << 4
+    if cam_top < 0:
+        cam_top = 0
+    level_h_px = map_h * 16
+    if cam_top + 176 > level_h_px:
+        cam_top = level_h_px - 176
+    else:
+        cam_top += 16
+    if cam_top < 0:
+        cam_top = 0
+    cam0_row = cam_top >> 3
+    max_cam_row = max(0, (map_h * 2) - 20)
+    if cam0_row > max_cam_row:
+        cam0_row = max_cam_row
+
     if level_idx == 0:
         elev_x = [760, 808, 760, 808, 304]
         elev_y = [384, 464, 592, 736, 784]
@@ -129,37 +170,11 @@ def build_level_pkg(level_idx=0, out_dir=None):
         elev_x = [s[1] for s in scaffolds]
         elev_y = [s[2] for s in scaffolds]
         elev_col = [s[3] for s in scaffolds]
-        start_px = (xpos_arr[39] >> 1) - 8
-        start_py = ypos_arr[39] - 30
-        dos_x = xpos_arr[39]
-        dos_y = ypos_arr[39]
-        cam_col = (dos_x >> 4) - ((320 // 16) // 2)
-        if cam_col < 0:
-            cam_col = 0
-        cam0_x4 = cam_col * 2
-        max_cam_x4 = max(0, (map_w * 2) - 40)
-        if cam0_x4 > max_cam_x4:
-            cam0_x4 = max_cam_x4
-        cam_top = ((dos_y >> 4) - ((160 // 16) // 2 + 1)) << 4
-        if cam_top < 0:
-            cam_top = 0
-        level_h_px = map_h * 16
-        if cam_top + 176 > level_h_px:
-            cam_top = level_h_px - 176
-        else:
-            cam_top += 16
-        if cam_top < 0:
-            cam_top = 0
-        cam0_row = cam_top >> 3
-        max_cam_row = max(0, (map_h * 2) - 20)
-        if cam0_row > max_cam_row:
-            cam0_row = max_cam_row
         start_px = 32
         start_py = 1106
         cam0_x4 = 0
         cam0_row = 124
     elif level_idx == 5:
-        # L6 CONCERT: 2 stage elevators (slots 0 i 1, tipus 40)
         elev_x = [528, 528]
         elev_y = [448, 688]
         elev_col = [66, 66]
@@ -171,38 +186,6 @@ def build_level_pkg(level_idx=0, out_dir=None):
         elev_x = [(x >> 1) for _, x, _ in elevators]
         elev_y = [y for _, _, y in elevators]
         elev_col = [(x >> 4) for _, x, _ in elevators]
-        # Formula oficial DOS_CPC_COORDINATES: DOS x es el centre horitzontal
-        # i y la base dels peus; CPC x es la vora esquerra i y la part superior.
-        start_px = (xpos_arr[39] >> 1) - 8
-        start_py = ypos_arr[39] - 30
-        # Camera inicial 1:1 DOS init_level(): centrada al jugador, no a (0,max).
-        # DOS: xorigin = ((xpos>>4) - (TILEMAP_SCREEN_W/16)/2) << 4   (clamp >=0)
-        #      yorigin = ((ypos>>4) - ((TILEMAP_SCREEN_H/16)/2 + 1)) << 4
-        #      despres +16 o clamp a screen_tilemap_h - (TILEMAP_SCREEN_H+16)
-        dos_x = xpos_arr[39]
-        dos_y = ypos_arr[39]
-        cam_col = (dos_x >> 4) - ((320 // 16) // 2)
-        if cam_col < 0:
-            cam_col = 0
-        # cam_col*16 DOS px -> *8 px CPC -> /4 = cam_col*2 unitats de 4 px
-        cam0_x4 = cam_col * 2
-        max_cam_x4 = max(0, (map_w * 2) - 40)
-        if cam0_x4 > max_cam_x4:
-            cam0_x4 = max_cam_x4
-        cam_top = ((dos_y >> 4) - ((160 // 16) // 2 + 1)) << 4
-        if cam_top < 0:
-            cam_top = 0
-        level_h_px = map_h * 16
-        if cam_top + 176 > level_h_px:
-            cam_top = level_h_px - 176
-        else:
-            cam_top += 16
-        if cam_top < 0:
-            cam_top = 0
-        cam0_row = cam_top >> 3
-        max_cam_row = max(0, (map_h * 2) - 20)
-        if cam0_row > max_cam_row:
-            cam0_row = max_cam_row
 
     DOS_RESTART_X = [720, 912, 336, 288, 960, 64]
     DOS_RESTART_Y = [496, 752, 816, 304, 592, 352]
@@ -286,19 +269,16 @@ def build_level_pkg(level_idx=0, out_dir=None):
     # mapa, sales, TRIG, restore, sequencies animades i bg_tile dels triggers.
     # Els IDs compactes son els que veu el runtime (tileset + TRIG + mapa).
     used = set(map_bin) | set(rooms_bin)
-    for seq in DOS_ANIM_SEQS.values():
-        used |= set(seq)
+    for b4 in present_b4:
+        used |= set(DOS_ANIM_SEQS[b4])
     for entry in trig_entries:
         used.add(entry[1])
-    # Tiles de desti dels switches (palanca i comporta) tambe han d'existir al
-    # tileset compacte; si no, remap[t] cauria a 0 i es veuria un tile erroni.
-    # S'afegeixen DESPRES dels tiles existents per no remapejar mapa/TRIG.
     switch_targets = set()
-    # Els grafics DOS de comporta oberta (175/178) no hi caben al paquet de
-    # 28 sectors. S'obre amb el tile buit 15, que ja es al tileset.
     switch_targets.add(15)
     if level_idx == 4:
         used |= {24, 65, 2}          # vinil, instrument, tile buit L5
+    elif level_idx == 5:
+        used |= {106}                # tile buit L6 (sense vinils ni instruments)
     else:
         used |= {208, 159, 96}       # vinil, instrument, tile buit L1..L4
     tile_order = sorted(used)
@@ -334,6 +314,10 @@ def build_level_pkg(level_idx=0, out_dir=None):
         tile_vinyl_c = remap[24]
         tile_instr_c = remap[65]
         tile_empty_c = remap[2]
+    elif level_idx == 5:
+        tile_vinyl_c = 0
+        tile_instr_c = 0
+        tile_empty_c = remap[106]
     else:
         tile_vinyl_c = remap[208]
         tile_instr_c = remap[159]
@@ -659,7 +643,8 @@ def build_level_pkg(level_idx=0, out_dir=None):
     prm += struct.pack("<H", 0x67E8)                   # trig_off (el build el reescriu)
     prm += struct.pack("<H", 0x6950)                   # code_exc_off (el build el reescriu)
     prm += struct.pack("<HH", 0x6000, 0x5AB0)           # hud_off, gameover_off
-    assert len(prm) == 77, len(prm)
+    prm += bytes(LEVEL_PALETTES[level_idx])
+    assert len(prm) == 93, len(prm)
     parm_path = os.path.join(PROJ, "assets", "bbdata", "LEVELPARM%d.BIN" % level_idx)
     with open(parm_path, "wb") as f:
         f.write(bytes(prm))

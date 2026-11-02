@@ -173,7 +173,7 @@ found:
 // "slot DOS" del comentario es l'index de staticres.c del qual surt.
 // Aterratge validat amb `py -3 tools/sim_enemies.py` (MAP0/TRIG0 reals).
 // 3 iaies, 5 policies, 2 peixos, 3 ocells, 2 grangers, 1 cambrera, 4 rockers.
-#define s_spawn ((const Spawn*)0x4E00)
+#define s_spawn ((const Spawn*)0x5840)
 
 
 static void en2_spawn_proj(u8 kind, u8 ht, u8 row_off, i16 x, i16 y, i16 vx, i16 vy, u8 cd) {

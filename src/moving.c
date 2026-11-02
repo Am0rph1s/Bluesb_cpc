@@ -113,11 +113,7 @@ void moving_draw(u8 page, u16 cam_x4, u16 cam_row) {
 }
 
 void moving_draw_conveyor_tiles(void) {
-    if (s_lv.level_id == 4) {
-        call_banked(0xC0, LC1_CONVEYOR);
-    } else {
-        call_banked(0xC5, BC_CONVEYOR);
-    }
+    call_banked(0xC5, BC_CONVEYOR);
 }
 
 i16 moving_conveyor_push(void) { call_banked(0xC5, BC_PUSH); return bc_r; }

@@ -170,57 +170,5 @@ void lc_elev_draw_c(void) {
     }
 }
 
-#if LEVEL_ID == 4
-extern void render_tile_world(u8 tile_index, u16 col, u16 row, u16 cam_x4, u16 cam_row);
-extern u16 g_cam_x4;
-extern u16 g_cam_row;
-
-static const u8 s_l5_anim_data[15] = { 92, 93, 94, 86, 88, 90, 88, 90, 86, 87, 89, 91, 87, 89, 91 };
-static const u8 s_l5_anim_off[3] = { 0, 3, 9 };
-static const u8 s_l5_anim_len[3] = { 3, 6, 6 };
-
-static const AnimSpan s_l5_anim_spans[18] = {
-    { 12,  71,  71, 1 }, { 12,  72,  72, 2 }, { 12,  73,  73, 1 }, { 12,  74,  74, 2 },
-    { 12,  75,  75, 1 }, { 12,  76,  76, 2 }, { 12,  77,  77, 1 }, { 12,  78,  78, 2 },
-    { 12,  79,  79, 1 }, { 12,  80,  80, 2 }, { 19,  97,  97, 1 }, { 19,  98,  98, 2 },
-    { 45, 116, 116, 0 }, { 48, 124, 124, 0 }, { 57,  89,  89, 1 }, { 57,  90,  90, 2 },
-    { 65,  44,  44, 1 }, { 65,  45,  45, 2 }
-};
-
-void lc_conveyor_draw_c(void) {
-    u8 page = (u8)bc_a;
-    if (page < 2 && s_page_conveyor_phase[page] != s_conveyor_phase) {
-        u8 s;
-        u8 dirty[3];
-        u8 cur_tile[3];
-        const AnimSpan* sp = s_l5_anim_spans;
-        u8 lo = (u8)(g_cam_x4 >> 1);
-        u8 hi = (u8)((g_cam_x4 + 39) >> 1);
-        s_page_conveyor_phase[page] = s_conveyor_phase;
-
-        for (s = 0; s < 3; s++) {
-            u8 p = s_anim_pos[s];
-            u8 prev = (p == 0) ? (u8)(s_l5_anim_len[s] - 1) : (u8)(p - 1);
-            u8 off = s_l5_anim_off[s];
-            u8 t = s_l5_anim_data[off + p];
-            cur_tile[s] = t;
-            dirty[s] = (t != s_l5_anim_data[off + prev]);
-        }
-
-        for (s = 0; s < 18; s++, sp++) {
-            u8 qq = sp->seq;
-            if (dirty[qq]) {
-                u16 sy = (u16)(((u16)sp->row << 1) - g_cam_row);
-                if (sy < 20) {
-                    u8 c = sp->col_start;
-                    if (c >= lo && c <= hi) {
-                        render_tile_world(cur_tile[qq], c, sp->row, g_cam_x4, g_cam_row);
-                    }
-                }
-            }
-        }
-    }
-}
-#else
 void lc_conveyor_draw_c(void) {}
-#endif
+

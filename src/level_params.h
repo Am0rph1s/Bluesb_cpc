@@ -62,6 +62,7 @@ typedef struct {
     u16 code_exc_off;   // adreca del codi d'excepcions del nivell (C1)
     u16 hud_off;        // adreca de les tires del HUD (C1)
     u16 gameover_off;   // adreca del banner GAME OVER (C1)
+    u8  palette[16];    // 16 colors Gate Array Mode 0
 } LevelParams;
 
 extern LevelParams s_lv;

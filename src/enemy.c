@@ -24,8 +24,6 @@
 #include "moving.h"
 #include "enemy.h"
 #include "level_params.h"
-#define LEVEL_PKG_DEFS_ONLY
-#include "level_pkg.h"
 
 #define ENEMY_VX 24 // 3 px/frame @SUB8 (DOS 40>>3=5 DOSpx/f @30fps = 150 px/s; 3*2*25 = 150)
 #define ENEMY_SUB 8
@@ -76,7 +74,7 @@ typedef struct {
 // omple l'spawn a runtime.
 static Enemy s_enemies[ENEMY_N];
 static Projectile s_proj;
-#define PROJ_BG_ADDR(p) (0x7800 + ((u16)(p) << 6))
+static u8 s_proj_bg[2][56];
 
 // Pool de fons a BANC C6 0x7A00 (6x256 = 1536 B, 0x7A00..0x7FFF).
 #define BG_BASE ((u16)0x7A00)
@@ -115,12 +113,13 @@ extern void zx0_decompress(const void* src, void* dst);
 // ============================================================
 #define ENEMY_CELLS        16
 #define ENEMY_CELL_SIZE    512
-#define AIM_FRAMES         12   // duracio de la pose (~0,5 s a 25 Hz; DOS la soste 6-10 passos)
+#define SHOOT_CYCLE_FRAMES 24   // cicle complet 1:1 DOS (48 bucles DOS = 24 frames CPC @ 25 Hz)
+#define AIM_FRAMES         12   // duracio de la pose de tret (~0,5 s a 25 Hz)
 #define ENEMY_CELL_TABLE   ((const u8*)0x4000)
 #define ENEMY_CACHE_BASE   ((u8*)0x5000)
 #define ENEMY_CACHE_SLOTS  4
-#define ENEMY_CACHE_WHO    ((u8*)0x5800)
-#define ENEMY_CACHE_NEXT   (*(u8*)0x5810)
+static u8 s_cache_who[ENEMY_CACHE_SLOTS];
+static u8 s_cache_next;
 // Retorna la cela 'cell', girada horitzontalment si flip != 0. Les celes
 // girades es cachegen igual que les normals (clau = cell | 0x80), aixi que
 // nomes es descomprimeixen i giren un cop; els frames seguents les troben
@@ -133,25 +132,25 @@ static const u8* en2_cell(u8 cell, u8 flip) {
     key = flip ? (u8)(cell | 0x80) : cell;
     opp = 0xFF;
     for (s = 0; s < ENEMY_CACHE_SLOTS; s++) {
-        if (ENEMY_CACHE_WHO[s] == key)
+        if (s_cache_who[s] == key)
             goto found;
-        if (ENEMY_CACHE_WHO[s] == (u8)(key ^ 0x80)) opp = s;
+        if (s_cache_who[s] == (u8)(key ^ 0x80)) opp = s;
     }
-    s = ENEMY_CACHE_NEXT;
+    s = s_cache_next;
     if (s == opp) s = (u8)((s + 1) & (ENEMY_CACHE_SLOTS - 1));
-    ENEMY_CACHE_NEXT = (u8)((s + 1) & (ENEMY_CACHE_SLOTS - 1));
+    s_cache_next = (u8)((s + 1) & (ENEMY_CACHE_SLOTS - 1));
     if (opp != 0xFF) {
         // L'orientacio oposada ja es a la cache: nomes cal girar-la.
         en2_flip_cell(ENEMY_CACHE_BASE + ((u16)opp << 9),
                       ENEMY_CACHE_BASE + ((u16)s << 9));
     } else if (flip) {
-        u8 t = ENEMY_CACHE_NEXT;
+        u8 t = s_cache_next;
         if (t == s) t = (u8)((t + 1) & (ENEMY_CACHE_SLOTS - 1));
-        ENEMY_CACHE_NEXT = (u8)((t + 1) & (ENEMY_CACHE_SLOTS - 1));
+        s_cache_next = (u8)((t + 1) & (ENEMY_CACHE_SLOTS - 1));
         zx0_decompress((const void*)(*(const u16*)
                        (ENEMY_CELL_TABLE + ((u16)cell << 1))),
                        ENEMY_CACHE_BASE + ((u16)t << 9));
-        ENEMY_CACHE_WHO[t] = cell;
+        s_cache_who[t] = cell;
         en2_flip_cell(ENEMY_CACHE_BASE + ((u16)t << 9),
                       ENEMY_CACHE_BASE + ((u16)s << 9));
     } else {
@@ -159,7 +158,7 @@ static const u8* en2_cell(u8 cell, u8 flip) {
                        (ENEMY_CELL_TABLE + ((u16)cell << 1))),
                        ENEMY_CACHE_BASE + ((u16)s << 9));
     }
-    ENEMY_CACHE_WHO[s] = key;
+    s_cache_who[s] = key;
     g_enemy_decomp_cnt++;
 found:
     return ENEMY_CACHE_BASE + ((u16)s << 9);
@@ -173,27 +172,18 @@ found:
 // "slot DOS" del comentario es l'index de staticres.c del qual surt.
 // Aterratge validat amb `py -3 tools/sim_enemies.py` (MAP0/TRIG0 reals).
 // 3 iaies, 5 policies, 2 peixos, 3 ocells, 2 grangers, 1 cambrera, 4 rockers.
-#define s_spawn ((const Spawn*)0x5840)
+#define s_spawn ((const Spawn*)0x4B20)
 
 
-static void en2_spawn_proj(u8 kind, u8 ht, u8 row_off, i16 x, i16 y, i16 vx, i16 vy, u8 cd) {
-    s_proj.kind = kind;
-    s_proj.ht = ht;
-    s_proj.row_offset = row_off;
-    s_proj.x = x;
-    s_proj.y8 = (i16)(y << 3);
-    s_proj.vx = vx;
-    s_proj.vy = vy;
-    s_proj.cooldown = cd;
-}
+
 
 void en2_init(void) {
     u8 i;
     Enemy* e = s_enemies;
     const Spawn* sp = s_spawn;
     en2_init_lut();
-    for (i = 0; i < 16; i++) ENEMY_CACHE_WHO[i] = 0xFF;
-    ENEMY_CACHE_NEXT = 0;
+    for (i = 0; i < ENEMY_CACHE_SLOTS; i++) s_cache_who[i] = 0xFF;
+    s_cache_next = 0;
     g_enemy_decomp_cnt = 0;
     for (i = 0; i < ENEMY_N; i++, e++, sp++) {
         e->x = sp->x;
@@ -262,21 +252,18 @@ static i16 en2_fall(Enemy* e, i16 y, u8 kind) {
 
 void en2_update(void) {
     u8 i;
-    i16 view_x = (i16)(g_cam_x4 << 2);
-    i16 view_y = (i16)(g_cam_row << 3);
-    i16 jake_x = (i16)(s_px8 >> 3);
-    i16 jake_y = (i16)(s_py8 >> 3);
+    g_en_view_x = (i16)(g_cam_x4 << 2);
+    g_en_view_y = (i16)(g_cam_row << 3);
+    g_en_jake_x = (i16)(s_px8 >> 3);
+    g_en_jake_y = (i16)(s_py8 >> 3);
 
     Enemy* e = s_enemies;
     const Spawn* sp = s_spawn;
-    i16 act_xmin = (i16)(view_x - 78);
-    i16 act_ymin8 = (i16)((view_y - 132) << 3);
+    g_en_act_xmin = (i16)(g_en_view_x - 78);
+    g_en_act_ymin8 = (i16)((g_en_view_y - 132) << 3);
     for (i = 0; i < ENEMY_N; i++, e++, sp++) {
-        i16 y;
-        i16 nx, dx;
-
-        if ((u16)(sp->x - act_xmin) > 300 ||
-            (u16)(sp->y8 - act_ymin8) > (450 << 3))
+        if ((u16)(sp->x - g_en_act_xmin) > 300 ||
+            (u16)(sp->y8 - g_en_act_ymin8) > (450 << 3))
             continue;
 
         if (e->dead) {
@@ -284,112 +271,94 @@ void en2_update(void) {
                 e->x = (i16)(e->x + (e->dir > 0 ? 3 : -3));
                 e->vy = (i16)(e->vy + ENEMY_GRAV);
                 e->y8 = (i16)(e->y8 + e->vy);
-                if ((i16)(e->y8 >> 3) > (view_y + 180)) {
+                if ((i16)(e->y8 >> 3) > (g_en_view_y + 180)) {
                     e->dead = 2;
                 }
             }
             continue;
         }
 
-        y = (i16)(e->y8 >> 3);
+        g_en_y = (i16)(e->y8 >> 3);
 
+        u8 in_range = 0;
         if (sp->kind == 4 || sp->kind == 17 || sp->kind == 21 || sp->kind == 23) {
             // 1:1 DOS object_func_op2 (policia), op10 (cambrera) i op7
-            // (llançador de L2). Distancies de DOS (level.c
-            // do_level_update_object_bounds):
-            //   player_xdist = centre_jugador - centre_objecte
-            //   player_ydist = peus_jugador - peus_objecte
-            //   policia  (op2): player_ydist <= 20 && |player_xdist| < 80
-            //   cambrera (op10): player_ydist <= 10 && |player_xdist| < 160
-            //   llançador(op7): player_ydist <= 10 && |player_xdist| < 80
-            // (el DOS no posa limit inferior a ydist; direction_ud > -30 es
-            // sempre cert per a un walker de terra -> s'omet.)
-            i16 dy = jake_y - y;               // cap-cap = peus-peus (mateixa alcada)
-            i16 dx_jake = jake_x - e->x;
-            i16 abs_dx = (dx_jake >= 0) ? dx_jake : -dx_jake;
+            g_en_dy = g_en_jake_y - g_en_y;
+            g_en_dx_jake = g_en_jake_x - e->x;
+            i16 abs_dx = (g_en_dx_jake >= 0) ? g_en_dx_jake : -g_en_dx_jake;
             u8 is_cop = (sp->kind == 4);
             u8 is_throw = (sp->kind == 21);
-            // Les distancies del DOS son px DOS: l'horitzontal CPC es 2:1.
-            //   policia (op2)   80 DOS -> 40 CPC
-            //   llançador (op7) 80 DOS -> 40 CPC
-            //   cambrera (op10) 160 DOS -> 80 CPC
             i16 max_y = (is_cop || sp->kind == 23) ? 20 : 10;
+            i16 min_y = is_cop ? -60 : -30;
             i16 max_x = is_cop ? 40 : (is_throw ? 40 : 80);
-            if (dy <= max_y && abs_dx < max_x) {
-                e->dir = (dx_jake >= 0) ? 1 : -1;
-                // 1:1 DOS: en rang de tir es PARA (direction_lr = 0) i fa la
-                // pose d'accio; el projectil es crea a l'inici de la sequencia.
-                if (!e->shoot_timer) e->shoot_timer = AIM_FRAMES;
-                if (!s_proj.kind && !s_proj.cooldown) {
-                    // 1:1 DOS do_level_update_projectile (cas default, que es
-                    // el dels tipus 4 i 17):
-                    //   xpos = centre_objecte +- 32 DOS px -> +-16 CPC px
-                    //   ypos = obj_ypos - 18   (ATENCIO: al DOS ypos es la
-                    //     BASE de la caixa, no el cap). La caixa del projectil
-                    //     es [ypos-10, ypos] = [peus-28, peus-18].
-                    // Escalat: l'ample DOS->CPC es 2:1 pero l'ALCADA es 1:1.
-                    // La nostra bala fa 6 px i aqui `s_proj.y8>>3` es el CAP,
-                    // aixi que per deixar la BASE a peus-18: cap+6 = y+32-18
-                    //  ->  sy = y + 8.
-                    // Amb aixo: caixa [y+8, y+14]; el Jake AJUPIT (top py+18)
-                    // la veu passar de llarg (14 <= 18) i el Jake dret (top
-                    // py+4) la rep.
-                    i16 sx = (i16)(e->x + 8 + ((e->dir > 0) ? 16 : -16));
-                    i16 sy = (i16)(y + 8);
-                    i16 sgn = (e->dir > 0) ? 1 : -1;
-                    // El llançador (op7) al DOS llança l'objecte "grab_type 6"
-                    // (sprite que encara no tenim); fem servir la bala, que es
-                    // la mateixa arithmetica (cas default de
-                    // do_level_update_projectile).
-                    en2_spawn_proj(is_cop ? 4 : 9, is_cop ? 6 : 11, is_cop ? 13 : 19,
-                                   sx, sy, (i16)(sgn * 64), 0, 24);
+            if (g_en_dy <= max_y && g_en_dy >= min_y && abs_dx < max_x) {
+                in_range = 1;
+                // 1:1 DOS: gira encarant en Jake immediatament quan entra en rang
+                e->dir = (g_en_dx_jake >= 0) ? 1 : -1;
+                if (!e->shoot_timer) {
+                    if (!s_proj.kind && !s_proj.cooldown) {
+                        e->shoot_timer = SHOOT_CYCLE_FRAMES;
+                    } else {
+                        e->shoot_timer = 1;
+                    }
                 }
             }
         }
 
         if (e->shoot_timer) {
             e->shoot_timer--;
-            dx = 0;
-            nx = e->x;
+            g_en_dx = 0;
+            g_en_nx = e->x;
+            if (e->shoot_timer == (SHOOT_CYCLE_FRAMES - (AIM_FRAMES / 2))) {
+                if (!s_proj.kind && !s_proj.cooldown) {
+                    if (sp->kind == 4) {
+                        s_proj.kind = 4;
+                        s_proj.ht = 6;
+                        s_proj.row_offset = 13;
+                    } else {
+                        s_proj.kind = 9;
+                        s_proj.ht = 11;
+                        s_proj.row_offset = 19;
+                    }
+                    s_proj.x = (i16)(e->x + ((e->dir > 0) ? 16 : 0));
+                    s_proj.y8 = (i16)((g_en_y + 8) << 3);
+                    s_proj.vx = (e->dir > 0) ? 64 : -64;
+                    s_proj.vy = 0;
+                    s_proj.cooldown = (SHOOT_CYCLE_FRAMES - (AIM_FRAMES / 2));
+                }
+            }
+        } else if (in_range) {
+            g_en_dx = 0;
+            g_en_nx = e->x;
         } else {
-            dx = (i16)(sp->vx >> 3);
-            if (e->dir < 0) dx = (i16)-dx;
-            nx = (i16)(e->x + dx);
+            g_en_dx = (i16)(sp->vx >> 3);
+            if (e->dir < 0) g_en_dx = (i16)-g_en_dx;
+            g_en_nx = (i16)(e->x + g_en_dx);
         }
 
         if (sp->kind == 22) {
-            // Estàtic pur (type 11 de L2 / cambrera estàtica de L1): al DOS
-            // op4/op2 sense atac no mouen ni giren l'objecte.
+            // Estatic pur (type 11 de L2 / cambrera estatica de L1)
         } else if (sp->vx == 0) {
-            // EstÃ tic (ex: policia replÃ  ascensors): gira encarant Jake o periÃ²dicament
-            i16 dy = jake_y - y;
-            if (dy >= -24 && dy <= 32) {
-                i16 dx_jake = jake_x - e->x;
-                if (dx_jake < -16) e->dir = -1;
-                else if (dx_jake > 16) e->dir = 1;
+            // Estatic (ex: policia repla ascensors)
+            g_en_dy = g_en_jake_y - g_en_y;
+            if (g_en_dy >= -24 && g_en_dy <= 32) {
+                g_en_dx_jake = g_en_jake_x - e->x;
+                if (g_en_dx_jake < -16) e->dir = -1;
+                else if (g_en_dx_jake > 16) e->dir = 1;
             } else if ((e->tick & 127) == 0) {
                 e->dir = (i8)-e->dir;
             }
         } else if ((sp->kind & ~1) == 8 || sp->kind == 19) {
             if (sp->kind != 19) {
-                // 1:1 DOS object_func_op0 / object_func_op15 (peix a l'aigua):
-                // Gira en tocar límit d'aigua (tt == 12 o sortir tt != 11) o paret (tt == 1).
                 u16 frow = (u16)(((e->y8 >> 3) + ENEMY_HT - 4) >> 4);
-                u16 cchk = (u16)((nx + 8 + (e->dir > 0 ? 8 : -8)) >> 3);
+                u16 cchk = (u16)((g_en_nx + 8 + (e->dir > 0 ? 8 : -8)) >> 3);
                 u8 tt = (frow < s_lv.map_h && cchk < s_lv.map_w) ? tile_type(cchk, frow) : 1;
                 if (tt != 11) {
                     e->dir = (i8)-e->dir;
                 } else {
-                    e->x = nx;
+                    e->x = g_en_nx;
                 }
             } else {
-                // 1:1 DOS object_func_op8 (ocells: type 19 -> op 9 -> case 8):
-                //   if (tile_type(xpos16 + 2 - facing_left*4, ypos16) != 1)
-                //       moving_direction ^= 1;
-                // xpos16 son tiles de 16 px. En CPC (8 px/col): centre +2
-                // columnes si va a la dreta, -2 si va a l'esquerra; la fila
-                // es la dels peus. Al cel les tiles son tipus 1 i els
-                // nuvols/caixes (tipus 0) fan de paret.
                 u16 frow = (u16)(((e->y8 >> 3) + ENEMY_HT) >> 4);
                 u16 cchk = (u16)((e->x + 8 + (e->dir << 4)) >> 3);
                 if (tile_type(cchk, frow) != 1) e->dir = (i8)-e->dir;
@@ -399,68 +368,56 @@ void en2_update(void) {
             e->vy = 0;
         } else {
             // WALKERS (Iaia 15, Policia 4, Granger 18, Cambrera 17, Rocker 20):
-            if (nx < 0) { nx = 0; e->dir = 1; }
-            if (nx > (i16)(s_lv.map_w_px - ENEMY_W)) { nx = (i16)(s_lv.map_w_px - ENEMY_W); e->dir = -1; }
-// Tiles: DOS mira SEMPRE la columna del centre (xpos16), mai les
-            // del cos. En CPC el centre es x+8 (mitja amplada de 16 px).
-            //   penya-segat (op0/op8): tile_type==1 (aire) a centre+-2,
-            //     a la fila de peus i la de sobre.
-            //   paret (fixup_xpos16): flags bit 1/2 a (nx+-4)>>3, files
-            //     peus-1 i peus-2 (unk2E 1/2). NO la fila de peus: al
-            //     L1 les rajoles del terra (op20) tenen flags=3 a tot
-            //     arreu i hi farien girar sempre (pivot en punt fixe).
+            if (g_en_nx < 0) { g_en_nx = 0; e->dir = 1; }
+            if (g_en_nx > (i16)(s_lv.map_w_px - ENEMY_W)) { g_en_nx = (i16)(s_lv.map_w_px - ENEMY_W); e->dir = -1; }
             {
-                u8 frow = (u8)((y + ENEMY_HT) >> 4);
-                u8 brow = (u8)((y + ENEMY_HT - 1) >> 4);
-                u8 c2row = (u8)((y + ENEMY_HT - 2) >> 4);
-                u16 ccol = (u16)((e->x + 8) >> 3);          // centre = xpos16
+                u8 frow = (u8)((g_en_y + ENEMY_HT) >> 4);
+                u8 brow = (u8)((g_en_y + ENEMY_HT - 1) >> 4);
+                u8 c2row = (u8)((g_en_y + ENEMY_HT - 2) >> 4);
+                u16 ccol = (u16)((e->x + 8) >> 3);
                 u16 pcol = (u16)(ccol + (e->dir > 0 ? 2 : -2));
-                // Vora de davant de l'sprite (16 px): no nomes un punt interior.
-                // Amb +12/+2 el cos s'encastava 2-3 px dins les parets i podia
-                // travessar oques estretes (reixat de L3).
-                u16 acol = (u16)((nx + (e->dir > 0 ? ENEMY_W - 1 : 0)) >> 3);
+                u16 acol = (u16)((g_en_nx + (e->dir > 0 ? ENEMY_W - 1 : 0)) >> 3);
                 u8 bit = (u8)(e->dir > 0 ? 1 : 2);
-                // 1:1 DOS: llegir tt_pf/tt_pb un sol cop i fer short-circuit
-                // abans de les consultes cares (is_floor_solid/tile_flags).
                 u8 tt_pf = tile_type(pcol, frow);
                 u8 tt_pb = tile_type(pcol, brow);
                 u8 turn = (u8)(tt_pf == 1 || tt_pb == 1);
                 if (sp->kind == 21 && (tt_pf == 12 || tt_pb == 12)) turn = 1;
                 if (!turn) {
-                    // Parets per op de plataforma (is_floor_solid amb vy<0):
-                    // el cos sencer no pot entrar en un tile solid.
-                    // c2row == brow el 100% dels frames sobre terra pla.
-                    u8 hrow = (u8)((y + 8) >> 4);
+                    u8 hrow = (u8)((g_en_y + 8) >> 4);
                     turn = is_floor_solid(acol, brow, -1, 0);
                     if (!turn && c2row != brow) turn = is_floor_solid(acol, c2row, -1, 0);
                     if (!turn) turn = is_floor_solid(acol, hrow, -1, 0);
                     if (!turn) turn = (u8)((tile_flags(acol, brow) & bit) != 0);
                     if (!turn && c2row != brow) turn = (u8)((tile_flags(acol, c2row) & bit) != 0);
                 }
-                if (turn) {
-e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
-                } else {
-                    e->x = nx;
+                if (!e->shoot_timer && !in_range) {
+                    if (turn) {
+                        e->dir = (i8)-e->dir;
+                    } else {
+                        e->x = g_en_nx;
+                    }
                 }
             }
-            // Y: gravetat + snap (mateix que en Jake, alcada 32)
-            y = en2_fall(e, y, sp->kind);
+            g_en_y = en2_fall(e, g_en_y, sp->kind);
         }
 
-        // Estatics sense moviment X: op7 sense case (tipus 11 de L2) i el
-        // pistoler op3 (kind 4, vx=0) han de caure al terra (DOS yacc=2).
         if (sp->kind == 22 || sp->kind == 23 || (sp->kind == 4 && sp->vx == 0)) {
-            y = en2_fall(e, y, sp->kind);
+            g_en_y = en2_fall(e, g_en_y, sp->kind);
         }
 
-        // Triggers de projectil (ou, bala, plat):
         if (!s_proj.kind && !s_proj.cooldown) {
             if (sp->kind == 19) {
-                // Ocell: deixa caure un ou si en Jake passa per sota
-                if (jake_y > y && (jake_y - y) < 130) {
-                    i16 diff = jake_x - e->x;
+                if (g_en_jake_y > g_en_y && (g_en_jake_y - g_en_y) < 130) {
+                    i16 diff = g_en_jake_x - e->x;
                     if (diff > -16 && diff < 16) {
-                        en2_spawn_proj(10, 13, 0, (i16)(e->x + 4), (i16)(y + 16), 0, 16, 40);
+                        s_proj.kind = 10;
+                        s_proj.ht = 13;
+                        s_proj.row_offset = 0;
+                        s_proj.x = (i16)(e->x + 4);
+                        s_proj.y8 = (i16)((g_en_y + 16) << 3);
+                        s_proj.vx = 0;
+                        s_proj.vy = 16;
+                        s_proj.cooldown = 40;
                     }
                 }
             }
@@ -469,7 +426,6 @@ e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
         e->tick++;
     }
 
-    // ActualitzaciÃ³ del projectil actiu:
     if (s_proj.cooldown) s_proj.cooldown--;
     if (s_proj.kind) {
         s_proj.x = (i16)(s_proj.x + (s_proj.vx >> 3));
@@ -479,12 +435,12 @@ e->dir = (i8)-e->dir;   // penya-segat o paret (DOS op0/op8)
             if (s_proj.vy > 64) s_proj.vy = 64;
         }
         {
-            i16 py = (i16)(s_proj.y8 >> 3);
-            if (s_proj.x < (i16)(view_x - 16) || s_proj.x > (i16)(view_x + 176) ||
-                py < (i16)(view_y - 16) || py > (i16)(view_y + 160)) {
+            g_en_y = (i16)(s_proj.y8 >> 3);
+            if (s_proj.x < (i16)(g_en_view_x - 16) || s_proj.x > (i16)(g_en_view_x + 176) ||
+                g_en_y < (i16)(g_en_view_y - 16) || g_en_y > (i16)(g_en_view_y + 160)) {
                 s_proj.kind = 0;
             } else if (s_proj.kind == 10) {
-                u16 trow = (u16)((py + s_proj.ht) >> 4);
+                u16 trow = (u16)((g_en_y + s_proj.ht) >> 4);
                 u16 tcol = (u16)((s_proj.x + 4) >> 3);
                 if (trow < s_lv.map_h && is_floor_solid(tcol, trow, 0, 0)) {
                     s_proj.kind = 0;
@@ -518,7 +474,7 @@ void en2_restore(void) {
     // 1. Restaura projectil:
     if (s_proj.drawn_row_count[page]) {
         g_moving_dst = s_proj.drawn_dst[page];
-        g_moving_background = PROJ_BG_ADDR(page);
+        g_moving_background = (u16)s_proj_bg[page];
         g_moving_span = s_proj.drawn_byte_count[page];
         g_moving_rows = s_proj.drawn_row_count[page];
         moving_restore_box();
@@ -543,113 +499,97 @@ void en2_restore(void) {
 void en2_draw(void) {
     u8 page = (u8)bc_a;
     u8 i;
-    i16 view_x = (i16)(g_cam_x4 << 2);
-    i16 view_y = (i16)(g_cam_row << 3);
+    g_en_view_x = (i16)(g_cam_x4 << 2);
+    g_en_view_y = (i16)(g_cam_row << 3);
     if (page > 1) return;
 
     // 1. Dibuixa walkers:
     Enemy* e = s_enemies;
     const Spawn* sp = s_spawn;
     for (i = 0; i < ENEMY_N; i++, e++, sp++) {
-        i16 world_x, world_y, clip_x0, clip_x1, clip_y0, clip_y1;
-        u8 start_byte, byte_count, start_row, row_count;
         const u8* frame;
         i8 s;
         if (e->dead == 2 || e->slot[page] >= 0) continue; // eliminat o ja dibuixat
-        if ((u16)(e->x - view_x + 15) >= 175) continue;
-        world_x = e->x;
-        world_y = (i16)(e->y8 >> 3);
-        clip_x0 = world_x > view_x ? world_x : view_x;
-        clip_x1 = world_x + ENEMY_W < view_x + 160 ?
-                  (i16)(world_x + ENEMY_W) : (i16)(view_x + 160);
-        clip_y0 = world_y > view_y ? world_y : view_y;
-        clip_y1 = world_y + ENEMY_HT < view_y + 160 ?
-                  (i16)(world_y + ENEMY_HT) : (i16)(view_y + 160);
-        if (clip_x0 >= clip_x1 || clip_y0 >= clip_y1) continue;
+        if ((u16)(e->x - g_en_view_x + 15) >= 175) continue;
+        g_en_clip_x0 = e->x > g_en_view_x ? e->x : g_en_view_x;
+        g_en_clip_x1 = e->x + ENEMY_W < g_en_view_x + 160 ?
+                  (i16)(e->x + ENEMY_W) : (i16)(g_en_view_x + 160);
+        g_en_y = (i16)(e->y8 >> 3);
+        g_en_clip_y0 = g_en_y > g_en_view_y ? g_en_y : g_en_view_y;
+        g_en_clip_y1 = g_en_y + ENEMY_HT < g_en_view_y + 160 ?
+                  (i16)(g_en_y + ENEMY_HT) : (i16)(g_en_view_y + 160);
+        if (g_en_clip_x0 >= g_en_clip_x1 || g_en_clip_y0 >= g_en_clip_y1) continue;
+        g_en_start_byte = (u8)((g_en_clip_x0 - e->x) >> 1);
+        g_en_byte_count = (u8)((g_en_clip_x1 - g_en_clip_x0) >> 1);
+        g_en_start_row = (u8)(g_en_clip_y0 - g_en_y);
+        g_en_row_count = (u8)(g_en_clip_y1 - g_en_clip_y0);
+        if (!g_en_byte_count || !g_en_row_count) continue;
         s = en2_slot((i8)i, page);
         if (s < 0) continue; // pool ple: segur
-        start_byte = (u8)((clip_x0 - world_x) >> 1);
-        byte_count = (u8)((clip_x1 - clip_x0) >> 1);
-        start_row = (u8)(clip_y0 - world_y);
-        row_count = (u8)(clip_y1 - clip_y0);
-        if (!byte_count || !row_count) continue;
 
-        // SelecciÃ³ de cela i flip dinÃ mic amb cache de cela:
+        // Seleccio de cela i flip dinamic amb cache de cela:
         {
-            u8 step = (e->dead || sp->vx == 0 || sp->base_cell == sp->aim_cell) ? 0 : (u8)((e->tick >> 2) & 1);
+            u8 is_aiming = (e->shoot_timer > (SHOOT_CYCLE_FRAMES - AIM_FRAMES));
+            u8 step = (e->dead || sp->vx == 0 || e->shoot_timer || sp->base_cell == sp->aim_cell) ? 0 : (u8)((e->tick >> 2) & 1);
             u8 cell = (u8)(sp->base_cell + step);
-            if (e->shoot_timer) {
+            if (is_aiming) {
                 if (sp->kind == 4) cell = sp->aim_cell;              // pose de tret
-                else if (sp->kind == 17 || sp->kind == 21 || sp->kind == 23) cell = sp->throw_cell;  // llançament
+                else if (sp->kind == 17 || sp->kind == 21 || sp->kind == 23) cell = sp->throw_cell;  // llancament
             }
             frame = en2_cell(cell, (u8)(e->dir < 0));
         }
 
-        g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
+        g_moving_dst = (u16)ring_address(page, g_en_clip_x0, g_en_clip_y0);
         s_slot_dst[(u8)s] = g_moving_dst;
         g_moving_background = BG_SLOT(s);
-        g_moving_sprite = (u16)(frame + ((u16)start_row << 4) + (start_byte << 1));
-        g_moving_span = byte_count;
-        g_moving_rows = row_count;
-        g_moving_spr_skip = (u8)(16 - (byte_count << 1));
+        g_moving_sprite = (u16)(frame + ((u16)g_en_start_row << 4) + (g_en_start_byte << 1));
+        g_moving_span = g_en_byte_count;
+        g_moving_rows = g_en_row_count;
+        g_moving_spr_skip = (u8)(16 - (g_en_byte_count << 1));
         moving_blit_box();
 
-        s_slot_span[(u8)s] = byte_count;
-        s_slot_rows[(u8)s] = row_count;
+        s_slot_span[(u8)s] = g_en_byte_count;
+        s_slot_rows[(u8)s] = g_en_row_count;
     }
 
-    // 2. Dibuixa projectil si estÃ  actiu:
+    // 2. Dibuixa projectil si esta actiu:
     if (s_proj.kind && !s_proj.drawn_row_count[page]) {
-        i16 world_x = s_proj.x;
-        i16 world_y = (i16)(s_proj.y8 >> 3);
-        i16 clip_x0 = world_x > view_x ? world_x : view_x;
-        i16 clip_x1 = world_x + 8 < view_x + 160 ? (i16)(world_x + 8) : (i16)(view_x + 160);
-        i16 clip_y0 = world_y > view_y ? world_y : view_y;
-        i16 clip_y1 = world_y + s_proj.ht < view_y + 160 ? (i16)(world_y + s_proj.ht) : (i16)(view_y + 160);
-        if (clip_x0 < clip_x1 && clip_y0 < clip_y1) {
-            u8 start_byte = (u8)((clip_x0 - world_x) >> 1);
-            u8 byte_count = (u8)((clip_x1 - clip_x0) >> 1);
-            u8 start_row = (u8)(clip_y0 - world_y);
-            u8 row_count = (u8)(clip_y1 - clip_y0);
-            if (byte_count && row_count) {
+        g_en_clip_x0 = s_proj.x > g_en_view_x ? s_proj.x : g_en_view_x;
+        g_en_clip_x1 = s_proj.x + 8 < g_en_view_x + 160 ? (i16)(s_proj.x + 8) : (i16)(g_en_view_x + 160);
+        g_en_y = (i16)(s_proj.y8 >> 3);
+        g_en_clip_y0 = g_en_y > g_en_view_y ? g_en_y : g_en_view_y;
+        g_en_clip_y1 = g_en_y + s_proj.ht < g_en_view_y + 160 ? (i16)(g_en_y + s_proj.ht) : (i16)(g_en_view_y + 160);
+        if (g_en_clip_x0 < g_en_clip_x1 && g_en_clip_y0 < g_en_clip_y1) {
+            g_en_start_byte = (u8)((g_en_clip_x0 - s_proj.x) >> 1);
+            g_en_byte_count = (u8)((g_en_clip_x1 - g_en_clip_x0) >> 1);
+            g_en_start_row = (u8)(g_en_clip_y0 - g_en_y);
+            g_en_row_count = (u8)(g_en_clip_y1 - g_en_clip_y0);
+            if (g_en_byte_count && g_en_row_count) {
                 // Cela 13: base + offset files projectil + 4 (centrat horitzontal 8 px Mode 0)
                 const u8* frame;
                 if (s_proj.vx < 0) {
-                    // Cela 13 girada, cachejada com qualsevol altra (P3).
-                    frame = en2_cell(13, 1) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
+                    frame = en2_cell(13, 1) + (((u16)s_proj.row_offset + g_en_start_row) << 4) + 4 + (g_en_start_byte << 1);
                 } else {
-                    frame = en2_cell(13, 0) + (((u16)s_proj.row_offset + start_row) << 4) + 4 + (start_byte << 1);
+                    frame = en2_cell(13, 0) + (((u16)s_proj.row_offset + g_en_start_row) << 4) + 4 + (g_en_start_byte << 1);
                 }
 
-                g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
+                g_moving_dst = (u16)ring_address(page, g_en_clip_x0, g_en_clip_y0);
                 s_proj.drawn_dst[page] = g_moving_dst;
-                g_moving_background = PROJ_BG_ADDR(page);
+                g_moving_background = (u16)s_proj_bg[page];
                 g_moving_sprite = (u16)frame;
-                g_moving_span = byte_count;
-                g_moving_rows = row_count;
-                g_moving_spr_skip = (u8)(16 - (byte_count << 1));
+                g_moving_span = g_en_byte_count;
+                g_moving_rows = g_en_row_count;
+                g_moving_spr_skip = (u8)(16 - (g_en_byte_count << 1));
                 moving_blit_box();
 
-                s_proj.drawn_byte_count[page] = byte_count;
-                s_proj.drawn_row_count[page] = row_count;
+                s_proj.drawn_byte_count[page] = g_en_byte_count;
+                s_proj.drawn_row_count[page] = g_en_row_count;
             }
         }
     }
 }
 
-// 1:1 DOS level_obj_type[] (staticres.c): 0 = sense colisio, 1 = bonus,
-// 2 = fa mal. Dels kinds que fem servir, NOMES el peix (kind 8) es classe 0:
-// al DOS es decoracio pura (op1, anims locals 2/14 que son identiques) i no
-// pot tocar ni Jake ni la caixa. La resta de walkers son classe 2.
-static u8 en2_collide_class(u8 kind) {
-    return (kind == 8) ? 0 : 2;
-}
-
 void en2_check_player_hit(void) {
-    i16 px = (i16)bc_a;
-    i16 py = (i16)bc_b;
-    u8 crouch = (u8)bc_c;
-    i16 px_min = (i16)(px - 9);
     u8 i;
     Enemy* e;
 
@@ -657,10 +597,10 @@ void en2_check_player_hit(void) {
 
     // 1. Projectil (bala, plat, ou):
     if (s_proj.kind) {
-        if ((u16)(s_proj.x - px + 6) < 14) {
+        if ((u16)(s_proj.x - (i16)bc_a + 8) < 24) {
             i16 proj_y = (i16)(s_proj.y8 >> 3);
-            i16 jake_top = crouch ? (i16)(py + 18) : (i16)(py + 4);
-            i16 jake_bottom = (i16)(py + 32);
+            i16 jake_top = (u8)bc_c ? (i16)((i16)bc_b + 18) : (i16)((i16)bc_b + 4);
+            i16 jake_bottom = (i16)((i16)bc_b + 32);
             i16 proj_bottom = (i16)(proj_y + s_proj.ht);
             if (proj_bottom > jake_top && proj_y < jake_bottom) {
                 s_proj.kind = 0;
@@ -671,26 +611,16 @@ void en2_check_player_hit(void) {
     }
 
     // 2. Walkers / Enemics (nomes els de classe 2: el peix es decoracio).
-    // 1:1 DOS level.c do_level_handle_object_collision (type 2):
-    //   |centre_jugador - centre_objecte| < w_jugador + w_objecte
-    //   (10 + 10 px DOS = 10 px CPC) i les caixes [ypos - h, ypos] s'han de
-    //   superposar. El jugador fa h=26 dret; cada enemic level_obj_h[kind].
-    //   Amb top-left: et - py + (he-4) < 26+he  (abans hi havia una finestra
-    //   fixa de 38 px que no arribava al carro de la iaia quan Jake era a
-    //   sobre d'una taula, i que la rata de L3 necessita petita).
+    g_en_dx = (i16)((i16)bc_a - 9);
     e = s_enemies;
     for (i = 0; i < ENEMY_N; i++, e++) {
         u8 k, he;
-        if ((u16)(e->x - px_min) >= 19) continue;
+        if ((u16)(e->x - g_en_dx) >= 19) continue;
         if (e->dead) continue;
         k = s_spawn[i].kind;
-        if (en2_collide_class(k) != 2) continue;
-        // level_obj_h[kind] en px (vertical 1:1): 4=28, 8/19=16,
-        // 24 (rata/gos de L3)=10, 25 (gos saltador L5)=18, resta 30.
+        if (k == 8) continue; // peix (decoracio DOS op1)
         he = (k == 24) ? 10 : ((k == 25) ? 18 : ((k == 8 || k == 19) ? 16 : ((k == 4) ? 28 : 30)));
-        // ATENCIO: en 16 bits. Amb (u8) un enemic 256 px mes amunt tornava
-        // a entrar a la finestra per wrap i feia mal al Jake al seu inici.
-        if ((u16)((e->y8 >> 3) - py + he - 4) < (u16)(26 + he)) {
+        if ((u16)((e->y8 >> 3) - (i16)bc_b + he - 4) < (u16)(26 + he)) {
             bc_r = 1;
             return;
         }
@@ -698,20 +628,17 @@ void en2_check_player_hit(void) {
 }
 
 void en2_check_crate_hit(void) {
-    i16 cx = (i16)bc_a;
-    i16 cy = (i16)bc_b;
-    i16 cvx = (i16)bc_c;
     u8 i;
     Enemy* e = s_enemies;
 
     bc_r = 0;
     for (i = 0; i < ENEMY_N; i++, e++) {
         if (e->dead) continue;
-        if (en2_collide_class(s_spawn[i].kind) != 2) continue;
-        if ((u16)(e->x - cx + 6) < 20 &&
-            (u16)((e->y8 >> 3) - cy + 12) < 36) {
+        if (s_spawn[i].kind == 8) continue; // peix (decoracio DOS op1)
+        if ((u16)(e->x - (i16)bc_a + 16) < 32 &&
+            (u16)((e->y8 >> 3) - (i16)bc_b + 16) < 48) {
             e->dead = 1;
-            e->dir = (cvx > 0) ? 1 : -1;
+            e->dir = ((i16)bc_c > 0) ? 1 : -1;
             e->vy = -48; // Impuls vertical amunt 1:1 DOS yfriction=12 (6 px/frame)
             e->on_ground = 0;
             bc_r = 1;
@@ -721,8 +648,6 @@ void en2_check_crate_hit(void) {
 }
 
 void en2_room_exit(void) {
-    i16 px = (i16)bc_a;
-    i16 py = (i16)bc_b;
     u8 i;
     Enemy* e = s_enemies;
 
@@ -731,11 +656,11 @@ void en2_room_exit(void) {
         e->slot[0] = -1;
         e->slot[1] = -1;
 
-        if (!e->dead && (px || py)) {
-            i16 dx = (i16)(e->x - px);
-            if ((u16)(dx + 72) < 144 && (u16)((e->y8 >> 3) - py + 24) < 48) {
-                e->dir = (dx >= 0) ? 1 : -1;
-                e->x = (i16)(px + ((dx >= 0) ? 80 : -80));
+        if (!e->dead && (bc_a || bc_b)) {
+            g_en_dx = (i16)(e->x - (i16)bc_a);
+            if ((u16)(g_en_dx + 72) < 144 && (u16)((e->y8 >> 3) - (i16)bc_b + 24) < 48) {
+                e->dir = (g_en_dx >= 0) ? 1 : -1;
+                e->x = (i16)((i16)bc_a + ((g_en_dx >= 0) ? 80 : -80));
             }
         }
     }
@@ -743,5 +668,3 @@ void en2_room_exit(void) {
     s_proj.drawn_row_count[1] = 0;
     s_proj.kind = 0;
 }
-
-

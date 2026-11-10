@@ -32,8 +32,8 @@ sys.path.insert(0, os.path.join(HERE, 'bbdata'))
 from sprites import load_sqv_frames
 from PIL import Image
 
-VMAP_NOTE = {0: None, 2: 1, 4: 11, 8: 1, 11: 11, 12: 11}
-VMAP_DASH = {0: None, 11: 14, 13: 15}
+VMAP_NOTE = {0: None, 2: 5, 4: 3, 8: 5, 11: 5, 12: 3}
+VMAP_DASH = {0: None, 11: 1, 13: 11}
 
 STICK_W, STICK_H = 24, 34
 DASH_W, DASH_H = 8, 6
@@ -84,7 +84,7 @@ def main():
     blob = note + dash
     assert len(blob) == STICK_LEN, len(blob)
     open(os.path.join(PROJ, 'assets', 'bbdata', 'MAPSTICK.BIN'), 'wb').write(blob)
-    MPAL = {1: (128, 0, 0), 11: (255, 0, 0),
+    MPAL = {1: (128, 0, 0), 3: (64, 64, 64), 5: (0, 0, 0), 11: (255, 0, 0),
             14: (128, 255, 255), 15: (255, 128, 255)}
     prev = Image.new('RGB', (24 + 8 + 6, 34), (24, 24, 28))
     for y in range(STICK_H):
@@ -98,9 +98,9 @@ def main():
                 if pen is not None:
                     prev.putpixel((24 + 6 + pi * 2 + k, y), MPAL[pen])
     prev = prev.resize((prev.size[0] * 8, prev.size[1] * 8), Image.NEAREST)
-    prev.save(os.path.join('/Users', 'esquerra', 'AppData', 'Local', 'Temp',
-                           'opencode', 'mapstick.png'))
-    print('MAPSTICK.BIN: nota+dasha (%d B) + preview mapstick.png' % len(blob))
+    import tempfile
+    prev.save(os.path.join(tempfile.gettempdir(), 'mapstick.png'))
+    print('MAPSTICK.BIN: nota+dasha (%d B) + preview' % len(blob))
 
 
 if __name__ == '__main__':

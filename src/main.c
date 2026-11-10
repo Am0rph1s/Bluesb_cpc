@@ -23,8 +23,6 @@
 #include "stack_canary.h"
 #include "crt_addrs.h"
 
-#define LEVEL_PKG_DEFS_ONLY
-#include "level_pkg.h"
 #include "level_params.h"
 
 extern void video_init(void);
@@ -118,6 +116,7 @@ u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
 
 static u8 s_back_page = 1;
 static u8 s_complete_wait;
+static u8 s_pipe_prev;
 
 void main(void);
 
@@ -160,58 +159,12 @@ void level_params_load(void) {
     bank_restore(prev);
 }
 
-// 1:1 DOS: tile + byte de TRIG amb UNA sola commutacio de banc (abans
-// get_tile_at i get_trig_byte en feien dues de seguides per consulta).
-static u8 get_trig_byte(u16 col, u16 row, u8 offset) {
-    u8 prev, t;
-    if (row >= s_lv.room_row0 && row < (u16)(s_lv.room_row0 + s_lv.room_rows) &&
-        col < s_lv.room_total_cols) {
-        prev = bank_set(0xC5);
-        t = ((const u8*)(u16)s_lv.rooms_off)[s_lv.room_rowoff[row - s_lv.room_row0] + col];
-    } else {
-        if (col >= s_lv.map_w || row >= s_lv.map_h) return 0xFF;
-        prev = bank_set(0xC5);
-        t = MAP_PTR[(row << 7) + col];
-    }
-    if (t != 0xFF) {
-        t = ((const u8*)(u16)s_lv.trig_off)[((u16)t) * TRIG_STRIDE + offset];
-    }
-    bank_restore(prev);
-    return t;
-}
-
-u8 tile_type(u16 col, u16 row) {
-    u8 t = get_trig_byte(col, row, 0);
-    return (t == 0xFF) ? 1 : t;
-}
-
-u8 tile_flags(u16 col, u16 row) {
-    u8 t = get_trig_byte(col, row, 1);
-    return (t == 0xFF) ? 0 : t;
-}
-
-u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch) {
-    u8 op;
-    if (row >= s_lv.room_row0) {
-        if (row >= s_lv.room_row_last) return (vy >= 0);
-    } else if (row >= (u16)(s_lv.map_h - 1)) {
-        return (vy >= 0);
-    }
-    op = get_trig_byte(col, row, 2);
-    if (op == 0xFF) return 0;
-    // 1:1 DOS: el SOSTRE el decideix l'OP del trigger, no el "type". Les ops
-    // 0/2/3/20/21/27/28/29 són les de plataforma (trigger_func_opX: el
-    // jugador s'hi recoloca a sobre). A L1 només hi ha 20/21/27/28; a L2
-    // hi ha 29 (64 tiles del terra), 0, 2 i 3.
-    if (op == 0 || op == 1 || op == 2 || op == 3 || op == 20 || op == 27 ||
-        op == 28 || op == 29 || op == 40) return 1;
-    if (vy >= 0) {
-        if (op == 14 || op == 15) return !crouch;
-        if (op >= 30 && op <= 35) return 1;
-        if (op == 24) return 2;
-    }
-    return 0;
-}
+// get_trig_byte, tile_type, tile_flags i is_floor_solid viuen en ASM natiu
+// a engine/tile_blit.s (0 B d'IX frame).
+extern u8 get_trig_byte(u16 col, u16 row, u8 offset);
+extern u8 tile_type(u16 col, u16 row);
+extern u8 tile_flags(u16 col, u16 row);
+extern u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
 #define is_ceiling_solid(col, row) is_floor_solid((col), (row), -1, 0)
 
 static void world_flush_repaints(void) {
@@ -247,7 +200,7 @@ static void repaint_both_buffers(void) {
     s_pending_y = 0;
     for (p = 0; p < 2; p++) {
         g_vram_base_hi = p ? 0x80 : 0xC0;
-        if (s_in_room) render_room((u8)(g_cam_x4 / 40));
+        if (s_in_room) render_room(0);
         else render_all(g_cam_x4, g_cam_row);
         hud_render(p, 1);
     }
@@ -269,11 +222,14 @@ static void enter_door(u8 dst_col, u8 dst_row) {
     s_jump_prev = 0;
 
     if (dst_row >= s_lv.room_row0) {
-        // Entering Room
-        u8 room_idx = (u8)(dst_col / s_lv.room_cols);
+        // Entering Room (sense __divuchar ni __mulint)
+        u8 base_col = 0;
+        while ((u8)(base_col + s_lv.room_cols) <= dst_col) {
+            base_col += s_lv.room_cols;
+        }
         s_in_room = 1;
         s_scrolling_locked = 1;
-        g_cam_x4 = (u16)(room_idx * ((u16)s_lv.room_cols << 1));
+        g_cam_x4 = (u16)base_col << 1;
         g_cam_row = s_lv.room_cam_row;
         enemy_room_exit(0, 0);
     } else {
@@ -326,35 +282,7 @@ static void check_doors(void) {
     bank_restore(prev);
 }
 
-static void check_room_bonus(u8 col, u8 feet_row) {
-    u8 r, prev, t;
-    u8 row_last = (u8)(s_lv.room_row0 + s_lv.room_rows);
-    if (col >= s_lv.room_total_cols) return;
-    for (r = feet_row; r >= (feet_row - 2) && r >= s_lv.room_row0; r--) {
-        if (r >= row_last) continue;
-        u16 off = s_lv.room_rowoff[r - s_lv.room_row0] + col;
-        prev = bank_set(0xC5);
-        t = ((const u8*)(u16)s_lv.rooms_off)[off];
-        if (t == s_lv.tile_vinyl) {
-            if (g_vinyls_count < 99) g_vinyls_count++;
-        } else if (t == s_lv.tile_instr) {
-            g_has_instrument = s_lv.level_id + 1;
-        } else {
-            bank_restore(prev);
-            continue;
-        }
-        ((u8*)(u16)s_lv.rooms_off)[off] = s_lv.tile_empty;
-        bank_restore(prev);
-        if (s_rep_n < 4) {
-            s_rep_col[s_rep_n] = col;
-            s_rep_row[s_rep_n] = r;
-            s_rep_tile[s_rep_n] = s_lv.tile_empty;
-            s_rep_pages[s_rep_n] = 3;
-            s_rep_n++;
-        }
-        break;
-    }
-}
+
 
 static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
     if (dx > 0) {
@@ -390,51 +318,49 @@ static void carry_restore(u8 page) {
     s_carry_drawn[page] = 0;
 }
 
-static void carry_draw(u8 page) {
-    u8 prev;
-    i16 cx, cy;
-    i16 view_x, view_y, clip_x0, clip_x1, clip_y0, clip_y1;
-    u8 start_byte, byte_count, start_row, row_count;
+static u8 s_cd_prev, s_cd_start_byte, s_cd_byte_count, s_cd_start_row, s_cd_row_count;
+static i16 s_cd_cx, s_cd_cy, s_cd_view_x, s_cd_view_y, s_cd_clip_x0, s_cd_clip_x1, s_cd_clip_y0, s_cd_clip_y1;
 
+static void carry_draw(u8 page) {
     if (s_carry_kind != 1) return;
     if (s_carry_state == 0) {
         if (s_invuln_timer & 2) return; // Parpelleig amb en Jake
         // 1:1 DOS: centrat sobre el cap (px + 4) i recolzat a les mans (py - 15)
         // Snapping horitzontal parell (& ~1) per alinear amb el byte de Mode 0 (2 px/byte)
-        cx = (i16)(((s_px8 >> 3) + 4) & ~1);
-        cy = (i16)((s_py8 >> 3) - 15);
+        s_cd_cx = (i16)(((s_px8 >> 3) + 4) & ~1);
+        s_cd_cy = (i16)((s_py8 >> 3) - 15);
     } else {
-        cx = (i16)((s_carry_x >> 3) & ~1);
-        cy = (i16)(s_carry_y >> 3);
+        s_cd_cx = (i16)((s_carry_x >> 3) & ~1);
+        s_cd_cy = (i16)(s_carry_y >> 3);
     }
 
-    view_x = (i16)(g_cam_x4 << 2);
-    view_y = (i16)(g_cam_row << 3);
-    clip_x0 = cx > view_x ? cx : view_x;
-    clip_x1 = (i16)(cx + 8) < (i16)(view_x + 160) ? (i16)(cx + 8) : (i16)(view_x + 160);
-    clip_y0 = cy > view_y ? cy : view_y;
-    clip_y1 = (i16)(cy + 16) < (i16)(view_y + 160) ? (i16)(cy + 16) : (i16)(view_y + 160);
+    s_cd_view_x = (i16)(g_cam_x4 << 2);
+    s_cd_view_y = (i16)(g_cam_row << 3);
+    s_cd_clip_x0 = s_cd_cx > s_cd_view_x ? s_cd_cx : s_cd_view_x;
+    s_cd_clip_x1 = (i16)(s_cd_cx + 8) < (i16)(s_cd_view_x + 160) ? (i16)(s_cd_cx + 8) : (i16)(s_cd_view_x + 160);
+    s_cd_clip_y0 = s_cd_cy > s_cd_view_y ? s_cd_cy : s_cd_view_y;
+    s_cd_clip_y1 = (i16)(s_cd_cy + 16) < (i16)(s_cd_view_y + 160) ? (i16)(s_cd_cy + 16) : (i16)(s_cd_view_y + 160);
 
-    if (clip_x0 >= clip_x1 || clip_y0 >= clip_y1) return;
+    if (s_cd_clip_x0 >= s_cd_clip_x1 || s_cd_clip_y0 >= s_cd_clip_y1) return;
 
-    start_byte = (u8)((clip_x0 - cx) >> 1);
-    byte_count = (u8)((clip_x1 - clip_x0) >> 1);
-    start_row = (u8)(clip_y0 - cy);
-    row_count = (u8)(clip_y1 - clip_y0);
-    if (!byte_count || !row_count) return;
+    s_cd_start_byte = (u8)((s_cd_clip_x0 - s_cd_cx) >> 1);
+    s_cd_byte_count = (u8)((s_cd_clip_x1 - s_cd_clip_x0) >> 1);
+    s_cd_start_row = (u8)(s_cd_clip_y0 - s_cd_cy);
+    s_cd_row_count = (u8)(s_cd_clip_y1 - s_cd_clip_y0);
+    if (!s_cd_byte_count || !s_cd_row_count) return;
 
-    prev = bank_set(0xC7);
-    g_moving_dst = (u16)ring_address(page, clip_x0, clip_y0);
+    s_cd_prev = bank_set(0xC7);
+    g_moving_dst = (u16)ring_address(page, s_cd_clip_x0, s_cd_clip_y0);
     s_carry_dst[page] = g_moving_dst;
-    s_carry_drawn_span[page] = byte_count;
-    s_carry_drawn_rows[page] = row_count;
+    s_carry_drawn_span[page] = s_cd_byte_count;
+    s_carry_drawn_rows[page] = s_cd_row_count;
     g_moving_background = CRATE_BG_PAGE(page);
-    g_moving_sprite = (u16)(CRATE_FLY_FRAME + ((u16)start_row << 3) + (start_byte << 1));
-    g_moving_span = byte_count;
-    g_moving_rows = row_count;
-    g_moving_spr_skip = (u8)(8 - (byte_count << 1));
+    g_moving_sprite = (u16)(CRATE_FLY_FRAME + ((u16)s_cd_start_row << 3) + (s_cd_start_byte << 1));
+    g_moving_span = s_cd_byte_count;
+    g_moving_rows = s_cd_row_count;
+    g_moving_spr_skip = (u8)(8 - (s_cd_byte_count << 1));
     moving_blit_box();
-    bank_restore(prev);
+    bank_restore(s_cd_prev);
     s_carry_drawn[page] = 1;
 }
 
@@ -553,23 +479,60 @@ static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) 
     return 0;
 }
 
+static i16 s_ps_px, s_ps_py, s_ps_evx, s_ps_prev_feet, s_ps_curr_feet, s_ps_elev_top;
+static u16 s_ps_prev_head, s_ps_c_mid1, s_ps_c_mid2, s_ps_feet_row, s_ps_head_row, s_ps_top_row, s_ps_col;
+static u8  s_ps_climbing, s_ps_jump, s_ps_crouch, s_ps_landed;
+
+static u8  s_crb_r, s_crb_prev, s_crb_t, s_crb_last;
+static u16 s_crb_off;
+
+static void check_room_bonus(u8 col, u8 feet_row) {
+    if (col >= s_lv.room_total_cols) return;
+    s_crb_last = (u8)(s_lv.room_row0 + s_lv.room_rows);
+    for (s_crb_r = feet_row; s_crb_r >= (feet_row - 2) && s_crb_r >= s_lv.room_row0; s_crb_r--) {
+        if (s_crb_r >= s_crb_last) continue;
+        s_crb_off = (u16)(s_lv.room_rowoff[s_crb_r - s_lv.room_row0] + col);
+        s_crb_prev = bank_set(0xC5);
+        s_crb_t = ((const u8*)(u16)s_lv.rooms_off)[s_crb_off];
+        if (s_crb_t == s_lv.tile_vinyl) {
+            if (g_vinyls_count < 99) g_vinyls_count++;
+        } else if (s_crb_t == s_lv.tile_instr) {
+            g_has_instrument = (u8)(s_lv.level_id + 1);
+        } else {
+            bank_restore(s_crb_prev);
+            continue;
+        }
+        ((u8*)(u16)s_lv.rooms_off)[s_crb_off] = s_lv.tile_empty;
+        bank_restore(s_crb_prev);
+        if (s_rep_n < 3) {
+            s_rep_col[s_rep_n] = col;
+            s_rep_row[s_rep_n] = s_crb_r;
+            s_rep_tile[s_rep_n] = s_lv.tile_empty;
+            s_rep_pages[s_rep_n] = 3;
+            s_rep_n++;
+        }
+    }
+}
+
 static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) {
-    i16 px = (i16)(s_px8 >> 3);
-    i16 py = (i16)(s_py8 >> 3);
-    i16 effective_vx = (i16)(s_vx + belt_push);
+    s_ps_climbing = climbing;
+    s_ps_jump = jump;
+    s_ps_crouch = crouch;
+    s_ps_px = (i16)(s_px8 >> 3);
+    s_ps_py = (i16)(s_py8 >> 3);
+    s_ps_evx = (i16)(s_vx + belt_push);
 
     if (s_carry_kind == 1 && s_carry_state) {
         i16 cx, cy, sx, sy;
-        u16 ncol, nrow;
         u8 tt;
         s_carry_x = (i16)(s_carry_x + s_carry_vx);
         cx = (i16)(s_carry_x >> 3);
         cy = (i16)(s_carry_y >> 3);
         sx = (i16)((cx - (i16)(g_cam_x4 * 4)) >> 1);
         sy = (i16)(cy - (i16)(g_cam_row * 8));
-        ncol = (u16)(((s_carry_vx > 0) ? (cx + 8) : cx) >> 3);
-        nrow = (u16)((cy + 6) >> 4);
-        tt = tile_type(ncol, nrow);
+        s_ps_col = (u16)(((s_carry_vx > 0) ? (cx + 8) : cx) >> 3);
+        s_ps_feet_row = (u16)((cy + 6) >> 4);
+        tt = tile_type(s_ps_col, s_ps_feet_row);
         if (sx < -4 || sx > 76 || sy < -16 || sy > 160 || cx < 16 || cx > (i16)(s_lv.map_w_px - 24) ||
             tt == 6 || enemy_check_crate_hit(cx, cy, s_carry_vx)) {
             carry_abort();
@@ -577,33 +540,31 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
     }
 
     // --- Moviment horitzontal i col·lisió de parets ---
-    // 1:1 DOS level.c:1770-1833: ajupit (unk2E==0 -> alçada 14) NOMES es
-    // mira la fila de sota el cap; dret (alçada 26) també la de sobre. En CPC
-    // la fila de peus no es pot consultar amb tile_flags (els tiles de terra
-    // porten flags=7); per això s'usa la fila del cap (py+16) i, dret, la de
-    // sobre (py). Això és el que permet passar per forats d'1 tile (L3 row 23).
     {
-        u16 head_row = (u16)((py + 16) >> 4);
-        u16 top_row = (u16)(py >> 4);
-        if (effective_vx > 0) {
-            u16 next_px = (u16)((s_px8 + effective_vx) >> 3);
-            u16 c_right = (u16)((next_px + 10) >> 3);
-            u8 fl = tile_flags(c_right, head_row);
-            if (!crouch) fl |= tile_flags(c_right, top_row);
+        s_ps_feet_row = (u16)((s_ps_py + 29) >> 4);
+        s_ps_head_row = (u16)((s_ps_py + 16) >> 4);
+        s_ps_top_row  = (u16)(s_ps_py >> 4);
+        if (s_ps_evx > 0) {
+            u16 next_px = (u16)((s_px8 + s_ps_evx) >> 3);
+            u8 fl;
+            s_ps_col = (u16)((next_px + 11) >> 3);
+            fl = tile_flags(s_ps_col, s_ps_feet_row);
+            if (!s_ps_crouch) fl |= (tile_flags(s_ps_col, s_ps_head_row) | tile_flags(s_ps_col, s_ps_top_row));
             if (fl & 1) {
                 s_vx = 0;
             } else {
-                s_px8 = (i16)(s_px8 + effective_vx);
+                s_px8 = (i16)(s_px8 + s_ps_evx);
             }
-        } else if (effective_vx < 0) {
-            u16 next_px = (u16)((s_px8 + effective_vx) >> 3);
-            u16 c_left  = (u16)((next_px + 1) >> 3);
-            u8 fl = tile_flags(c_left, head_row);
-            if (!crouch) fl |= tile_flags(c_left, top_row);
+        } else if (s_ps_evx < 0) {
+            u16 next_px = (u16)((s_px8 + s_ps_evx) >> 3);
+            u8 fl;
+            s_ps_col = (u16)((next_px + 4) >> 3);
+            fl = tile_flags(s_ps_col, s_ps_feet_row);
+            if (!s_ps_crouch) fl |= (tile_flags(s_ps_col, s_ps_head_row) | tile_flags(s_ps_col, s_ps_top_row));
             if (fl & 2) {
                 s_vx = 0;
             } else {
-                s_px8 = (i16)(s_px8 + effective_vx);
+                s_px8 = (i16)(s_px8 + s_ps_evx);
             }
         }
     }
@@ -613,36 +574,39 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
         if (s_px8 < min_x) { s_px8 = min_x; s_vx = 0; }
         else if (s_px8 > max_x) { s_px8 = max_x; s_vx = 0; }
     }
-    px = (i16)(s_px8 >> 3);
+    s_ps_px = (i16)(s_px8 >> 3);
 
     // --- Moviment vertical i gravetat ---
     {
-        i16 prev_feet = (i16)(py + PH);
-        u16 prev_head = (u16)(py >> 4);
-        if (!climbing) {
+        s_ps_prev_feet = (i16)(s_ps_py + PH);
+        s_ps_prev_head = (u16)(s_ps_py >> 4);
+        if (!s_ps_climbing) {
             if (s_carry_kind == 2 && !s_carry_state) {
                 s_vy = -8;
                 s_on_ground = 0;
                 s_ground_elevator = -1;
             } else {
                 if (!s_on_ground) {
-                    // TUBERIA (op 17/18/19): el DOS posa yacc = -3 al trigger,
-                    // o sea el jugador continua pujant (gravetat invertida).
                     if (s_pipe_up) {
                         s_vy = (i16)(s_vy - 24);
                     } else {
+                        if (s_pipe_prev) {
+                            s_invuln_timer = 25;
+                        }
                         s_vy = (i16)(s_vy + GRAV);
                     }
+                    s_pipe_prev = s_pipe_up;
                     if (s_vy > VY_MAX) s_vy = VY_MAX;
                     if (s_vy < -VY_MAX_UP) s_vy = -VY_MAX_UP;
                 } else {
                     s_vy = 0;
                 }
-                if (jump && !s_jump_prev && s_on_ground) {
-                    u16 c_mid = (u16)((px + 5) >> 3);
-                    u16 feet_row = (u16)((py + 29) >> 4);
-                    u8 di = (feet_row >= 2) ? tile_type(c_mid, (u16)(feet_row - 2)) : 0;
-                    u8 si = tile_type(c_mid, feet_row);
+                if (s_ps_jump && !s_jump_prev && s_on_ground) {
+                    u8 di, si;
+                    s_ps_col = (u16)((s_ps_px + 5) >> 3);
+                    s_ps_feet_row = (u16)((s_ps_py + 29) >> 4);
+                    di = (s_ps_feet_row >= 2) ? tile_type(s_ps_col, (u16)(s_ps_feet_row - 2)) : 0;
+                    si = tile_type(s_ps_col, s_ps_feet_row);
                     if (di == 10 && (si == 0 || si == 1)) {
                         s_dazed_timer = 24;
                         s_vy = 0;
@@ -657,42 +621,41 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                 if (s_carry_kind == 8 && s_vy > 8) s_vy = 8;
             }
         }
-        s_jump_prev = jump;
+        s_jump_prev = s_ps_jump;
 
         s_py8 = (i16)(s_py8 + s_vy);
-        py = (i16)(s_py8 >> 3);
+        s_ps_py = (i16)(s_py8 >> 3);
 
         {
-            i16 curr_feet = (i16)(py + PH);
-            u16 c_mid1 = (u16)((px + 3) >> 3);
-            u16 c_mid2 = (u16)((px + 8) >> 3);
-            u8 landed = 0;
+            s_ps_curr_feet = (i16)(s_ps_py + PH);
+            s_ps_c_mid1 = (u16)((s_ps_px + 5) >> 3);
+            s_ps_c_mid2 = (u16)((s_ps_px + 8) >> 3);
+            s_ps_landed = 0;
 
-            if (s_vy >= 0 && !climbing) {
-                i16 elevator_top;
+            if (s_vy >= 0 && !s_ps_climbing) {
                 i8 elevator_id;
-                bc_a = (u16)px; bc_b = (u16)prev_feet; bc_c = (u16)curr_feet;
-                bc_d = (u16)s_vy; bc_e = (u16)&elevator_top;
+                bc_a = (u16)s_ps_px; bc_b = (u16)s_ps_prev_feet; bc_c = (u16)s_ps_curr_feet;
+                bc_d = (u16)s_vy; bc_e = (u16)&s_ps_elev_top;
                 elevator_id = moving_find_landing();
                 if (elevator_id >= 0) {
-                    py = elevator_top;
-                    s_py8 = (i16)(py * SUB);
+                    s_ps_py = s_ps_elev_top;
+                    s_py8 = (i16)(s_ps_py * SUB);
                     s_vy = 0;
                     s_on_ground = 1;
                     s_ground_elevator = elevator_id;
-                    landed = 1;
+                    s_ps_landed = 1;
                 }
                 {
                     u16 max_r = s_in_room ? (u16)(s_lv.room_row0 + s_lv.room_rows) : s_lv.map_h;
-                    u16 target_row = (u16)(curr_feet >> 4);
-                    if (!landed && target_row < max_r) {
-                        i16 surf = (i16)(target_row << 4);
-                        if (prev_feet <= surf && curr_feet >= surf) {
-                            u8 s = is_floor_solid(c_mid1, target_row, s_vy, crouch) |
-                                   is_floor_solid(c_mid2, target_row, s_vy, crouch);
+                    s_ps_feet_row = (u16)(s_ps_curr_feet >> 4);
+                    if (!s_ps_landed && s_ps_feet_row < max_r) {
+                        i16 surf = (i16)(s_ps_feet_row << 4);
+                        if (s_ps_prev_feet <= surf && s_ps_curr_feet >= surf) {
+                            u8 s = is_floor_solid(s_ps_c_mid1, s_ps_feet_row, s_vy, s_ps_crouch) |
+                                   is_floor_solid(s_ps_c_mid2, s_ps_feet_row, s_vy, s_ps_crouch);
                             if (s) {
-                                py = (i16)(surf - PH);
-                                s_py8 = (i16)(py * SUB);
+                                s_ps_py = (i16)(surf - PH);
+                                s_py8 = (i16)(s_ps_py * SUB);
                                 if (s & 2) {
                                     s_vy = (i16)(-(s_vy + (6 * SUB)));
                                     if (s_vy < -VY_MAX_UP) s_vy = -VY_MAX_UP;
@@ -702,31 +665,30 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                                     s_on_ground = 1;
                                 }
                                 s_ground_elevator = -1;
-                                landed = 1;
+                                s_ps_landed = 1;
                             }
                         }
                     }
                 }
-                if (!landed) {
+                if (!s_ps_landed) {
                     s_on_ground = 0;
                     s_ground_elevator = -1;
                 }
             } else if (s_vy < 0) {
-                u16 head_row = (u16)(py >> 4);
-                u16 c_mid = (u16)((px + 5) >> 3);
-                u16 r = prev_head;
+                u16 r = s_ps_prev_head;
                 u8 n = 0;
-                while (r >= head_row && n < 4) {
-                    if (is_ceiling_solid(c_mid, r)) {
-                        head_row = r;
+                s_ps_head_row = (u16)(s_ps_py >> 4);
+                while (r >= s_ps_head_row && n < 4) {
+                    if (is_ceiling_solid(s_ps_c_mid1, r)) {
+                        s_ps_head_row = r;
                         break;
                     }
                     if (r == 0) break;
                     r--; n++;
                 }
-                if (is_ceiling_solid(c_mid, head_row)) {
-                    py = (i16)((head_row + 1) << 4);
-                    s_py8 = (i16)(py * SUB);
+                if (is_ceiling_solid(s_ps_c_mid1, s_ps_head_row)) {
+                    s_ps_py = (i16)((s_ps_head_row + 1) << 4);
+                    s_py8 = (i16)(s_ps_py * SUB);
                     s_vy = 0;
                 }
                 s_on_ground = 0;
@@ -761,30 +723,37 @@ u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
 // Seccio (8 B): bank, flags (bit0=ZX0), dest(u16), src_off(u16), src_len(u16).
 // Retorna 1 si el fitxer s'ha llegit, el CRC es correcte i el manifest es valid.
 // ============================================================
+static const DiskFileDesc* s_lp_f;
+static u16 s_lp_crc, s_lp_dst, s_lp_off, s_lp_len;
+static u8  s_lp_t, s_lp_ok, s_lp_n, s_lp_i, s_lp_prev;
+static const u8* s_lp_d;
+
 static u8 load_package(const DiskFileDesc* f, u16 crc) {
     const u8* pak = (const u8*)0x8320;
-    u8 t, ok = 0, n, i;
+    s_lp_f = f;
+    s_lp_crc = crc;
+    s_lp_ok = 0;
 
-    for (t = 0; t < 3 && !ok; t++) {
-        if (!fdc_load_file(0xC0, f, 0xC0, (void*)0x8320)) continue;
-        if (fdc_crc16(pak, (u16)(f->ondisk_bytes - 128)) == crc) ok = 1;
+    for (s_lp_t = 0; s_lp_t < 3 && !s_lp_ok; s_lp_t++) {
+        if (!fdc_load_file(0xC0, s_lp_f, 0xC0, (void*)0x8320)) continue;
+        if (fdc_crc16(pak, (u16)(s_lp_f->ondisk_bytes - 128)) == s_lp_crc) s_lp_ok = 1;
     }
-    if (!ok) return 0;
+    if (!s_lp_ok) return 0;
     if (pak[0] != 0x42 || pak[1] != 1) return 0;
 
-    n = pak[6];
-    for (i = 0; i < n; i++) {
-        const u8* d = pak + 16 + (u16)i * 8;
-        u16 dst = (u16)(d[2] | ((u16)d[3] << 8));
-        u16 off = (u16)(d[4] | ((u16)d[5] << 8));
-        u16 len = (u16)(d[6] | ((u16)d[7] << 8));
-        u8 prev = bank_set(d[0]);
-        if (d[1] & 1) {
-            zx0_decompress(pak + off, (void*)dst);
+    s_lp_n = pak[6];
+    for (s_lp_i = 0; s_lp_i < s_lp_n; s_lp_i++) {
+        s_lp_d = pak + 16 + (u16)s_lp_i * 8;
+        s_lp_dst = (u16)(s_lp_d[2] | ((u16)s_lp_d[3] << 8));
+        s_lp_off = (u16)(s_lp_d[4] | ((u16)s_lp_d[5] << 8));
+        s_lp_len = (u16)(s_lp_d[6] | ((u16)s_lp_d[7] << 8));
+        s_lp_prev = bank_set(s_lp_d[0]);
+        if (s_lp_d[1] & 1) {
+            zx0_decompress(pak + s_lp_off, (void*)s_lp_dst);
         } else {
-            cpct_memcpy((void*)dst, pak + off, len);
+            cpct_memcpy((void*)s_lp_dst, pak + s_lp_off, s_lp_len);
         }
-        bank_restore(prev);
+        bank_restore(s_lp_prev);
     }
     return 1;
 }
@@ -894,7 +863,29 @@ static void load_level_packages(void) {
     video_init();
 
     {
-        u8 prev = bank_set(0xC7);
+        u8* t19 = (u8*)0x8320;
+        u8 i;
+        u8* dst;
+        u8 t_crate = 19;
+        u8 prev = bank_set(0xC5);
+        for (i = 0; i < 220; i++) {
+            if (((const u8*)s_lv.trig_off)[(u16)i * 5] == 5) {
+                t_crate = i;
+                break;
+            }
+        }
+        bank_restore(prev);
+
+        prev = bank_set(0xC4);
+        cpct_memcpy(t19, (const void*)(0x4000 + ((u16)t_crate << 6)), 64);
+        bank_restore(prev);
+
+        prev = bank_set(0xC7);
+        dst = (u8*)CRATE_FLY_FRAME;
+        for (i = 0; i < 64; i++) {
+            *dst++ = 0x00;
+            *dst++ = t19[i];
+        }
         sprite_hflip_init_lut((u8*)0x7F00);
         bank_restore(prev);
     }
@@ -968,8 +959,12 @@ static void load_front_bank(void) {
     if (!ok) { cpct_setBorder(0x4C); while (1) { } }
 }
 
+static u8  s_mn_sv_lives, s_mn_sv_hearts, s_mn_sv_vinyls, s_mn_sv_keep, s_mn_last_ticks;
+static i8  s_mn_move, s_mn_move_x, s_mn_move_y, s_mn_page_dx, s_mn_page_dy;
+static u8  s_mn_jump, s_mn_crouch, s_mn_grab, s_mn_cur, s_mn_up_key;
+static u16 s_mn_dsx, s_mn_dsy;
+
 void main(void) {
-    u8 sv_lives, sv_hearts, sv_vinyls, sv_keep;
     cpct_memset((void*)CRT_DATA_START, 0, CRT_DATA_LEN);
     g_bank = 0xC0;
     cpct_memcpy((void*)CRT_IDATA_DST, (void*)CRT_IDATA_SRC, CRT_IDATA_LEN);
@@ -981,21 +976,16 @@ void main(void) {
 
     g_map_level = 0;
     g_front_map_only = 0;
-    // Drecera de test (no afecta el joc normal): si en arrencar es manté
-    // premut el '2', el FRONT mostra el mapa amb la ruta de l'L2 i s'hi
-    // entra directe. Cal passar per FRONT_RUN perquè és qui carrega MUSBANK
-    // (front.c:466); FRONT_MAP sol el pressuposa carregat i peta en fred.
-    // El '3' fa el mateix amb l'L3 (prison) per poder-lo verificar.
     cpct_scanKeyboard_f();
-    if (cpct_isKeyPressed(Key_2)) {
+    if (cpct_isKeyPressed(Key_2) || cpct_isKeyPressed(Key_F2)) {
         g_map_level = 1;
-    } else if (cpct_isKeyPressed(Key_3)) {
+    } else if (cpct_isKeyPressed(Key_3) || cpct_isKeyPressed(Key_F3)) {
         g_map_level = 2;
-    } else if (cpct_isKeyPressed(Key_4)) {
+    } else if (cpct_isKeyPressed(Key_4) || cpct_isKeyPressed(Key_F4)) {
         g_map_level = 3;
-    } else if (cpct_isKeyPressed(Key_5)) {
+    } else if (cpct_isKeyPressed(Key_5) || cpct_isKeyPressed(Key_F5)) {
         g_map_level = 4;
-    } else if (cpct_isKeyPressed(Key_6)) {
+    } else if (cpct_isKeyPressed(Key_6) || cpct_isKeyPressed(Key_F6)) {
         g_map_level = 5;
     }
     while (1) {
@@ -1014,44 +1004,30 @@ void main(void) {
     g_mus_hold = 1;
 
     cpct_scanKeyboard_f();
-    if (cpct_isKeyPressed(Key_1)) g_map_level = 0;
-    else if (cpct_isKeyPressed(Key_2)) g_map_level = 1;
-    else if (cpct_isKeyPressed(Key_3)) g_map_level = 2;
-    else if (cpct_isKeyPressed(Key_4)) g_map_level = 3;
-    else if (cpct_isKeyPressed(Key_5)) g_map_level = 4;
-    else if (cpct_isKeyPressed(Key_6)) g_map_level = 5;
+    if (cpct_isKeyPressed(Key_1) || cpct_isKeyPressed(Key_F1)) g_map_level = 0;
+    else if (cpct_isKeyPressed(Key_2) || cpct_isKeyPressed(Key_F2)) g_map_level = 1;
+    else if (cpct_isKeyPressed(Key_3) || cpct_isKeyPressed(Key_F3)) g_map_level = 2;
+    else if (cpct_isKeyPressed(Key_4) || cpct_isKeyPressed(Key_F4)) g_map_level = 3;
+    else if (cpct_isKeyPressed(Key_5) || cpct_isKeyPressed(Key_F5)) g_map_level = 4;
+    else if (cpct_isKeyPressed(Key_6) || cpct_isKeyPressed(Key_F6)) g_map_level = 5;
 
     load_level_packages();
 
-    // MUSICA nivell 1: MUSMAIN ja es a l'slot C1:0x5000: obrir so i
-    // (re)iniciar el tema.
     g_mus_hold = 0;
     mus_init();
 
-    // Neteja de les dues pagines de video (nomes a l'arrencada: al reinici
-    // per mort ja ho fa repaint_both_buffers() i aqui no volem tocar la
-    // pagina 2, on viu la imatge del motor FDC).
     cpct_memset((void*)0xC000, 0xFF, 0x4000);
     cpct_memset((void*)0x8000, 0xFF, 0x4000);
 
-    // (video_init + LUT d'hflip + neteja de les dues pagines ja els fa
-    //  load_level_packages(), que tambe s'usa al reinici per mort.)
-
-    // Inicialitza posició d'inici, càmera i entitats des del paquet de nivell (Banc 5).
-    // Si venim d'una transicio de nivell completat, moving_init() reseteja els
-    // comptadors i els restaurem aqui (1:1 DOS: init_level nomes els toca a
-    // l'entrada del nivell 0 o en morir; l'instrument queda a 0, com al DOS).
-    sv_lives = g_lives_count; sv_hearts = g_hearts_count; sv_vinyls = g_vinyls_count;
-    sv_keep = g_keep_counters;
+    s_mn_sv_lives = g_lives_count; s_mn_sv_hearts = g_hearts_count; s_mn_sv_vinyls = g_vinyls_count;
+    s_mn_sv_keep = g_keep_counters;
     g_keep_counters = 0;
     moving_init();
-    if (sv_keep) {
-        g_lives_count = sv_lives;
-        g_hearts_count = sv_hearts;
-        g_vinyls_count = sv_vinyls;
+    if (s_mn_sv_keep) {
+        g_lives_count = s_mn_sv_lives;
+        g_hearts_count = s_mn_sv_hearts;
+        g_vinyls_count = s_mn_sv_vinyls;
     }
-    // Walkers C6: init runtime (slot 3) post-carrega (sense crt0 al banc,
-    // els inicialitzadors statics no arriben; vist 10/26).
     enemy_init();
     hud_init();
     repaint_both_buffers();
@@ -1070,43 +1046,42 @@ void main(void) {
     s_have_drawn[0] = 0;
     s_have_drawn[1] = 0;
     sprite_balloon_init();
-    u8 last_ticks = g_ticks;
+    s_mn_last_ticks = g_ticks;
 
     while (1) {
         dbg_border(0x5E);
         if (!stack_canary_ok()) {
             cpct_setBorder(0x4C);
         }
-        i8 move = 0, move_x = 0, move_y = 0, page_dx, page_dy;
-        u8 jump = 0, crouch = 0, grab = 0, cur;
-        u16 dsx, dsy;
+        s_mn_move = 0; s_mn_move_x = 0; s_mn_move_y = 0;
+        s_mn_jump = 0; s_mn_crouch = 0; s_mn_grab = 0;
 
         cpct_scanKeyboard_f();
         if (cpct_isKeyPressed(Key_CursorLeft) || cpct_isKeyPressed(Key_Q) ||
-            cpct_isKeyPressed(Joy0_Left))  { move = -1; g_face = 1; }
+            cpct_isKeyPressed(Joy0_Left))  { s_mn_move = -1; g_face = 1; }
         if (cpct_isKeyPressed(Key_CursorRight) || cpct_isKeyPressed(Key_S) ||
-            cpct_isKeyPressed(Joy0_Right)) { move = +1; g_face = 0; }
+            cpct_isKeyPressed(Joy0_Right)) { s_mn_move = +1; g_face = 0; }
         if (cpct_isKeyPressed(Key_Space) || cpct_isKeyPressed(Key_X) ||
-            cpct_isKeyPressed(Joy0_Fire1) || cpct_isKeyPressed(Joy0_Fire2)) { grab = 1; }
+            cpct_isKeyPressed(Joy0_Fire1) || cpct_isKeyPressed(Joy0_Fire2)) { s_mn_grab = 1; }
         if (cpct_isKeyPressed(Key_CursorDown) || cpct_isKeyPressed(Key_Z) ||
-            cpct_isKeyPressed(Joy0_Down))  { crouch = 1; }
+            cpct_isKeyPressed(Joy0_Down))  { s_mn_crouch = 1; }
         {
-            u8 up_key = (cpct_isKeyPressed(Key_CursorUp) || cpct_isKeyPressed(Joy0_Up));
-            if (up_key && !grab) { jump = 1; }
+            s_mn_up_key = (cpct_isKeyPressed(Key_CursorUp) || cpct_isKeyPressed(Joy0_Up));
+            if (s_mn_up_key && !s_mn_grab) { s_mn_jump = 1; }
 
             // 1:1 DOS Door Trigger: SPACE + UP (level.c:1210)
-            if (grab && up_key && !s_up_prev && !s_climb_prev) {
+            if (s_mn_grab && s_mn_up_key && !s_up_prev && !s_climb_prev) {
                 check_doors();
             }
-            s_up_prev = up_key;
+            s_up_prev = s_mn_up_key;
         }
 
         if (s_dazed_timer || s_dance_timer || s_dying_timer) {
             if (s_dazed_timer) s_dazed_timer--;
-            move = 0;
-            jump = 0;
-            crouch = 0;
-            grab = 0;
+            s_mn_move = 0;
+            s_mn_jump = 0;
+            s_mn_crouch = 0;
+            s_mn_grab = 0;
             s_vx = 0;
         }
 
@@ -1114,8 +1089,8 @@ void main(void) {
         {
             i16 max_spd = s_on_ground ? SPEED_MAX : SPEED_AIR;
             u8 acc = (s_on_ground && g_on_ice) ? 2 : MOVE_ACC;
-            if (move > 0)      { s_vx = (i16)(s_vx + acc); if (s_vx >  max_spd) s_vx =  max_spd; }
-            else if (move < 0) { s_vx = (i16)(s_vx - acc); if (s_vx < -max_spd) s_vx = -max_spd; }
+            if (s_mn_move > 0)      { s_vx = (i16)(s_vx + acc); if (s_vx >  max_spd) s_vx =  max_spd; }
+            else if (s_mn_move < 0) { s_vx = (i16)(s_vx - acc); if (s_vx < -max_spd) s_vx = -max_spd; }
             else {
                 if (s_vx > 0) { s_vx = (i16)(s_vx - acc); if (s_vx < 0) s_vx = 0; }
                 else if (s_vx < 0) { s_vx = (i16)(s_vx + acc); if (s_vx > 0) s_vx = 0; }
@@ -1123,9 +1098,9 @@ void main(void) {
         }
 
         // 1. Lògica d'entitats i efectes de tiles al Banc 5 (ascensors, aigua, escala, objectes)
-        bc_b = jump;
-        bc_c = crouch;
-        bc_d = grab;
+        bc_b = s_mn_jump;
+        bc_c = s_mn_crouch;
+        bc_d = s_mn_grab;
         dbg_border(0x40);
         moving_update();
         if (!s_in_room) {
@@ -1136,10 +1111,10 @@ void main(void) {
         // 1:1 DOS Col·lisió Jake <-> Enemics / Projectils (level.c:1583-1658)
         if (s_invuln_timer) {
             s_invuln_timer--;
-        } else if (!s_in_room && !s_dying_timer) {
-            i16 px = (i16)(s_px8 >> 3);
-            i16 py = (i16)(s_py8 >> 3);
-            if (enemy_check_player_hit(px, py, crouch)) {
+        } else if (!s_in_room && !s_dying_timer && !s_pipe_up) {
+            s_ps_px = (i16)(s_px8 >> 3);
+            s_ps_py = (i16)(s_py8 >> 3);
+            if (enemy_check_player_hit(s_ps_px, s_ps_py, s_mn_crouch)) {
                 if (g_hearts_count > 0) g_hearts_count--;
                 s_invuln_timer = 75; // 1:1 DOS blinking_counter = 75
                 if (s_carry_kind) carry_abort();
@@ -1148,8 +1123,6 @@ void main(void) {
                     s_dazed_timer = 0;
                     s_invuln_timer = 255;
                 } else {
-                    // 1:1 DOS level.c:1652, 1664: if (sprite_type != 4) special_anim = 18;
-                    // A l'aigua (climbing == 2) mai es disparen estrelletes.
                     if (s_climb_prev != 2) {
                         s_dazed_timer = 20;  // 1:1 DOS special_anim = 18 (estrelletes al cap)
                     }
@@ -1171,19 +1144,16 @@ void main(void) {
                     load_front_bank();
                     s_back_page = 1;
                     g_vram_base_hi = 0x80;
-                    g_map_level = 0;   // game over -> tornar al nivell inicial
+                    g_map_level = 0;
                     g_front_map_only = 0;
                     break;
                 }
                 g_lives_count--;
-                // 1:1 DOS init_level() (restart_level_flag != 0): cors = 3,
-                // discos = 0. I el mapa torna a l'estat inicial (els items
-                // reapareixen) menys l'item secret, que persisteix.
                 g_hearts_count = 3;
                 g_vinyls_count = 0;
-                restore_level_tiles();     // consumibles (mapa + habitacions) -> estat inicial
-                moving_respawn();          // objectes mobils a l'estat inicial
-                enemy_init();              // enemics a la seva posicio inicial
+                restore_level_tiles();
+                moving_respawn();
+                enemy_init();
                 if (g_checkpoint) {
                     s_px8 = (i16)(s_lv.chk_px * SUB);
                     s_py8 = (i16)(s_lv.chk_py * SUB);
@@ -1197,9 +1167,6 @@ void main(void) {
                 }
                 s_vx = 0; s_vy = 0;
                 s_crouch_hold = 0;
-                // El update del Banc 5 retorna aviat mentre mor, aixi que
-                // aquests edge-detectors es queden amb l'ultim valor. Cal
-                // reiniciar-los com al DOS en entrar de nou al nivell.
                 s_jump_prev = 0;
                 s_climb_prev = 0;
                 s_grab_prev = 0;
@@ -1228,10 +1195,18 @@ void main(void) {
 
         if (s_on_ground && s_ground_elevator >= 0) {
             MovingElevator* e = &g_mag_elevators[(u8)s_ground_elevator];
-            i16 px = (i16)(s_px8 >> 3);
-            if (px + PW > e->center_x - ELEVATOR_HALF_W &&
-                px < e->center_x + ELEVATOR_HALF_W) {
-                s_py8 = (i16)(s_py8 + e->delta_y * SUB);
+            s_ps_px = (i16)(s_px8 >> 3);
+            if (s_ps_px + 8 >= e->center_x - ELEVATOR_HALF_W &&
+                s_ps_px + 5 <= e->center_x + ELEVATOR_HALF_W) {
+                i16 next_py = (i16)((s_py8 + e->delta_y * SUB) >> 3);
+                s_ps_head_row = (u16)(next_py >> 4);
+                s_ps_col = (u16)((s_ps_px + 5) >> 3);
+                if (e->delta_y < 0 && is_ceiling_solid(s_ps_col, s_ps_head_row)) {
+                    s_ground_elevator = -1;
+                    s_on_ground = 0;
+                } else {
+                    s_py8 = (i16)(s_py8 + e->delta_y * SUB);
+                }
             } else {
                 s_ground_elevator = -1;
                 s_on_ground = 0;
@@ -1240,77 +1215,55 @@ void main(void) {
 
         // 2. Pas de física genèrica de col·lisió sòlida al motor resident
         dbg_border(0x57);
-        player_physics_step(g_belt_push, s_climb_prev, jump, (u8)(crouch || s_crouch_hold));
+        player_physics_step(g_belt_push, s_climb_prev, s_mn_jump, (u8)(s_mn_crouch || s_crouch_hold));
 
         // 3. Càmera i deadzone
         {
-            i16 px = (i16)(s_px8 >> 3);
-            i16 py = (i16)(s_py8 >> 3);
+            s_ps_px = (i16)(s_px8 >> 3);
+            s_ps_py = (i16)(s_py8 >> 3);
             if (!s_scrolling_locked && !s_dying_timer) {
-                i16 sy = (i16)(py - (i16)(g_cam_row * 8));
-                i16 sx = (i16)(px - (i16)(g_cam_x4 * 4));
+                i16 sy = (i16)(s_ps_py - (i16)(g_cam_row * 8));
+                i16 sx = (i16)(s_ps_px - (i16)(g_cam_x4 * 4));
                 if (sx > DEAD_R && g_cam_x4 < (u16)(s_lv.map_w_x2 - PLAY_CHARS)) {
                     g_cam_x4++;
-                    move_x = 1;
+                    s_mn_move_x = 1;
                 } else if (sx < DEAD_L && g_cam_x4 > 0) {
                     g_cam_x4--;
-                    move_x = -1;
+                    s_mn_move_x = -1;
                 }
-                // 1:1 DOS (level.c: do_level_update_scrolling2, scroll suau): el
-                // origen Y de la pantalla segueix EXACTAMENT la posicio del
-                // jugador (screen_tilemap_yorigin += dy, sense limit de
-                // velocitat). Abans la camera nomes baixava 1 fila (8 px) per
-                // frame, mes lent que la caiguda maxima (15 px/frame com al
-                // DOS: ymaxvelocity=15): el terra trigava a fer-se visible i
-                // Jake "aterritava" a les fos. Fins a 2 files per frame (16 px).
                 if (sy > DEAD_B) {
-                    // 1:1 DOS (level.c: do_level_update_scrolling2, scroll
-                    // suau): el origen Y de la pantalla segueix el jugador
-                    // SENSE limit de velocitat. Abans la camera nomes
-                    // baixava 1 fila (8 px) per frame, mes lent que la
-                    // caiguda maxima (15 px/frame com al DOS:
-                    // ymaxvelocity=15): el terra trigava a fer-se visible i
-                    // Jake "aterritava" a les fos. Ara la fila objectiu es
-                    // calcula exactament (fins a 2 files per frame = 16 px).
                     u16 d = ((u16)(sy - DEAD_B) + 7) >> 3;
                     if (d > 2) d = 2;
                     if (g_cam_row + d > s_lv.max_cam_row) d = s_lv.max_cam_row - g_cam_row;
                     g_cam_row += d;
-                    move_y = (i8)d;
+                    s_mn_move_y = (i8)d;
                 } else if (sy < DEAD_T && g_cam_row > 0) {
-                    // 1:1 DOS: simètric a la baixada (fins a 2 files/frame).
-                    // Abans només pujava 1 fila/frame i la tuberia (op17/18/19,
-                    // tiles.c:305-333, sense scroll propi) no deixava veure
-                    // l'obrer de dalt abans d'entrar-hi. Sense auto-scroll ni
-                    // congelar l'obrer (el DOS no ho fa: level.c:1861-1864).
                     u16 d = ((u16)(DEAD_T - sy) + 7) >> 3;
-                    if (d > 2) d = 2;
+                    u16 max_d = s_pipe_up ? 4 : 2;
+                    if (d > max_d) d = max_d;
                     if (d > g_cam_row) d = g_cam_row;
                     g_cam_row -= (u16)d;
-                    move_y = (i8)(-(i8)d);
+                    s_mn_move_y = (i8)(-(i8)d);
                 }
             }
             {
-                i16 screen_x = (i16)((px - (i16)(g_cam_x4 * 4)) >> 1);
-                i16 screen_y = (i16)(py - (i16)(g_cam_row * 8));
+                i16 screen_x = (i16)((s_ps_px - (i16)(g_cam_x4 * 4)) >> 1);
+                i16 screen_y = (i16)(s_ps_py - (i16)(g_cam_row * 8));
                 if (screen_x < 0) screen_x = 0;
                 if (screen_x > (80 - SPR_WB)) screen_x = (80 - SPR_WB);
                 if (screen_y < 0) screen_y = 0;
                 if (screen_y > (160 - PH)) screen_y = (160 - PH);
-                dsx = (u16)screen_x;
-                dsy = (u16)screen_y;
+                s_mn_dsx = (u16)screen_x;
+                s_mn_dsy = (u16)screen_y;
             }
         }
 
-        page_dx = (i8)(s_pending_x + move_x);
-        page_dy = (i8)(s_pending_y + move_y);
-        g_vram_start = camera_ma((u16)(g_cam_x4 - page_dx),
-                                 (u16)(g_cam_row - page_dy));
+        s_mn_page_dx = (i8)(s_pending_x + s_mn_move_x);
+        s_mn_page_dy = (i8)(s_pending_y + s_mn_move_y);
+        g_vram_start = camera_ma((u16)(g_cam_x4 - s_mn_page_dx),
+                                 (u16)(g_cam_row - s_mn_page_dy));
 
         dbg_border(0x4C);
-        // --- Restaurar el fons al BACKBUFFER (LIFO) ---
-        // Ordre de dibuix: caixa -> Jake -> globus/paraigües. El restore va
-        // al revés: globus/paraigües -> Jake -> caixa.
         sprite_restore_umbrella();
         sprite_restore_balloon();
         if (s_have_drawn[s_back_page]) {
@@ -1318,45 +1271,35 @@ void main(void) {
             s_have_drawn[s_back_page] = 0;
         }
         carry_restore(s_back_page);
-        // Restore LIFO (invers al draw world->enemic->jugador):
-        // l'enemic abans que els ascensors (els dibuixa a sobre).
         if (!s_in_room) {
             enemy_restore(s_back_page);
-            moving_restore(s_back_page, (move_x != 0 || move_y != 0));
+            moving_restore(s_back_page, (s_mn_move_x != 0 || s_mn_move_y != 0));
             moving_popup_restore(s_back_page);
             dbg_border(0x57);
-            sync_backbuffer(page_dx, page_dy, g_cam_x4, g_cam_row);
+            sync_backbuffer(s_mn_page_dx, s_mn_page_dy, g_cam_x4, g_cam_row);
             bc_a = s_back_page;
             moving_draw_conveyor_tiles();
         }
         world_flush_repaints();
         g_vram_start = camera_ma(g_cam_x4, g_cam_row);
         dbg_border(0x47);
-        hud_render(s_back_page, (page_dx != 0 || page_dy != 0));
-        cur = select_player_anim(s_climb_prev, move, jump, (u8)(crouch || s_crouch_hold), (i16)dsy);
+        hud_render(s_back_page, (s_mn_page_dx != 0 || s_mn_page_dy != 0));
+        s_mn_cur = select_player_anim(s_climb_prev, s_mn_move, s_mn_jump, (u8)(s_mn_crouch || s_crouch_hold), (i16)s_mn_dsy);
 
         dbg_border(0x52);
-        // Dibuixar objectes mòbils i sprites sobre el fons actualitzat
         if (!s_in_room) {
             moving_draw(s_back_page, g_cam_x4, g_cam_row);
             enemy_draw(s_back_page);
         }
 
-        // 1:1 DOS: la caixa portada es dibuixa ABANS del jugador (objectes
-        // 35/37 abans del 39), així en Jake queda per davant i no sembla que
-        // estiguin en plans diferents. El restore va en ordre invers (LIFO).
         carry_draw(s_back_page);
 
-        g_spr_y = (u8)dsy;
-        g_spr_x = (u8)dsx;
+        g_spr_y = (u8)s_mn_dsy;
+        g_spr_x = (u8)s_mn_dsx;
 
         if (s_dying_timer || !(s_invuln_timer & 2)) {
-            u16 spr_addr = (u16)(PLAYER_FRAMES_BASE + ((u16)cur << 9) - ((u16)cur << 5));
-            const u8* fr_addr = (const u8*)spr_addr;
+            const u8* fr_addr = (const u8*)(u16)(PLAYER_FRAMES_BASE + ((u16)s_mn_cur << 9) - ((u16)s_mn_cur << 5));
             u8 prev_b = bank_set(PLAYER_FRAMES_BANK);
-            // Contracte hflip (verificat en viu): C7 paginat als dos costats.
-            // flip escriu i blit llegeix C7:0x7840 (gap lliure fins EXTRA 0x7A20);
-            // la LUT es llegeix de C7:0x7F00 (B=0x7F).
             if (g_face == 0) {
                 sprite_blit_player(fr_addr);
             } else {
@@ -1379,8 +1322,8 @@ void main(void) {
                     g_spr_x = (u8)bx;
                     g_spr_y = (u8)by;
                     sprite_blit_balloon();
-                    g_spr_x = (u8)dsx;
-                    g_spr_y = (u8)dsy;
+                    g_spr_x = (u8)s_mn_dsx;
+                    g_spr_y = (u8)s_mn_dsy;
                 } else {
                     s_carry_kind = 0;
                     s_carry_state = 0;
@@ -1393,19 +1336,18 @@ void main(void) {
             draw_gameover_banner(s_back_page);
         }
 
-                dbg_border(0x54);
-        // Sincronització vertical fluida a 25 Hz (2 VSYNCs = 40 ms)
+        dbg_border(0x54);
         cpc_wait_vsync_start();
-        if ((u8)(g_ticks - last_ticks) < 7) {
+        if ((u8)(g_ticks - s_mn_last_ticks) < 7) {
             cpc_wait_vsync_start();
         }
-        last_ticks = g_ticks;
+        s_mn_last_ticks = g_ticks;
         crtc_set_display_start((u16)((s_back_page == 1 ? 0x2000 : 0x3000) + g_vram_start));
 
         s_back_page ^= 1;
         g_vram_base_hi = (s_back_page == 1) ? 0x80 : 0xC0;
-        s_pending_x = move_x;
-        s_pending_y = move_y;
+        s_pending_x = s_mn_move_x;
+        s_pending_y = s_mn_move_y;
 
         // 1:1 DOS (level.c): 50 frames de celebracio i despres mapa/nivell
         // seguent; al darrer nivell es torna al primer.

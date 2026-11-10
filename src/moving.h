@@ -112,6 +112,15 @@ extern i16 bc_r;
 extern i16 g_belt_push; // push de cinta del frame (propi: bc_r el trepitgen els enemics)
 extern u8  g_on_ice;    // 1 si el jugador es a terra sobre gel (op=30 o rampes 32..35)
 
+// Variables de treball residents compartides per evitar stack frames (IX) a C6
+extern i16 g_en_view_x, g_en_view_y;
+extern i16 g_en_jake_x, g_en_jake_y;
+extern i16 g_en_act_xmin, g_en_act_ymin8;
+extern i16 g_en_y, g_en_nx, g_en_dx;
+extern i16 g_en_dy, g_en_dx_jake;
+extern i16 g_en_clip_x0, g_en_clip_x1, g_en_clip_y0, g_en_clip_y1;
+extern u8  g_en_start_byte, g_en_byte_count, g_en_start_row, g_en_row_count;
+
 // Slots fixos de la taula de salts del Banc 5 (engine/bank5_table.s).
 // Font unica (abans duplicats a moving.c): 0x6E00+3k per sempre.
 #define BC_TABLE   0x7FE8

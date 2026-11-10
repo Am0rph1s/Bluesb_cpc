@@ -140,15 +140,52 @@ static void f_focus(void) {
 // el FRONT corre a C4 i no pot paginar C7). Files de 8 B a xb 19/43,
 // y118..147: MAI wrap (43+8=51 < 80). f_blit desa fons + dibuixa (com el
 // joc: sense passada prèvia); f_unblit restaura amb LDIR.
+static void f_wait_vsync(void) {
+    __asm
+        ld      b, #0xF5
+00180$:
+        in      a, (c)
+        rra
+        jr      c, 00180$
+00181$:
+        in      a, (c)
+        rra
+        jr      nc, 00181$
+    __endasm;
+}
+// Blitter 1-pass sense parpelleig: f_save_bg desa el fons net de VRAM
+// una sola vegada a l'arrencada de SELECT. Despres, f_blit llegeix
+// directament del buffer de fons net (RAM bc), aplica mascara (hl),
+// afegeix pixels del sprite (hl) i escriu directe a VRAM (de) en una
+// unica passada. VRAM MAI s'esborra a blanc ni buit: zero parpelleig.
 static volatile u16 f_row_v, f_row_s, f_row_p;
+static void f_save_bg_row(void) {
+    __asm
+        ld      hl, (#_f_row_v)
+        ld      de, (#_f_row_p)
+        ld      bc, #8
+        ldir
+        ret
+    __endasm;
+}
+static void f_save_bg(void) {
+    u8 r;
+    for (r = 0; r < 30; r++) {
+        f_row_v = f_rowaddr((u8)(118 + r), 19);
+        f_row_p = (u16)(f_bg0 + (u16)r * 8);
+        f_save_bg_row();
+        f_row_v = f_rowaddr((u8)(118 + r), 43);
+        f_row_p = (u16)(f_bg1 + (u16)r * 8);
+        f_save_bg_row();
+    }
+}
 static void f_blit_row(void) {
     __asm
         ld      de, (#_f_row_v)
         ld      hl, (#_f_row_s)
         ld      bc, (#_f_row_p)
         .rept 8
-        ld      a, (de)
-        ld      (bc), a
+        ld      a, (bc)
         inc     bc
         and     (hl)
         inc     hl
@@ -160,26 +197,7 @@ static void f_blit_row(void) {
         ret
     __endasm;
 }
-static void f_unblit_row(void) {
-    __asm
-        ld      hl, (#_f_row_p)
-        ld      de, (#_f_row_v)
-        ld      bc, #8
-        ldir
-        ret
-    __endasm;
-}
 static volatile u8 f_sid, f_fi;
-static void f_unblit(void) {
-    u8 r;
-    u8 xb = f_sid ? 43 : 19;
-    u8* bg = (u8*)(f_sid ? f_bg1 : f_bg0);
-    for (r = 0; r < 30; r++) {
-        f_row_v = f_rowaddr((u8)(118 + r), xb);
-        f_row_p = (u16)(bg + (u16)r * 8);
-        f_unblit_row();
-    }
-}
 static void f_blit(void) {
     u8 r;
     u8 xb = f_sid ? 43 : 19;
@@ -356,7 +374,7 @@ static u8 f_dir_mask(void) {
 }
 
 // Posa paleta HW (HL = taula 16 INKR) + vora negra.
-static void f_fpal(const u8* palhw) {
+static void f_fpal(const u8* palhw) __z88dk_fastcall {
     __asm
         ld      d, #0            ;; D = pen 0..15
 00003$: ld      e, (hl)          ;; E = hw
@@ -481,6 +499,7 @@ void front_run(void) {
     // 2. SELECT Jake/Elwood
     zx0_decompress((const void*)fsel_zx, (void*)0xC000);
     f_fpal(g_pal_fselect);
+    f_save_bg();
 
     f_choice = 0;
     f_focus();
@@ -495,37 +514,58 @@ void front_run(void) {
     for (;;) {
         if ((u8)(g_ticks - f_step) >= 24) {
             f_step = g_ticks;
+            f_wait_vsync();
             if (f_choice) {
                 if (++f_jt >= 50) f_jt = 3;
                 if (++f_et >= 52) f_et = 0;
                 if (f_ji[f_jt] != f_lj) {
                     f_lj = f_ji[f_jt];
-                    f_sid = 0; f_fi = f_lj; f_unblit(); f_blit();
+                    f_sid = 0; f_fi = f_lj; f_blit();
                 }
                 if (f_eb[f_et] != f_le) {
                     f_le = f_eb[f_et];
-                    f_sid = 1; f_fi = f_le; f_unblit(); f_blit();
+                    f_sid = 1; f_fi = f_le; f_blit();
                 }
             } else {
                 if (++f_jt >= 52) f_jt = 0;
                 if (++f_et >= 50) f_et = 0;
                 if (f_jd[f_jt] != f_lj) {
                     f_lj = f_jd[f_jt];
-                    f_sid = 0; f_fi = f_lj; f_unblit(); f_blit();
+                    f_sid = 0; f_fi = f_lj; f_blit();
                 }
                 if (f_ea[f_et] != f_le) {
                     f_le = f_ea[f_et];
-                    f_sid = 1; f_fi = f_le; f_unblit(); f_blit();
+                    f_sid = 1; f_fi = f_le; f_blit();
                 }
             }
         }
         d = f_dir_mask();
         if (d & 1) {
-            if (f_choice) { f_choice = 0; f_focus(); f_jt = 0; f_et = 0; }
+            if (f_choice) {
+                f_choice = 0;
+                f_focus();
+                f_jt = 0;
+                f_et = 0;
+                f_lj = f_jd[0];
+                f_le = f_ea[0];
+                f_wait_vsync();
+                f_sid = 0; f_fi = f_lj; f_blit();
+                f_sid = 1; f_fi = f_le; f_blit();
+            }
             while (f_dir_mask() & 1) { }
         }
         if (d & 2) {
-            if (!f_choice) { f_choice = 1; f_focus(); f_jt = 0; f_et = 0; }
+            if (!f_choice) {
+                f_choice = 1;
+                f_focus();
+                f_jt = 0;
+                f_et = 0;
+                f_lj = f_ji[0];
+                f_le = f_eb[0];
+                f_wait_vsync();
+                f_sid = 0; f_fi = f_lj; f_blit();
+                f_sid = 1; f_fi = f_le; f_blit();
+            }
             while (f_dir_mask() & 2) { }
         }
         if (f_fkey_pressed()) break;

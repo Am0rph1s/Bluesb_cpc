@@ -44,8 +44,6 @@ u8  s_popup_bg[2][28];
 
 void moving_bank_respawn(void) {
     u8 i;
-    u8* p = (u8*)g_mag_elevators;
-    u8 k = (u8)sizeof(g_mag_elevators);
     MovingElevator* e;
 
     s_popup_timer = 0;
@@ -59,7 +57,13 @@ void moving_bank_respawn(void) {
     s_conveyor_tick = 0;
     s_page_conveyor_phase[0] = s_page_conveyor_phase[1] = 0xFF;
 
-    do { *p++ = 0; } while (--k);
+    __asm
+    ld hl, #_g_mag_elevators
+    ld (hl), #0
+    ld de, #_g_mag_elevators + 1
+    ld bc, #127
+    ldir
+    __endasm;
 
 #if LEVEL_SCAFFOLD_COUNT > 0
     e = g_mag_elevators;
@@ -107,56 +111,215 @@ void moving_bank_init(void) {
     moving_bank_respawn();
 }
 
-void moving_bank_find(void) {
-    u8 i;
-    if ((i16)bc_d < 0) { bc_r = -1; return; }
+void moving_bank_find(void) __naked {
+#if LEVEL_SCAFFOLD_COUNT == 0 && LEVEL_ELEVATOR_COUNT == 0 && LEVEL_PRESS_COUNT == 0
+    __asm
+    ld hl, #-1
+    ld (_bc_r), hl
+    ret
+    __endasm;
+#else
+    __asm
+    ld hl, (_bc_d)
+    bit 7, h
+    jr z, mbf_start$
+mbf_none$:
+    ld hl, #-1
+    ld (_bc_r), hl
+    ret
+mbf_start$:
+    push ix
+    __endasm;
 
 #if LEVEL_SCAFFOLD_COUNT > 0
-    {
-        const MovingElevator* e = g_mag_elevators;
-        for (i = 0; i < LEVEL_SCAFFOLD_COUNT; i++, e++) {
-            if ((u16)(e->center_x - bc_a + 20) < 41) {
-                i16 surface = (i16)(e->y - SCAFFOLD_OBJECT_H);
-                if ((i16)bc_b <= (i16)(surface + 8) && (i16)bc_c >= surface) {
-                    *(i16*)bc_e = (i16)(surface - 30);
-                    bc_r = i;
-                    return;
-                }
-            }
-        }
-    }
+    __asm
+    ld ix, #_g_mag_elevators
+    ld b, #LEVEL_SCAFFOLD_COUNT
+    ld c, #0
+mbf_scaff_loop$:
+    ; Check X: (u16)(center_x - bc_a + 20) < 41
+    ld l, 0 (ix)
+    ld h, 1 (ix)
+    ld de, (_bc_a)
+    or a
+    sbc hl, de
+    ld de, #20
+    add hl, de
+    ld de, #41
+    or a
+    sbc hl, de
+    jr nc, mbf_scaff_next$
+    ; surface = e->y - 20 (SCAFFOLD_OBJECT_H)
+    ld l, 2 (ix)
+    ld h, 3 (ix)
+    ld de, #-20
+    add hl, de
+    ; check bc_b <= surface + 8  <=>  (surface + 8) - bc_b >= 0
+    push hl
+    ld de, #8
+    add hl, de
+    ld de, (_bc_b)
+    or a
+    sbc hl, de
+    pop hl
+    jp m, mbf_scaff_next$
+    ; check bc_c >= surface  <=>  bc_c - surface >= 0
+    ld de, (_bc_c)
+    ex de, hl
+    or a
+    sbc hl, de
+    jp m, mbf_scaff_next$
+    ; Found! *(i16*)bc_e = surface - 30
+    ex de, hl
+    ld de, #-30
+    add hl, de
+    ld de, (_bc_e)
+    ld a, l
+    ld (de), a
+    inc de
+    ld a, h
+    ld (de), a
+    ; bc_r = c
+    ld l, c
+    ld h, #0
+    ld (_bc_r), hl
+    pop ix
+    ret
+mbf_scaff_next$:
+    ld de, #16
+    add ix, de
+    inc c
+    djnz mbf_scaff_loop$
+    __endasm;
 #elif LEVEL_ELEVATOR_COUNT > 0
-    {
-        const MovingElevator* e = g_mag_elevators;
-        for (i = 0; i < LEVEL_ELEVATOR_COUNT; i++, e++) {
-            if ((u16)(e->center_x - bc_a + 8) < 33) {
-                i16 surface = (i16)(e->y - ELEVATOR_OBJECT_H);
-                if ((i16)bc_b <= (i16)(surface + 8) && (i16)bc_c >= surface) {
-                    *(i16*)bc_e = (i16)(surface - 30);
-                    bc_r = i;
-                    return;
-                }
-            }
-        }
-    }
+    __asm
+    ld ix, #_g_mag_elevators
+    ld b, #LEVEL_ELEVATOR_COUNT
+    ld c, #0
+mbf_elev_loop$:
+    ; Check X: (u16)(center_x - bc_a + 8) < 33
+    ld l, 0 (ix)
+    ld h, 1 (ix)
+    ld de, (_bc_a)
+    or a
+    sbc hl, de
+    ld de, #8
+    add hl, de
+    ld de, #33
+    or a
+    sbc hl, de
+    jr nc, mbf_elev_next$
+    ; surface = e->y - 14 (ELEVATOR_OBJECT_H)
+    ld l, 2 (ix)
+    ld h, 3 (ix)
+    ld de, #-14
+    add hl, de
+    ; check bc_b <= surface + 8  <=>  (surface + 8) - bc_b >= 0
+    push hl
+    ld de, #8
+    add hl, de
+    ld de, (_bc_b)
+    or a
+    sbc hl, de
+    pop hl
+    jp m, mbf_elev_next$
+    ; check bc_c >= surface  <=>  bc_c - surface >= 0
+    ld de, (_bc_c)
+    ex de, hl
+    or a
+    sbc hl, de
+    jp m, mbf_elev_next$
+    ; Found! *(i16*)bc_e = surface - 30
+    ex de, hl
+    ld de, #-30
+    add hl, de
+    ld de, (_bc_e)
+    ld a, l
+    ld (de), a
+    inc de
+    ld a, h
+    ld (de), a
+    ; bc_r = c
+    ld l, c
+    ld h, #0
+    ld (_bc_r), hl
+    pop ix
+    ret
+mbf_elev_next$:
+    ld de, #16
+    add ix, de
+    inc c
+    djnz mbf_elev_loop$
+    __endasm;
 #endif
 
 #if LEVEL_PRESS_COUNT > 0
-    {
-        const MovingElevator* e = &g_mag_elevators[MAG_ELEVATOR_COUNT];
-        for (i = 0; i < LEVEL_PRESS_COUNT; i++, e++) {
-            if ((u16)(e->center_x - bc_a + 8) < 33) {
-                i16 surface = (i16)(e->y - PRESS_OBJECT_H);
-                if ((i16)bc_b <= (i16)(surface + 8) && (i16)bc_c >= surface) {
-                    *(i16*)bc_e = (i16)(surface - 30);
-                    bc_r = (i8)(MAG_ELEVATOR_COUNT + i);
-                    return;
-                }
-            }
-        }
-    }
+    __asm
+    ld ix, #(_g_mag_elevators + 16 * MAG_ELEVATOR_COUNT)
+    ld b, #LEVEL_PRESS_COUNT
+    ld c, #MAG_ELEVATOR_COUNT
+mbf_press_loop$:
+    ; Check X: (u16)(center_x - bc_a + 8) < 33
+    ld l, 0 (ix)
+    ld h, 1 (ix)
+    ld de, (_bc_a)
+    or a
+    sbc hl, de
+    ld de, #8
+    add hl, de
+    ld de, #33
+    or a
+    sbc hl, de
+    jr nc, mbf_press_next$
+    ; surface = e->y - 30 (PRESS_OBJECT_H)
+    ld l, 2 (ix)
+    ld h, 3 (ix)
+    ld de, #-30
+    add hl, de
+    ; check bc_b <= surface + 8  <=>  (surface + 8) - bc_b >= 0
+    push hl
+    ld de, #8
+    add hl, de
+    ld de, (_bc_b)
+    or a
+    sbc hl, de
+    pop hl
+    jp m, mbf_press_next$
+    ; check bc_c >= surface  <=>  bc_c - surface >= 0
+    ld de, (_bc_c)
+    ex de, hl
+    or a
+    sbc hl, de
+    jp m, mbf_press_next$
+    ; Found! *(i16*)bc_e = surface - 30
+    ex de, hl
+    ld de, #-30
+    add hl, de
+    ld de, (_bc_e)
+    ld a, l
+    ld (de), a
+    inc de
+    ld a, h
+    ld (de), a
+    ; bc_r = c
+    ld l, c
+    ld h, #0
+    ld (_bc_r), hl
+    pop ix
+    ret
+mbf_press_next$:
+    ld de, #16
+    add ix, de
+    inc c
+    djnz mbf_press_loop$
+    __endasm;
 #endif
-    bc_r = -1;
+
+    __asm
+    pop ix
+    jr mbf_none$
+    __endasm;
+#endif
 }
 
 static void b5_update_entities_and_spans(void) {
@@ -371,11 +534,10 @@ void moving_bank_update(void) {
     col = (u8)(((s_px8 >> 3) + 8) >> 3);
     row = (u8)(((s_py8 >> 3) + PH - 1) >> 4);
     s_pipe_up = 0;
-#if LEVEL_ID == 0
+#if LEVEL_HAS_PIPE
     {
         const u8* tp = b5_trig_ptr(col, row);
         u8 op = tp ? tp[2] : 255;
-        g_on_ice = (op == 30 || (op >= 36 && op <= 39));
         if (op >= 17 && op <= 19 && s_vy < -2 * SUB) {
             s_vy = (i16)(s_vy - 3 * SUB);
             s_pipe_up = 1;
@@ -383,7 +545,8 @@ void moving_bank_update(void) {
                            (op == 17 ? 28 : (op == 18 ? 68 : -4)));
         }
     }
-#elif LEVEL_ID == 5
+#endif
+#if LEVEL_ID == 5
     {
         const u8* tp = b5_trig_ptr(col, row);
         u8 op = tp ? tp[2] : 255;
@@ -399,14 +562,6 @@ void moving_bank_update(void) {
             }
         }
     }
-#elif LEVEL_HAS_CONVEYOR
-    {
-        const u8* tp = b5_trig_ptr(col, row);
-        u8 op = tp ? tp[2] : 255;
-        g_on_ice = (op == 30 || (op >= 36 && op <= 39));
-    }
-#else
-    g_on_ice = 0;
 #endif
 
     b5_check_bonus_triggers(col, row, crouch);

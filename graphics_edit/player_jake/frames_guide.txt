@@ -1,0 +1,33 @@
+Guia de frames per a Jake Blues (Jugador 1):
+Graella: 6 columnes x 5 files. Mida de cada cel·la: 16x30 píxels.
+Mida total de la imatge: 96x150 píxels (canal alfa transparent per al fons).
+
+Frame 00 (Columna 0, Fila 0): 00_idle
+Frame 01 (Columna 1, Fila 0): 01_walk1
+Frame 02 (Columna 2, Fila 0): 02_walk2
+Frame 03 (Columna 3, Fila 0): 03_walk3
+Frame 04 (Columna 4, Fila 0): 04_jump
+Frame 05 (Columna 5, Fila 0): 05_ladder_back
+Frame 06 (Columna 0, Fila 1): 06_crouch1
+Frame 07 (Columna 1, Fila 1): 07_crouch2
+Frame 08 (Columna 2, Fila 1): 08_crouch3
+Frame 09 (Columna 3, Fila 1): 09_ladder1
+Frame 10 (Columna 4, Fila 1): 10_dance1
+Frame 11 (Columna 5, Fila 1): 11_dance2
+Frame 12 (Columna 0, Fila 2): 12_crate_walk1
+Frame 13 (Columna 1, Fila 2): 13_crate_walk2
+Frame 14 (Columna 2, Fila 2): 14_crate_walk3
+Frame 15 (Columna 3, Fila 2): 15_crate_walk4
+Frame 16 (Columna 4, Fila 2): 16_crate_walk5
+Frame 17 (Columna 5, Fila 2): 17_crate_lift
+Frame 18 (Columna 0, Fila 3): 18_crate_throw
+Frame 19 (Columna 1, Fila 3): 19_crate_push
+Frame 20 (Columna 2, Fila 3): 20_carry_float
+Frame 21 (Columna 3, Fila 3): 21_swim_idle
+Frame 22 (Columna 4, Fila 3): 22_swim_stroke1
+Frame 23 (Columna 5, Fila 3): 23_swim_stroke2
+Frame 24 (Columna 0, Fila 4): 24_swim_vert
+Frame 25 (Columna 1, Fila 4): 25_swim_floor
+Frame 26 (Columna 2, Fila 4): 26_dazed1
+Frame 27 (Columna 3, Fila 4): 27_dazed2
+Frame 28 (Columna 4, Fila 4): 28_dazed3

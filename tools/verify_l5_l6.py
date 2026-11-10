@@ -179,5 +179,5 @@ def test_level(lvl_num, key_char, out_prefix):
     time.sleep(1.0)
 
 if __name__ == "__main__":
-    test_level(5, '5', "obj/test_l5")
-    test_level(6, '6', "obj/test_l6")
+    for lvl, k in [(2, '2'), (4, '4'), (5, '5'), (6, '6')]:
+        test_level(lvl, k, f"obj/test_l{lvl}")

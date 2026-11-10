@@ -31,7 +31,7 @@ CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "15000",
 # La PILA no canvia: el canari (0x3E10) i el limit de la pila (SP=0x3FFE) son
 # els mateixos; el _DATA acaba per sota del canari.
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0x39A0", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0x3600", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 
@@ -81,7 +81,7 @@ DSKNAME8 = "BLUESB"
 # (engine/enemy_table.s, slots init/update/restore/draw); codi+dades
 # fins 0x8000 (pool de fons inclos). ENEMI.BIN = frames + imatge codi.
 ENEMY_BASE = 0x5A00
-ENEMY_DATA = 0x5820  # dins l'area alliberada pels frames comprimits (cache 0x5000..0x57FF, estat 0x5800..0x581F)
+ENEMY_DATA = 0x5800  # dins l'area alliberada pels frames comprimits (cache 0x5000..0x57FF, dades 0x5800..0x59FF)
 ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 # L2-L6: ENEMI2.BIN..ENEMI6.BIN (mateix format de 16 celes); build_enemybank
 # els tria per level_idx.
@@ -129,7 +129,7 @@ FRONT_BASE = 0x4000
 # TILESET el trepitja despres). Historial: 0x4200 -> 0x4300 (select L/R)
 # -> 0x4450 -> 0x44C0 (mini-DANCE 4f) -> 0x4640 (DANCE20) -> 0x4700
 # -> 0x4800 (map sticker) -> 0x4900 (tot carregat al splash).
-FRONT_DATA = 0x4900
+FRONT_DATA = 0x49A0
 FRONT_MAXLEN = 0x1000
 FRONT_C_SOURCE = "engine/front.c"
 FRONT_C_HEADERS = ["engine/cpctelera.h", "engine/fdc.h", "engine/front.h", "engine/front_tables.h"]
@@ -425,8 +425,8 @@ def report_and_assert_memory_budget(map_path):
         print("\n[FATAL] _CODE ha envait _DATA per %d bytes! (code_end=0x%04X > data_start=0x%04X)" %
               (-code_margin, code_end, s_data))
         sys.exit(1)
-    if data_end > 0x3E30:
-        print("\n[FATAL] _DATA ha trepitjat el canari de pila (data_end=0x%04X > 0x3E30)! Mou CANARY_ADDR." %
+    if data_end > 0x3B40:
+        print("\n[FATAL] _DATA ha trepitjat el canari de pila (data_end=0x%04X > 0x3B40)! Mou CANARY_ADDR." %
               data_end)
         sys.exit(1)
     if stack_margin < 256:
@@ -497,12 +497,13 @@ def build_bank(force, level_idx=None):
             lvl_s = os.path.join(vdir, "bank5_table.s")
             with open(src, "r", encoding="utf-8") as sf:
                 s_text = sf.read()
-            if level_idx in (2, 3, 4, 5):  # Nivells sense cintes transportadores
+            if level_idx == 4:  # Nomes L5 no te ni cintes, ni gel, ni rampes
                 if "_moving_bank_push::" in s_text:
                     p_idx = s_text.index("_moving_bank_push::")
                     s_text = s_text[:p_idx] + "_moving_bank_push::\n    ld hl, #0\n    ld (_bc_r), hl\n    xor a\n    ld (_g_on_ice), a\n    ret\n"
-            with open(lvl_s, "w", encoding="utf-8") as df:
-                df.write(s_text)
+            if not os.path.exists(lvl_s) or open(lvl_s, "r", encoding="utf-8").read() != s_text:
+                with open(lvl_s, "w", encoding="utf-8") as df:
+                    df.write(s_text)
             rel = os.path.join(vdir, "bank5_table.rel")
             src = lvl_s
         else:
@@ -865,21 +866,25 @@ def build_enemybank(force, level_idx=None):
     rt_lvl = 0 if level_idx is None else level_idx
     rt_path = os.path.join(PROJ, "assets", "bbdata", "RESTORE%d.BIN" % rt_lvl)
     rt = open(rt_path, "rb").read()
-    EN_RESTORE = 0x4B80
-    if EN_BLOCKS + len(blocks) > EN_RESTORE:
-        print("\n[FATAL] Blocs ZX0 d'enemics (fins 0x%04X) xoquen amb la taula de restauracio (0x%04X)!"
-              % (EN_BLOCKS + len(blocks), EN_RESTORE))
+    EN_SPAWN = 0x4B20
+    EN_RESTORE = 0x4C20
+    sp_path = os.path.join(obj, f"lvl{rt_lvl}", "enemy_spawn.h")
+    sp_bin = parse_spawn_header(sp_path) if os.path.exists(sp_path) else b""
+    if EN_BLOCKS + len(blocks) > EN_SPAWN:
+        print("\n[FATAL] Blocs ZX0 d'enemics (fins 0x%04X) xoquen amb s_spawn (0x%04X)!"
+              % (EN_BLOCKS + len(blocks), EN_SPAWN))
+        sys.exit(1)
+    if EN_SPAWN + len(sp_bin) > EN_RESTORE:
+        print("\n[FATAL] s_spawn (fins 0x%04X) xoca amb restore (0x%04X)!"
+              % (EN_SPAWN + len(sp_bin), EN_RESTORE))
         sys.exit(1)
     if EN_RESTORE + len(rt) > EN_CACHE:
         print("\n[FATAL] Taula de restauracio (%d B a 0x%04X) envaeix la cache (0x%04X)!"
               % (len(rt), EN_RESTORE, EN_CACHE))
         sys.exit(1)
-    im[EN_RESTORE - 0x4000:EN_RESTORE - 0x4000 + len(rt)] = rt
-    EN_SPAWN = 0x5840
-    sp_path = os.path.join(obj, f"lvl{rt_lvl}", "enemy_spawn.h")
-    if os.path.exists(sp_path):
-        sp_bin = parse_spawn_header(sp_path)
+    if sp_bin:
         im[EN_SPAWN - 0x4000:EN_SPAWN - 0x4000 + len(sp_bin)] = sp_bin
+    im[EN_RESTORE - 0x4000:EN_RESTORE - 0x4000 + len(rt)] = rt
     if level_idx in (None, 0):
         im = bytes(im) + code
     else:
@@ -2165,6 +2170,12 @@ def main():
         open(ext_seed, "w").write("    .module enemy_ext\n"
                                   "    .globl _s_hud_strips\n_s_hud_strips = 0x6000\n")
 
+    import pack_level
+    pack_level.build_level_pkg(0, os.path.join(PROJ, "src"))
+    for lvl_i in range(6):
+        vdir = os.path.join(PROJ, "obj", f"lvl{lvl_i}")
+        pack_level.build_level_pkg(lvl_i, vdir)
+
     prev = None
     prev_crt = None
     prev_stab = None
@@ -2174,33 +2185,34 @@ def main():
     # mouen GAME 2 cops; amb 4 l'starter del DSK quedava amb CRC vell =
     # vermell a l'emu). Si no convergeix, FATAL (mai un DSK incoherent).
     for it in range(8):
+        cur_force = force if it == 0 else False
         # Header changes from the generated CHS table are picked up through
         # newer(); avoid recompiling every assembly and C source on pass two.
-        build_music(force)  # MUSICA primer (obj/mus_ext.s pel GAME)
-        game_path, game_start, game_size = compile_and_link(force)
-        build_bank(force, 0)  # Banc 5 per nivell
-        build_bank(force, 1)
-        build_bank(force, 2)
-        build_bank(force, 3)
-        build_bank(force, 4)
-        build_bank(force, 5)
-        build_levelcode(force, 0)  # Banc 1: codi del nivell (ascensors)
-        build_levelcode(force, 1)  # Banc 1: codi del nivell (premses)
-        build_levelcode(force, 4)  # Banc 1: codi del nivell (bastides)
-        build_levelcode(force, 5)  # Banc 1: codi del nivell (ascensors escenari)
+        build_music(cur_force)  # MUSICA primer (obj/mus_ext.s pel GAME)
+        game_path, game_start, game_size = compile_and_link(cur_force)
+        build_bank(cur_force, 0)  # Banc 5 per nivell
+        build_bank(cur_force, 1)
+        build_bank(cur_force, 2)
+        build_bank(cur_force, 3)
+        build_bank(cur_force, 4)
+        build_bank(cur_force, 5)
+        build_levelcode(cur_force, 0)  # Banc 1: codi del nivell (ascensors)
+        build_levelcode(cur_force, 1)  # Banc 1: codi del nivell (premses)
+        build_levelcode(cur_force, 4)  # Banc 1: codi del nivell (bastides)
+        build_levelcode(cur_force, 5)  # Banc 1: codi del nivell (ascensors escenari)
         # L3 no porta codi d'excepcions (has_code=False): estalvia ~1,1 KB al
         # paquet, que es l'únic que no hi cabia a l'scratch de 14.560 B.
-        build_enemybank(force, 0)  # Banc C3 (walkers; reutilitza bank_equ.rel)
-        build_enemybank(force, 1)
-        build_enemybank(force, 2)
-        build_enemybank(force, 3)
-        build_enemybank(force, 4)
-        build_enemybank(force, 5)
-        build_level_bundles(force)  # JAKE / ELWOOD (Banc C7)
-        build_level_packages(force)  # LnWORLD.PAK / LnENEMI + GAMEOVER (manifest)
-        build_fdcbank(force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)
-        build_front(force)  # FRONT banked (necessita el mapa resident)
-        starter_path, starter_start = build_starter(force)
+        build_enemybank(cur_force, 0)  # Banc C3 (walkers; reutilitza bank_equ.rel)
+        build_enemybank(cur_force, 1)
+        build_enemybank(cur_force, 2)
+        build_enemybank(cur_force, 3)
+        build_enemybank(cur_force, 4)
+        build_enemybank(cur_force, 5)
+        build_level_bundles(cur_force)  # JAKE / ELWOOD (Banc C7)
+        build_level_packages(cur_force)  # LnWORLD.PAK / LnENEMI + GAMEOVER (manifest)
+        build_fdcbank(cur_force)  # Banc FDC (fdc.rel/assets_fdc.rel ja compilats)
+        build_front(cur_force)  # FRONT banked (necessita el mapa resident)
+        starter_path, starter_start = build_starter(cur_force)
         chs_map, gentry, game_len, game_crc = package(starter_path, starter_start, game_path)
         text = gen_header(chs_map)
         fhdr_text = gen_front_tables(chs_map)

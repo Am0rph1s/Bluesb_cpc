@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
 """Genera assets/bbdata/ENEMI2.BIN per al nivell 2 (ENT).
 
- mateixa cela 16x32 / 512 B que ENEMI1.BIN. Les imatges surten de
+Mateixa cela 16x32 / 512 B que ENEMI1.BIN. Les imatges surten de
 ENEMI2.SQV (35 frames). Els indexs de frame SON els del DOS: es treuen de
 `animframes_059d` (staticres.c), on el frame del nivell = index - SPRITES_COUNT
 (146). Vegeu tools/dump_level_sprites.py per veure les tires per tipus.
 
 Celes (16):
-  0      tipus 11 (estatic, anim idle)            frame 1
-  1,2    tipus 12 walk (op1)                      frames 6,8
-  3      tipus 12 atac                            frame 11
+  0,1    tipus 11 walk (op1, científic)           frames 0,1
+  2,3    tipus 12 walk (op1)                      frames 6,8
   4,5    tipus 13 walk (op7, llança)              frames 12,14
   6      tipus 13 llançament                      frame 17
   7,8    tipus 14 walk (op10)                     frames 21,23
   9      tipus 14 llançament                      frame 26
-  10,11  tipus 21 walk (op10)                     frames 27,29
+  10,11  tipus 21 walk (op10)                     frames 28,29
   12     tipus 21 llançament                      frame 31
-  13     projectils (copia d'ENEMI1.BIN: ou/bala/plat)
+  13     projectils (plat de kind 9, files 19..31)
   14,15  lliures
 
 El tipus 22 (premsa hidràulica, frame 33) no hi cap: és un objecte de 37 px
@@ -42,18 +41,18 @@ L1_BIN = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 
 # (cela, frame SQV)
 CELLS = [
-    (0, 1),    # tipus 11 idle (estatic: op7 no es crida al DOS)
-    (1, 6),    # tipus 12 walk A
-    (2, 8),    # tipus 12 walk B
-    (3, 11),   # tipus 12 atac
+    (0, 0),    # tipus 11 walk A (científic dret)
+    (1, 1),    # tipus 11 walk B (científic pas)
+    (2, 6),    # tipus 12 walk A
+    (3, 8),    # tipus 12 walk B
     (4, 12),   # tipus 13 walk A
     (5, 14),   # tipus 13 walk B
     (6, 17),   # tipus 13 llançament
     (7, 21),   # tipus 14 walk A
     (8, 23),   # tipus 14 walk B
     (9, 26),   # tipus 14 llançament
-    (10, 27),  # tipus 21 walk A
-    (11, 29),  # tipus 21 walk B
+    (10, 28),  # tipus 21 walk A (frame 28 dret)
+    (11, 29),  # tipus 21 walk B (frame 29 pas)
     (12, 31),  # tipus 21 llançament
 ]
 
@@ -94,10 +93,14 @@ def main():
         assert w <= 32 and h <= 32, (idx, w, h)
         cells[cell] = pack_cell(px, w, h)
 
-    # Projectils: la cela 13 d'ENEMI1.BIN ja te ou/bala/plat alineats.
+    # Projectils: la cela 13 d'ENEMI1.BIN te bala (0..7), ou (8..18) i plat (19..31).
+    # A L2 nomes es llencen plats (kind 9, files 19..31). Netejar les files 0..18
+    # a zero permet comprimir millor la cela i guanyar marge a C6.
     l1 = open(L1_BIN, "rb").read()
     assert len(l1) >= 14 * 512, len(l1)
-    cells[13] = l1[13 * 512:14 * 512]
+    proj = bytearray(l1[13 * 512:14 * 512])
+    proj[0:19 * 16] = bytes(19 * 16)
+    cells[13] = bytes(proj)
 
     out = b"".join(cells)
     assert len(out) == 16 * 512

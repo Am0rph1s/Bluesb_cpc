@@ -41,11 +41,89 @@ import sys
 import argparse
 import os
 import time
+import hashlib
+import subprocess
 
 # Import from our modules
 from .zx0_common import MAX_OFFSET_ZX0, MAX_OFFSET_ZX7
 from .optimize import optimize
 from .compress import compress
+
+_NATIVE_EXE = None
+
+def _get_native_exe():
+    global _NATIVE_EXE
+    if _NATIVE_EXE is not None:
+        return _NATIVE_EXE if os.path.exists(_NATIVE_EXE) else None
+    
+    here = os.path.dirname(os.path.abspath(__file__))
+    proj = os.path.dirname(here)
+    if os.path.basename(proj) == "tools":
+        proj = os.path.dirname(proj)
+    
+    obj_dir = os.path.join(proj, "obj")
+    os.makedirs(obj_dir, exist_ok=True)
+    exe_path = os.path.join(obj_dir, "zx0_native.exe")
+    cs_path = os.path.join(proj, "tools", "zx0_native.cs")
+
+    if not os.path.exists(exe_path) and os.path.exists(cs_path):
+        csc = r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+        if not os.path.exists(csc):
+            csc = r"C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+        if os.path.exists(csc):
+            try:
+                subprocess.run([csc, "/optimize+", f"/out:{exe_path}", cs_path],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+            except Exception:
+                pass
+
+    if os.path.exists(exe_path):
+        _NATIVE_EXE = exe_path
+        return _NATIVE_EXE
+    return None
+
+def _native_compress(input_data: bytes, skip: int, backwards: bool, classic: bool, quick: bool) -> bytes | None:
+    exe = _get_native_exe()
+    if not exe:
+        return None
+    
+    here = os.path.dirname(os.path.abspath(__file__))
+    proj = os.path.dirname(here)
+    if os.path.basename(proj) == "tools":
+        proj = os.path.dirname(proj)
+    
+    obj_dir = os.path.join(proj, "obj")
+    os.makedirs(obj_dir, exist_ok=True)
+    in_tmp = os.path.join(obj_dir, f".zx0_in_{os.getpid()}.bin")
+    out_tmp = os.path.join(obj_dir, f".zx0_out_{os.getpid()}.zx0")
+
+    try:
+        with open(in_tmp, "wb") as f:
+            f.write(input_data)
+        
+        cmd = [exe]
+        if classic: cmd.append("-c")
+        if quick: cmd.append("-q")
+        if backwards: cmd.append("-b")
+        if skip > 0:
+            cmd.extend(["--skip", str(skip)])
+        cmd.extend([in_tmp, out_tmp])
+
+        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if res.returncode == 0 and os.path.exists(out_tmp):
+            with open(out_tmp, "rb") as f:
+                res_bytes = f.read()
+            return res_bytes
+    except Exception:
+        pass
+    finally:
+        if os.path.exists(in_tmp):
+            try: os.remove(in_tmp)
+            except Exception: pass
+        if os.path.exists(out_tmp):
+            try: os.remove(out_tmp)
+            except Exception: pass
+    return None
 
 def reverse_bytearray(data: bytearray):
     """Reverses a bytearray in-place."""
@@ -93,6 +171,49 @@ def zx0_compress(input_data: bytes | bytearray,
     if skip >= input_size:
         raise ValueError(f"Skip value {skip} exceeds input data size {input_size}")
     
+    # --- SHA-256 Cache Check ---
+    raw_bytes = bytes(input_data)
+    h = hashlib.sha256()
+    h.update(raw_bytes)
+    h.update(f":{skip}:{int(backwards)}:{int(classic)}:{int(quick)}".encode("ascii"))
+    cache_key = h.hexdigest()
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    proj = os.path.dirname(here)
+    if os.path.basename(proj) == "tools":
+        proj = os.path.dirname(proj)
+    cache_dir = os.path.join(proj, "obj", ".zx0_cache")
+    cache_file = os.path.join(cache_dir, f"{cache_key}.zx0")
+
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, "rb") as f:
+                cached_bytes = f.read()
+            return cached_bytes, {
+                'original_size': input_size - skip,
+                'compressed_size': len(cached_bytes),
+                'delta': 0,
+                'duration': 0.0
+            }
+        except Exception:
+            pass
+
+    # --- Fast Native C# Accelerator ---
+    native_out = _native_compress(raw_bytes, skip, backwards, classic, quick)
+    if native_out is not None:
+        try:
+            os.makedirs(cache_dir, exist_ok=True)
+            with open(cache_file, "wb") as f:
+                f.write(native_out)
+        except Exception:
+            pass
+        return native_out, {
+            'original_size': input_size - skip,
+            'compressed_size': len(native_out),
+            'delta': 0,
+            'duration': 0.01
+        }
+
     # Make input data mutable if needed
     if isinstance(input_data, bytes):
         input_data = bytearray(input_data)
@@ -153,7 +274,14 @@ def zx0_compress(input_data: bytes | bytearray,
     }
     
     # Return compressed data as bytes and stats
-    return bytes(output_data), stats
+    res_bytes = bytes(output_data)
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(cache_file, "wb") as f:
+            f.write(res_bytes)
+    except Exception:
+        pass
+    return res_bytes, stats
 
 def main():
     parser = argparse.ArgumentParser(

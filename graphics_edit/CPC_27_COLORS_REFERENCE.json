@@ -1,0 +1,272 @@
+[
+  {
+    "ink": 0,
+    "hw": 84,
+    "rgb": [
+      0,
+      0,
+      0
+    ],
+    "name": "Black"
+  },
+  {
+    "ink": 1,
+    "hw": 68,
+    "rgb": [
+      0,
+      0,
+      128
+    ],
+    "name": "Blue"
+  },
+  {
+    "ink": 2,
+    "hw": 85,
+    "rgb": [
+      0,
+      0,
+      255
+    ],
+    "name": "Bright Blue"
+  },
+  {
+    "ink": 3,
+    "hw": 92,
+    "rgb": [
+      128,
+      0,
+      0
+    ],
+    "name": "Red"
+  },
+  {
+    "ink": 4,
+    "hw": 88,
+    "rgb": [
+      128,
+      0,
+      128
+    ],
+    "name": "Magenta"
+  },
+  {
+    "ink": 5,
+    "hw": 93,
+    "rgb": [
+      128,
+      0,
+      255
+    ],
+    "name": "Mauve"
+  },
+  {
+    "ink": 6,
+    "hw": 76,
+    "rgb": [
+      255,
+      0,
+      0
+    ],
+    "name": "Bright Red"
+  },
+  {
+    "ink": 7,
+    "hw": 69,
+    "rgb": [
+      255,
+      0,
+      128
+    ],
+    "name": "Purple"
+  },
+  {
+    "ink": 8,
+    "hw": 77,
+    "rgb": [
+      255,
+      0,
+      255
+    ],
+    "name": "Bright Magenta"
+  },
+  {
+    "ink": 9,
+    "hw": 86,
+    "rgb": [
+      0,
+      128,
+      0
+    ],
+    "name": "Green"
+  },
+  {
+    "ink": 10,
+    "hw": 70,
+    "rgb": [
+      0,
+      128,
+      128
+    ],
+    "name": "Cyan"
+  },
+  {
+    "ink": 11,
+    "hw": 87,
+    "rgb": [
+      0,
+      128,
+      255
+    ],
+    "name": "Sky Blue"
+  },
+  {
+    "ink": 12,
+    "hw": 94,
+    "rgb": [
+      128,
+      128,
+      0
+    ],
+    "name": "Yellow"
+  },
+  {
+    "ink": 13,
+    "hw": 64,
+    "rgb": [
+      128,
+      128,
+      128
+    ],
+    "name": "White / Gray"
+  },
+  {
+    "ink": 14,
+    "hw": 95,
+    "rgb": [
+      128,
+      128,
+      255
+    ],
+    "name": "Pastel Blue"
+  },
+  {
+    "ink": 15,
+    "hw": 78,
+    "rgb": [
+      255,
+      128,
+      0
+    ],
+    "name": "Orange"
+  },
+  {
+    "ink": 16,
+    "hw": 71,
+    "rgb": [
+      255,
+      128,
+      128
+    ],
+    "name": "Pink"
+  },
+  {
+    "ink": 17,
+    "hw": 79,
+    "rgb": [
+      255,
+      128,
+      255
+    ],
+    "name": "Pastel Magenta"
+  },
+  {
+    "ink": 18,
+    "hw": 82,
+    "rgb": [
+      0,
+      255,
+      0
+    ],
+    "name": "Bright Green"
+  },
+  {
+    "ink": 19,
+    "hw": 66,
+    "rgb": [
+      0,
+      255,
+      128
+    ],
+    "name": "Sea Green"
+  },
+  {
+    "ink": 20,
+    "hw": 83,
+    "rgb": [
+      0,
+      255,
+      255
+    ],
+    "name": "Bright Cyan"
+  },
+  {
+    "ink": 21,
+    "hw": 90,
+    "rgb": [
+      128,
+      255,
+      0
+    ],
+    "name": "Lime Green"
+  },
+  {
+    "ink": 22,
+    "hw": 89,
+    "rgb": [
+      128,
+      255,
+      128
+    ],
+    "name": "Pastel Green"
+  },
+  {
+    "ink": 23,
+    "hw": 91,
+    "rgb": [
+      128,
+      255,
+      255
+    ],
+    "name": "Pastel Cyan"
+  },
+  {
+    "ink": 24,
+    "hw": 74,
+    "rgb": [
+      255,
+      255,
+      0
+    ],
+    "name": "Bright Yellow"
+  },
+  {
+    "ink": 25,
+    "hw": 67,
+    "rgb": [
+      255,
+      255,
+      128
+    ],
+    "name": "Pastel Yellow"
+  },
+  {
+    "ink": 26,
+    "hw": 75,
+    "rgb": [
+      255,
+      255,
+      255
+    ],
+    "name": "Bright White"
+  }
+]

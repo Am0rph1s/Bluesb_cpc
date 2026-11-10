@@ -27,15 +27,15 @@ LEVEL_NAMES = ["magasin", "ent", "prison", "egou", "ville", "concert"]
 # Truncar a 6 donava cicles de 24 loops (0,96 s) sense finestra útil.
 LEVEL_PALETTES = [
     # L1: Paleta oficial Mode 0 de video.s
-    [0x4B, 0x47, 0x40, 0x40, 0x44, 0x5E, 0x5E, 0x4C, 0x57, 0x56, 0x52, 0x54, 0x5F, 0x5C, 0x5C, 0x40],
+    [0x4B, 0x47, 0x40, 0x40, 0x44, 0x43, 0x5B, 0x4C, 0x57, 0x56, 0x52, 0x54, 0x5F, 0x5C, 0x5C, 0x40],
     # L2: Factoria
-    [0x4B, 0x47, 0x40, 0x46, 0x46, 0x47, 0x47, 0x47, 0x5F, 0x5E, 0x5E, 0x54, 0x5F, 0x58, 0x58, 0x4B],
+    [0x4B, 0x47, 0x40, 0x46, 0x44, 0x47, 0x5E, 0x47, 0x57, 0x5E, 0x5E, 0x54, 0x40, 0x5C, 0x5C, 0x40],
     # L3: Preso
-    [0x4B, 0x47, 0x40, 0x40, 0x46, 0x43, 0x47, 0x47, 0x57, 0x56, 0x52, 0x54, 0x5B, 0x4C, 0x5E, 0x4B],
+    [0x4B, 0x47, 0x40, 0x5F, 0x44, 0x43, 0x47, 0x5C, 0x57, 0x56, 0x52, 0x54, 0x5B, 0x4C, 0x5E, 0x4B],
     # L4: Clavegueres
     [0x4B, 0x47, 0x5E, 0x46, 0x46, 0x47, 0x5F, 0x40, 0x54, 0x40, 0x40, 0x54, 0x40, 0x5E, 0x46, 0x5B],
     # L5: Ciutat / Teulades
-    [0x4B, 0x47, 0x5E, 0x40, 0x58, 0x47, 0x5F, 0x47, 0x57, 0x47, 0x40, 0x54, 0x5B, 0x54, 0x58, 0x4B],
+    [0x4B, 0x47, 0x5E, 0x40, 0x44, 0x5C, 0x45, 0x4F, 0x46, 0x58, 0x5B, 0x54, 0x5B, 0x54, 0x58, 0x4B],
     # L6: Concert
     [0x4B, 0x47, 0x40, 0x40, 0x44, 0x43, 0x5C, 0x47, 0x46, 0x5C, 0x4E, 0x54, 0x54, 0x5C, 0x4A, 0x5F],
 ]
@@ -387,11 +387,12 @@ def build_level_pkg(level_idx=0, out_dir=None):
         f"#define LEVEL_PRESS_COUNT {len(press_x)}",
         f"#define LEVEL_PRESS_STORAGE {max(1, len(press_x))}",
         f"#define LEVEL_SCAFFOLD_COUNT {len(elev_x) if level_idx == 4 else 0}",
-        f"#define LEVEL_HAS_WATER {(1 if level_idx == 3 else 0)}",
-        f"#define LEVEL_HAS_CONVEYOR {(1 if any((t in (6, 7)) for t in set(trig_bin[x * 10 + 2] for x in set(map_bin))) else 0)}",
-        f"#define LEVEL_HAS_ACID {(1 if any((t in (2, 3, 4, 5)) for t in set(trig_bin[x * 10 + 6] for x in set(map_bin))) else 0)}",
-        f"#define LEVEL_HAS_BALLOON {(1 if any((trig_bin[x * 10] == 8) for x in set(map_bin)) else 0)}",
-        f"#define LEVEL_HAS_UMBRELLA {(1 if any((trig_bin[x * 10] == 9) for x in set(map_bin)) else 0)}",
+        f"#define LEVEL_HAS_WATER {(1 if any(trig_bin[x * 10] in (11, 12, 13, 14, 15) for x in (set(map_bin) | set(rooms_bin))) else 0)}",
+        f"#define LEVEL_HAS_PIPE {(1 if any((t in (17, 18, 19)) for t in set(trig_bin[x * 10 + 2] for x in (set(map_bin) | set(rooms_bin)))) else 0)}",
+        f"#define LEVEL_HAS_CONVEYOR {(1 if any((t in (27, 28, 30, 32, 33, 34, 35, 36, 37, 38, 39)) for t in set(trig_bin[x * 10 + 2] for x in (set(map_bin) | set(rooms_bin)))) else 0)}",
+        f"#define LEVEL_HAS_ACID {(1 if any((t in (2, 3, 4, 5)) for t in set(trig_bin[x * 10 + 6] for x in (set(map_bin) | set(rooms_bin)))) else 0)}",
+        f"#define LEVEL_HAS_BALLOON {(1 if any((trig_bin[x * 10] == 8) for x in (set(map_bin) | set(rooms_bin))) else 0)}",
+        f"#define LEVEL_HAS_UMBRELLA {(1 if any((trig_bin[x * 10] == 9) for x in (set(map_bin) | set(rooms_bin))) else 0)}",
         f"#define LEVEL_INST_COL      {inst_col}",
         f"#define LEVEL_INST_ROW      {inst_row}",
         f"#define LEVEL_INST_TILE     {inst_tile}",

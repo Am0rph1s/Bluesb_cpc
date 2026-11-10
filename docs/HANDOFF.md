@@ -1,10 +1,26 @@
 # Handoff Global — Blues Brothers CPC (Estat Actual i Guia de Continuació)
 
 > **Document unificat de referència per reprendre el desenvolupament**
-> **Data d'actualització**: 2 de novembre de 2026
-> **Branca**: `fix-c1-l3-unlock` — estat 02/11/2026 (Tots els 6 nivells integrats en un sol disc DSK amb 26 KB lliures; vegeu `git log`)
+> **Data d'actualització**: 10 de novembre de 2026
+> **Branca**: `fix-c1-l3-unlock` — estat 10/11/2026 (Harmonització de paletes Mode 0 L1/L2/L3, eines gràfiques graphics_tool, extracció DOS i correcció bugs 1:1 DOS)
 > **Repo**: `https://github.com/Am0rph1s/Bluesb_cpc`
 > **Target**: Amstrad CPC 6128 (128 KB RAM) — Z80, Mode 0 (16 colors), SDCC 4.5.0 + sdasz80, build amb Python 3.
+
+### Actualització 10/11/2026: Harmonització Paletes Mode 0 (L1-L3) i Eines Gràfiques
+1. **Harmonització de Paletes de Mode 0 (16 colors CPC Gate Array)**:
+   - **Nivell 2 (Fàbrica / ENT)**:
+     - S'ha corregit `LEVEL_PALETTES[1]` a `tools/pack_level.py`: pens 13 i 14 assignats a vermell (`0x5C`), pen 4 a blau marí (`0x44`) i pen 8 a blau cel (`0x57`).
+     - Això resol definitivament el problema visual on l'obrer/enemic de la planta baixa es camuflava i emborronava amb les parets i canonades verdes de la fàbrica.
+   - **Nivell 3 (Presó / PRISON)**:
+     - S'ha realitzat l'auditoria cromàtica creuada entre el tileset de la presó, els enemics (policies amb escut, policies armats, rates) i en Jake/Elwood.
+     - Es van unificar els slots repetits o buits (eliminant el cian inutilitzat a pen 4 i duplicats innecessaris) per donar cabuda als 14 colors reals de l'escena: pen 4 blau marí (`0x44`), pen 7 vermell (`0x5C`), pen 3 blau pastel (`0x5F`). Coincidència cromàtica del 100%.
+2. **Eines Gràfiques i Extracció DOS 1:1**:
+   - Creat [`tools/graphics_tool.py`](../tools/graphics_tool.py) per a la importació i exportació automàtica de gràfics en Mode 0, sincronitzant paletes JSON, tilesets i enemics.
+   - Creats scripts d'extracció i comparació de recursos VGA DOS originals a `tools/` (`extract_dos_enemies.py`, `extract_dos_tiles.py`, `extract_dos_players.py`).
+   - Creat directori centralitzat [`graphics_edit/`](../graphics_edit/) per contenir les edicions mestres de tilesets, enemics i paletes.
+3. **Verificació Funcional**:
+   - Passat `tools/smoke_test.py` amb èxit complet (CRCs CCITT dels 24 fitxers de disc i verificació d'arrencada).
+
 
 ---
 
@@ -17,8 +33,9 @@
    - Mai ajustar valors a ull ni per intuïció. Per a coordenades, utilitzar la fórmula oficial:
      `cpc_x = dos_x / 2 - w_cpc / 2`, `cpc_y = dos_y - h_dos` (`docs/DOS_CPC_COORDINATES.md`).
 2. **Pressupost de memòria resident (Bloc 0: `0x0000..0x3FFF`)**:
-   - `_CODE`: `0x0100..0x385C` (**14.172 B**), amb **36 B** de marge fins a `_DATA` (`0x3880`).
-   - `_DATA`: `0x3880..0x3CDE` (1.108 B, inclou `s_lv`). Pila lliure: ~800 B.
+   - `_CODE`: `0x0100..0x34AC` (**13.228 B**), amb marge lliure net fins a `_DATA` (`0x3600`).
+   - `_DATA`: `0x3600..0x3B15` (1.301 B, inclou `s_lv` i variables estàtiques compartides). Pila lliure: **1.257 B** (canari a `0x3B40`, intacte `0x55AA`).
+   - `check_room_bonus`: restaurada amb variables estàtiques compartides (`s_crb_*`) sense cap despesa de frame de pila (0 B IX frame). Permet agafar vinils i instrument a les sales amb neteja i refresc de pantalla net (`s_rep_*`).
    - Qualsevol lògica nova no trivial s'ha de compilar en bancs superiors (C1, C4-C7), mai al resident.
 3. **Regla de commutació de maquinari**:
    - Per cridar codi bancat que escriu a VRAM s'utilitza `0xC0`, mai `0xC1`
@@ -52,10 +69,70 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
 .\zesarux.exe --machine CPC6128 --enable-dsk --dsk-file ..\..\bluesb.dsk --enable-remoteprotocol --remoteprotocol-port 10000
 ```
 
-Dreceres de test a `src/main.c`: mantenir **`2`** en arrencar entra directament a L2; **`3`** entra a L3; **`4`** entra a L4.
+Dreceres de test a `src/main.c`: mantenir **`2`** en arrencar entra directament a L2; **`3`** entra a L3; **`4`** entra a L4; **`5`** entra a L5; **`6`** entra a L6.
 Són només per a depuració i no afecten el flux normal.
 
-### Actualització 02/11/2026: Nivell 6 (Concert), Seqüència Endgame i Disc Únic (26 KB Lliures)
+### Actualització 08/11/2026: Diagnosi Reixa Magasin (CPC vs DOS) i Paleta L5
+1. **Reixa de Primer Pla a Magasin L1 (Limitació de Disseny vs Bug)**:
+   - *Comportament a DOS*: El DOS original fa servir una capa de primer pla real (*avant-plan*, `AVTMAG.SQV`), dibuixada a coordenades fixes de pantalla a sobre dels sprites. Això tapa automàticament qualsevol entitat (Jake, caixes agafades, enemics) i retalla de manera natural a les vores dels tiles.
+   - *Aproximació a CPC (optimització de cicles)*: Donada la restricció de 25 FPS amb el Z80 a 4 MHz i memòria VRAM/RAM molt ajustada, no hi ha marge per a un segon passatge de render de primer pla amb buffers de restauració. La reixa es va implementar com una textura inline dins el propi blitter de Jake (`engine/sprite.s:blit_grate_line` amb `_grate_lut`) activada pel booleà `g_grate_enable` a `moving_bank.c:635` segons el centre de Jake.
+   - *Causes de les dues anomalies observades*:
+     - **Efecte estrany a les entrades/portes**: `g_grate_enable` és un booleà global per a tot el rectangle de 16 píxels d'en Jake. En entrar per la porta, tan bon punt el centre del personatge creua el límit del trigger, la reixa cobreix tot l'sprite (incloent la meitat del cos que encara sobresurt fora de la porta sobre l'aire lliure).
+     - **La caixa no queda tapada**: La caixa portada es renderitza com una entitat independent a `carry_draw()` -> `moving_blit_box()`, el qual és un blitter genèric que no aplica la màscara `_grate_lut`.
+   - *Millores proposades per a futures fases*:
+     - Estendre `g_grate_enable` a `carry_draw()` per aplicar la màscara també a la caixa portada.
+     - Implementar clipping per columnes a `blit_grate_line` basat en la distància al marge del tile per evitar que la textura sobresurti fora del llindar de les portes.
+2. **Correcció de la Paleta de L5 (Ciutat / Teulades)**:
+   - S'ha assignat la paleta de maquinari fidel als 10 colors del tileset editat (`tileset_edit.png`), substituint el magenta (0x58) per blau (0x44) i cian (0x46).
+3. **Comportament 1:1 de Policies i Enemics Tiradors (`object_func_op2`)**:
+   - *Problema previ*: Els policies patrullaven caminant cap a en Jake entre trets perquè només s'aturaven durant `AIM_FRAMES` (12 frames) i requerien estar ja encarant en Jake prèviament. Quan el projectil encara estava en vol o en cooldown, el policia avançava caminant cap al jugador, fent el joc molt més difícil i trencat respecte a DOS.
+   - *Comportament original DOS*: A `tools/blues_dos/bb/objects.c` (`object_func_op2`), en entrar en Jake a la zona de tret (`player_ydist <= 20 && abs(player_xdist) < 80`), el policia gira immediatament de cara a en Jake (`facing_left = player_xdist < 0`), entra en cicle de tret (`special_anim = 2`) de 24 bucles i posteriorment en espera/recarrega (`special_anim = 3`) de 24 bucles. Mentre `special_anim != 0`, `direction_lr = 0` (immòbil absolut). En acabar el cooldown, si en Jake encara és a la zona, encadena immediatament el següent tret sense avançar mai.
+   - *Solució a CPC (`src/enemy.c`)*:
+     - `SHOOT_CYCLE_FRAMES = 24` (48 bucles DOS @ 50 Hz = 24 frames CPC @ 25 Hz), dividit en 12 frames d'apuntar/disparar (`AIM_FRAMES`) i 12 frames de cooldown/espera immòbil.
+     - Quan en Jake és en rang (`in_range`), el tirador s'encara a en Jake (`e->dir = (dx_jake >= 0) ? 1 : -1`) i manté `dx = 0; nx = e->x;`.
+     - En `en2_draw()`, només s'aplica `aim_cell`/`throw_cell` durant la fase d'apuntar (`shoot_timer > 12`); durant el cooldown es dibuixa la pose de peu estàtica (`base_cell`, `step = 0`).
+     - Només quan en Jake surt del rang i el timer arriba a 0 el policia reprèn la seva patrulla habitual.
+
+### Actualització 06/11/2026: Optimització Radical del Procés de Compilació i Correcció de Bugs de Gameplay
+
+#### 1. Optimització del Temps de Compilació (de ~3 hores a 6 segons)
+- **Diagnòstic del coll d'ampolla original**:
+  - `pack_level.py` es cridava incondicionalment dins del bucle de convergència CHS/CRC de `build.py` (8 iteracions), escrivint fitxers amb `open("wb")` i alterant els timestamps (`mtime`), invalidant la memòria cau i forçant a recompilar amb SDCC i recomprimir en ZX0 els 6 nivells múltiples vegades seguides.
+  - El compressor ZX0 oficial en Python pur (`tools/zx0pkg/optimize.py`) executava programació dinàmica en Python interpretat creant milions d'objectes: per als fitxers sense compressió ràpida (`quick=False`) executava **~86 milions d'iteracions en Python per fitxer**, trigant hores.
+- **Solució implementada**:
+  1. **Accelerador ZX0 natiu C# (`tools/zx0_native.cs`)**:
+     - Implementació nactiva 1:1 de l'algorisme ZX0 oficial d'Einar Saukas amb arrays plans i compilació en memòria/optimitzada (`csc.exe /optimize+`).
+     - Comprimeix blocs de 16 KB en **30–80 ms** (>1.000x més ràpid que Python interpretat) generant un flux binari 100% idèntic.
+  2. **Memòria cau persistent SHA-256 (`obj/.zx0_cache/`)**:
+     - Qualsevol bloc binari que ja hagi estat comprimit anteriorment es recupera del disc en **< 1 ms**, fins i tot en recompilacions forçades (`build.py -f`).
+  3. **Preservació de timestamps (`_write_if_changed`)**:
+     - `tools/pack_level.py` ara comprova si el contingut generat difereix del disc abans d'escriure (`TILESETC`, `MAPC`, `ROOMSC`, `TRIGC`, `RESTORE`, `level_pkg.h`, `hud_pkg.h`).
+  4. **Bucle de convergència de `tools/build.py` optimitzat**:
+     - La generació de paquets de nivell s'executa **abans** del bucle de convergència CHS, ja que no depèn del disc.
+     - Les iteracions $it \ge 1$ desactiven `force` (`cur_force = force if it == 0 else False`), recompilant només els mòduls les taules dels quals hagin canviat realment (`main.c` / `starter.c`).
+- **Resultats mesurats**:
+  - Reconstrucció completa des de zero (`py -3 tools/build.py -f --check`): **5 minuts i 58 segons** (abans > 3 hores).
+  - Compilació incremental habitual (`py -3 tools/build.py --check`): **6,7 segons**.
+  - Catàleg i CRC de tots els fitxers del DSK verificats amb èxit (`tools/smoke_test.py --dsk-only`).
+
+#### 2. Correcció del Bug de Congelació del Policia en Disparar (Bug 8)
+- **Causa arrel trobada**: A `src/enemy.c`, el buffer de restauració del fons del projectil de bala `PROJ_BG_ADDR(p)` estava adreçat rígidament a `0x7800 + (p << 6)`. Tanmateix, el codi compilat d'enemics al banc C6 (`_CODE`) arriba fins a `0x7871`. En disparar el policia, el blitter desava el fons a `0x7800`, **sobreescrivint directament el codi executable d'enemics**.
+- **Solució 1:1 DOS**: Buffer reubicat a `static u8 s_proj_bg[2][56]` i `s_cache_who` dins del segment `_DATA` de C6 (que finalitza netament abans d'`ENEMY_BASE = 0x5A00`), i `s_spawn` mogut a `0x4B20`.
+- **Verificació**: Test automàtic `tools/verify_cop_shooting.py` a ZEsarUX amb Jake davant del policia (`px=240, py=1088`): el policia dispara, la bala col·lisiona amb en Jake, Jake perd cors, fa respawn i el motor continua funcionant a 50 Hz sense cap bloqueig.
+
+#### 3. Correcció de la Nota Musical i Creus de Nivell al Menú (Bug 4)
+- A `tools/gen_map_sticker.py`:
+  - `VMAP_NOTE`: actualitzat a color negre (pen 5 `0x54`), fidel al disseny original de DOS (abans erròniament vermell).
+  - `VMAP_DASH` (creus de nivell superat): actualitzades a vermell (pen 1 `0x5C` i pen 11 `0x4C`) en comptes de grisos.
+  - Generat `assets/bbdata/MAPSTICK.BIN` (1.184 B) i integrat al DSK.
+
+#### 4. Correcció del Tile Estrany en Agafar Caixes (Bug 5)
+- **Causa arrel trobada**: A [`engine/bank5_table.s`](file:///c:/Projects/bluesb_cpc/engine/bank5_table.s), la rutina `_b5_world_reset_tile` trobava correctament el tile de fons veí (tile 20) i el desava a `C`. Immediatament després, executava `pop bc` per restaurar la fila `B = row`. Com que el `pop` recupera tant `B` com `C`, **esborrava el tile calculat a `C`** i hi posava les escombraries de la pila (la fila `70`), pintant un tile estrany de fàbrica.
+- **Solució**: S'emmagatzema el tile trobat a `A` (`ld a, (hl)`), es buida la pila netament (`pop hl; pop bc; pop de`) i es transfereix `ld c, a`, restaurant netament l'asfalt/fons (`tile 20`).
+
+#### 5. Correcció de la Plataforma Fantasma en Arrambar-se a la Paret (Bug 7)
+- **Causa arrel trobada**: A [`src/main.c:642`](file:///c:/Projects/bluesb_cpc/src/main.c#L642), el mostreig del peu esquerre per a la detecció de sòl utilitzava `c_mid1 = (u16)((px + 3) >> 3)`. Com que la física 1:1 DOS atura el cos d'en Jake horitzontalment a `px + 4`, `px + 3` sobresortia 1 píxel per l'esquerra entrant dins de la columna de la paret vertical (tile 17, `op = 20`). Com que `is_floor_solid` tracta `op = 20` com a plataforma, en Jake detectava la paret com si fos un terra a la fila 80 i s'hi asseia en l'aire.
+- **Solució**: Ajustat `c_mid1 = (u16)((px + 5) >> 3)` (el peu esquerre real, dins del cos `px+4..px+11`). Ara, en arrambar-se a qualsevol paret, mai mostreja la columna exterior i cau de manera fluida fins al terra real.
 1. **Disc Únic DSK (6 Nivells en 180 KB amb 26 KB de Marge Lliure)**:
    - Desacoblament de codi i dades a `ENEMI`: `ENEMYCODE.BIN` (7.505 B) es comparteix resident a `C6:0x5A00..0x782F` carregat per L1.
    - Les taules `s_spawn` es generen binàries (234 B per nivell) a `C6:0x4E00..0x4EE9`.
@@ -349,6 +426,7 @@ Ubicada a `C1:0x7680` al paquet i copiada a `s_lv` a RAM resident:
 
 ## 8. Llista de Documents de Suport
 
+- [`docs/OPTIMITZACIO_BUILD.md`](file:///C:/Projects/bluesb_cpc/docs/OPTIMITZACIO_BUILD.md): arquitectura de la pipeline de compilació ràpida (C# ZX0, SHA-256 cache, convergència CHS).
 - [`docs/DOS_CPC_COORDINATES.md`](file:///C:/Projects/bluesb_cpc/docs/DOS_CPC_COORDINATES.md): fórmules de conversió 1:1.
 - [`docs/PLA_NIVELLS_UNIVERSAL.md`](file:///C:/Projects/bluesb_cpc/docs/PLA_NIVELLS_UNIVERSAL.md): pla d'extensió universal als 6 nivells.
 - [`docs/LEVEL_PACKAGE.md`](file:///C:/Projects/bluesb_cpc/docs/LEVEL_PACKAGE.md): especificació del format de fitxers `.PAK` i `.ZX0`.
@@ -361,8 +439,6 @@ Ubicada a `C1:0x7680` al paquet i copiada a `s_lv` a RAM resident:
 
 ## 9. Properes passes recomanades
 
-1. **Commit** de la integració L3 (build, tools, spawns/frames i HANDOFF) un cop validada.
-2. Validar L3 en joc: portes, 6 sales, àcid, mort/respawn i sortida de nivell.
-3. Implementar `type 4`/op3 (llançador) amb fidelitat DOS i mirar si cal `ENEMY_N=22`.
-4. Implementar movers `type 5`/op4 i `type 23`/op11 (L3) al subsistema de movers.
-5. Reprendre els pendents de L2: desguàs del dipòsit d'aigua i trampolins.
+1. **Harmonitzar disseny de la caixa (Bug 6)**: transferir el dibuix del Tile 19 (`level1_magasin/tileset.png`, textura de fusta i segell quadrat) als frames de càrrega (`player_jake/jake.png` i `player_elwood/elwood.png`).
+2. **Validació a ZEsarUX en viu dels canvis recents**: comprovar en joc el tret del policia, la restauració del fons de les caixes en agafar-les i el comportament de la paret a la Sala 2.
+3. **Commit** de la integració de l'accelerador ZX0, optimitzacions de `build.py` i correcció dels bugs 4, 5, 7 i 8.

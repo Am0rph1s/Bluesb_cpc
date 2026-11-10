@@ -60,22 +60,11 @@ _bc_respawn::
 
 ;; ============================================================
 ;; const u8* b5_trig_ptr(u8 col, u8 row)
-;; Entrada: A = col, L = row. Sortida: DE = &TRIG_PTR[t * 10] o 0
+;; Entrada: A = col, L = row. Sortida: DE = &TRIG_PTR[t * 5] o 0
 ;; ============================================================
 _b5_trig_ptr::
-    cp      #128
-    jr      nc, trig_null$
-    ld      c, a
-    ld      a, l
-    cp      #100
-    jr      nc, trig_null$
-    srl     a
-    ld      h, a
-    ld      a, #0
-    rra
-    or      c
-    ld      l, a
-    set     6, h                ;; HL = 0x4000 + (row << 7) + col
+    call    b5_cell_ptr$
+    jr      c, trig_null$
     ld      l, (hl)             ;; L = tile id
     ld      h, #0
     ld      d, h
@@ -104,6 +93,75 @@ _b5_tile_type::
     ret
 
 ;; ============================================================
+;; b5_cell_ptr$ (Helper intern)
+;; Resol l'adreça de la cel·la a C5 tant per al món com per a sales
+;; Entrada: A = col, L = row
+;; Sortida: CF = 0 i HL = adreça de la cel·la a C5 (0x4000..0x7FFF)
+;;          CF = 1 si fora de límits
+;; Modifica: AF, BC, HL
+;; ============================================================
+b5_cell_ptr$:
+    ld      c, a                ;; C = col
+    ld      a, (_s_lv + 5)      ;; A = room_row0
+    cp      #255
+    jr      z, cell_world$
+    ld      b, a                ;; B = room_row0
+    ld      a, l                ;; A = row
+    sub     b                   ;; A = row - room_row0
+    jr      c, cell_world$      ;; si row < room_row0 -> món
+    ;; --- Dins de sales ---
+    ld      b, a                ;; B = r_rel
+    ld      hl, #(_s_lv + 4)
+    ld      a, (hl)             ;; A = room_rows
+    cp      b
+    jr      z, cell_err$
+    jr      c, cell_err$
+    inc     hl
+    inc     hl
+    inc     hl                  ;; HL = _s_lv + 7
+    ld      a, (hl)             ;; A = room_total_cols
+    cp      c
+    jr      z, cell_err$
+    jr      c, cell_err$
+    ld      a, b                ;; A = r_rel (0..9)
+    add     a, a                ;; r_rel * 2
+    ld      hl, #(_s_lv + 14)   ;; &s_lv.room_rowoff[0]
+    add     a, l
+    ld      l, a
+    jr      nc, 1$
+    inc     h
+1$:
+    ld      a, (hl)
+    inc     hl
+    ld      h, (hl)
+    ld      l, a                ;; HL = s_lv.room_rowoff[r_rel]
+    ld      b, #0               ;; BC = col
+    add     hl, bc              ;; HL += col
+    ld      bc, (_s_lv + 56)    ;; BC = s_lv.rooms_off
+    add     hl, bc              ;; HL += rooms_off
+    or      a                   ;; CF = 0
+    ret
+cell_world$:
+    ld      a, c                ;; A = col
+    cp      #128
+    jr      nc, cell_err$
+    ld      a, l                ;; A = row
+    cp      #100
+    jr      nc, cell_err$
+    srl     a
+    ld      h, a
+    ld      a, #0
+    rra
+    or      c
+    ld      l, a
+    set     6, h                ;; HL = 0x4000 + (row << 7) + col
+    or      a                   ;; CF = 0
+    ret
+cell_err$:
+    scf                         ;; CF = 1
+    ret
+
+;; ============================================================
 ;; void b5_set_tile(u8 col, u8 row, u8 new_tile)
 ;; Entrada (__sdcccall 1): A = col, L = row, (sp+2) = new_tile
 ;; ============================================================
@@ -113,24 +171,68 @@ _b5_set_tile::
     pop     bc                  ;; B = new_tile, i SP avança +1B netejant l'argument!
     push    de
     ld      c, b                ;; C = new_tile
-    ld      b, l                ;; B = row
+    push    bc                  ;; save new_tile in C
     ld      e, a                ;; E = col
-    ld      a, e
-    cp      #128
-    ret     nc
-    ld      a, b
-    cp      #100
-    ret     nc
-b5_set_tile_ebc$:
-    ld      a, b
-    srl     a
-    ld      h, a
-    ld      a, #0
-    rra
-    or      e
-    ld      l, a
-    set     6, h                ;; HL = 0x4000 + (row << 7) + col
-    ld      (hl), c             ;; MAP_MUT[...] = new_tile
+    ld      b, l                ;; B = row
+    push    de                  ;; save col in E
+    push    bc                  ;; save row in B
+    call    b5_cell_ptr$
+    jr      nc, 1$
+    pop     bc
+    pop     de
+    pop     bc
+    ret
+1$:
+    pop     bc                  ;; B = row
+    pop     de                  ;; E = col
+    pop     af                  ;; A = new_tile (salvat abans)
+    ld      c, a                ;; C = new_tile
+    jr      b5_write_and_repaint$
+
+;; ============================================================
+;; void b5_world_reset_tile(u8 col, u8 row)
+;; Entrada: A = col, L = row
+;; ============================================================
+_b5_world_reset_tile::
+    ld      e, a                ;; E = col
+    ld      b, l                ;; B = row
+    push    de                  ;; save col in E
+    push    bc                  ;; save row in B
+    call    b5_cell_ptr$
+    jr      nc, 10$
+    pop     bc
+    pop     de
+    ret
+10$:
+    ld      a, (hl)             ;; A = n = *mp
+    push    hl
+    ld      d, #8
+1$:
+    inc     hl                  ;; 1:1 DOS (level.c:832): cerca fons cap a la DRETA primer
+    cp      (hl)
+    jr      nz, 3$
+    dec     d
+    jr      nz, 1$
+    pop     hl
+    push    hl
+    ld      d, #8
+2$:
+    dec     hl                  ;; Fallback cap a l'esquerra si a la dreta no hi ha fons
+    cp      (hl)
+    jr      nz, 3$
+    dec     d
+    jr      nz, 2$
+3$:
+    ld      a, (hl)             ;; A = m != n (fons trobat netament)
+    pop     hl                  ;; HL = cell ptr original
+    pop     bc                  ;; B = row
+    pop     de                  ;; E = col
+    ld      c, a                ;; C = background tile (després de restaurar BC)
+    ;; cau a b5_write_and_repaint$
+
+;; Entrada: HL = adreça cel·la C5, E = col, B = row, C = new_tile
+b5_write_and_repaint$:
+    ld      (hl), c             ;; MAP_MUT[...] o ROOMS[...] = new_tile
     ld      a, (_s_rep_n)
     cp      #3
     ret     nc
@@ -153,48 +255,6 @@ b5_set_tile_ebc$:
     add     hl, de
     ld      (hl), #3            ;; s_rep_pages[i] = 3
     ret
-
-;; ============================================================
-;; void b5_world_reset_tile(u8 col, u8 row)
-;; Entrada: A = col, L = row
-;; ============================================================
-_b5_world_reset_tile::
-    cp      #128
-    ret     nc
-    ld      e, a                ;; E = col
-    ld      a, l
-    cp      #100
-    ret     nc
-    ld      b, a                ;; B = row
-    srl     a
-    ld      h, a
-    ld      a, #0
-    rra
-    or      e
-    ld      l, a
-    set     6, h                ;; HL = 0x4000 + (row << 7) + col
-    ld      a, (hl)             ;; A = n = *mp
-    push    hl
-    ld      d, #8
-1$:
-    inc     hl                  ;; 1:1 DOS (level.c:832): cerca fons cap a la DRETA primer
-    cp      (hl)
-    jr      nz, 3$
-    dec     d
-    jr      nz, 1$
-    pop     hl
-    push    hl
-    ld      d, #8
-2$:
-    dec     hl                  ;; Fallback cap a l'esquerra si a la dreta no hi ha fons
-    cp      (hl)
-    jr      nz, 3$
-    dec     d
-    jr      nz, 2$
-3$:
-    ld      c, (hl)             ;; C = m != n (fons trobat netament)
-    pop     hl                  ;; equilibra pila
-    jr      b5_set_tile_ebc$
 
 ;; ============================================================
 ;; void moving_bank_popup_restore(void)
@@ -259,13 +319,13 @@ _moving_bank_push::
     ld      a, (de)
     ld      c, a                ;; C = op1
 
-    ;; 1. Deteccio de gel (op=30 o rampes 32..35)
+    ;; 1. Deteccio de gel (op=30 o rampes 32..35 i gel 36..39)
     ld      a, b
     cp      #30
     jr      z, ice_on$
     cp      #32
     jr      c, chk_c$
-    cp      #36
+    cp      #40
     jr      c, ice_on$
 chk_c$:
     ld      a, c
@@ -273,7 +333,7 @@ chk_c$:
     jr      z, ice_on$
     cp      #32
     jr      c, ice_off$
-    cp      #36
+    cp      #40
     jr      c, ice_on$
 ice_off$:
     xor     a

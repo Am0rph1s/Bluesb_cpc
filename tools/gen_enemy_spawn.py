@@ -36,45 +36,53 @@ LEVEL_NAMES = ["magasin", "ent", "prison", "egou", "ville", "concert"]
 MAX_OBJECTS = 41
 
 # type DOS -> (kind CPC, vx, base_cell, aim_cell, throw_cell)
-# Per defecte (L1..L4)
-SPAWN_TYPES_DEFAULT = {
-    11: (22, 0, 0, 0, 0),    # estatic (op7 sense case al DOS)
-    12: (18, 24, 1, 3, 3),   # walker op1 (xmaxvelocity 40)
-    13: (21, 32, 4, 6, 6),   # llançador op7 (xmaxvelocity 32)
-    14: (17, 20, 7, 9, 9),   # op10
-    21: (17, 20, 10, 12, 12),  # op10
-    # L3 (vegeu tools/gen_enemy3_frames.py per a les celes)
-    3: (18, 24, 0, 0, 0),    # guardia amb escut: patrulla sense tret (op2)
-    4: (4, 24, 5, 11, 11),   # policia amb pistola: com L1 (patrulla + tret)
-    6: (24, 24, 13, 13, 13),  # rata/gos L3 op1: walker amb hitbox h=10 (level_obj_h[6])
-    # L4 EGOU (vegeu tools/gen_enemy4_frames.py per a les celes)
-    25: (18, 24, 0, 1, 1),    # policia L4 (op2: patrulla)
-    26: (9,  24, 4, 5, 5),    # peix gran / monstre marí L4 (op6: neda i fa mal, class 2)
-    27: (18, 32, 6, 7, 7),    # rata gran L4 (op13: walker rapid)
-    28: (18, 24, 2, 3, 3),    # patruller L4 (op1)
-    29: (24, 32, 8, 8, 8),    # rata petita L4 (op13: walker rapid hitbox h=10/16)
-    30: (22, 0,  9, 9, 9),    # estatic L4 (op14)
-    31: (18, 32, 10, 11, 11), # walker mitja L4 (op13: walker rapid)
+# L2 ENT (vegeu tools/gen_enemy2_frames.py per a les celes)
+SPAWN_TYPES_L2 = {
+    11: (18, 24, 0, 2, 2),    # científic walker (op1 / 1:1 DOS object_func_op1): walk 0/1
+    12: (18, 24, 2, 4, 4),    # treballador walker (op1): walk 2/3
+    13: (21, 32, 4, 6, 6),    # llançador (op7): walk 4/5, llançament 6
+    14: (17, 20, 7, 9, 9),    # treballador llançador (op10): walk 7/8, llançament 9
+    21: (17, 20, 10, 12, 12), # llançador (op10): walk 10/11, llançament 12
+}
+
+# L3 PRISON (vegeu tools/gen_enemy3_frames.py per a les celes)
+SPAWN_TYPES_L3 = {
+    3: (18, 24, 0, 2, 2),     # guardia amb escut: patrulla walk 0/1 (op2)
+    4: (4, 24, 5, 11, 11),    # policia amb pistola: walk 5/6, aim 11
+    6: (24, 24, 13, 15, 15),  # gos/rata L3 op1: walk 13/14, hitbox h=10
+}
+
+# L4 EGOU (vegeu tools/gen_enemy4_frames.py per a les celes)
+SPAWN_TYPES_L4 = {
+    25: (18, 24, 0, 2, 2),    # policia L4 (op2: patrulla walk 0/1)
+    26: (9,  24, 4, 6, 6),    # peix gran / monstre marí L4 (op6: neda 4/5, fa mal, class 2)
+    27: (18, 32, 6, 8, 8),    # rata gran L4 (op13: walker rapid walk 6/7)
+    28: (18, 24, 2, 4, 4),    # patruller L4 (op1: walk 2/3)
+    29: (24, 32, 8, 10, 10),  # rata petita L4 (op13: walker rapid walk 8/9, hitbox h=10/16)
+    30: (22, 0,  13, 13, 13), # estatic L4 (op14: cela 13)
+    31: (18, 32, 10, 12, 12), # walker mitja L4 (op13: walker rapid walk 10/11)
     32: (22, 0,  12, 12, 12), # aranya L4 (op15: aranya de sostre)
-    33: (8,  24, 14, 15, 15), # peix petit decoratiu d'aigua L4 (op16, class 0, no fa mal)
-    34: (9,  24, 4, 5, 5),    # peix gran d'aigua L4 (op16, class 2, fa mal)
+    33: (8,  24, 14, 16, 16), # peix petit decoratiu d'aigua L4 (op16, swim 14/15, class 0, no fa mal)
+    34: (9,  24, 4, 6, 6),    # peix gran d'aigua L4 (op16, swim 4/5, class 2, fa mal)
 }
 
 # L5 VILLE (vegeu tools/gen_enemy5_frames.py)
 SPAWN_TYPES_L5 = {
-    4:  (4,  24, 0, 2, 2),    # policia (op2: patrulla + tret)
-    21: (17, 20, 3, 5, 5),    # cambrera llançadora (op10)
-    36: (17, 20, 6, 8, 8),    # home llançador (op10)
-    37: (18, 24, 9, 9, 9),    # patruller (op0)
-    38: (25, 24, 14, 14, 14), # gos saltador (op18)
-    39: (18, 24, 11, 11, 11), # walker (op1)
+    4:  (4,  24, 0, 2, 2),     # policia (op2: patrulla walk 0/1 + tret frame 2)
+    21: (17, 20, 3, 5, 5),     # cambrera llançadora (op10: walk 3/4 + throw 5)
+    36: (17, 20, 6, 8, 8),     # home llançador (op10: walk 6/7 + throw 8)
+    37: (18, 24, 9, 11, 11),   # patruller (op0: walk 9/10)
+    38: (25, 24, 14, 16, 16),  # gos saltador (op18: walk 14/15)
+    39: (18, 24, 11, 13, 13),  # walker (op1: walk 11/12)
 }
 
 # L6 CONCERT (vegeu tools/gen_enemy6_frames.py)
 SPAWN_TYPES_L6 = {
-    3: (18, 24, 0, 0, 0),     # guarda walker (op1 / frames 0..1)
-    4: (4,  24, 5, 11, 11),   # policia (op2 / patrulla frames 5..6, tret frame 11)
+    3: (18, 24, 0, 2, 2),      # guarda walker (op1 / walk 0/1)
+    4: (4,  24, 5, 11, 11),    # policia (op2 / patrulla walk 5/6, tret frame 11)
 }
+
+SPAWN_TYPES_DEFAULT = SPAWN_TYPES_L3
 
 
 def generate(level_idx, out_path):
@@ -89,8 +97,8 @@ def generate(level_idx, out_path):
             (272, 960, 4, 24, 3, 14, 15),
             (768, 496, 4, 0, 3, 14, 15),
             (688, 320, 4, 24, 3, 14, 15),
-            (428, 480, 8, 16, 0, 14, 15),
-            (548, 496, 8, 16, 0, 14, 15),
+            (428, 480, 8, 16, 0, 0, 0),
+            (548, 496, 8, 16, 0, 0, 0),
             (232, 64, 19, 24, 5, 14, 15),
             (512, 48, 19, 24, 5, 14, 15),
             (808, 64, 19, 24, 5, 14, 15),
@@ -128,7 +136,14 @@ def generate(level_idx, out_path):
     data = arrays["level_data"]
     types = data[level_idx * MAX_OBJECTS:(level_idx + 1) * MAX_OBJECTS]
 
-    spawn_types = SPAWN_TYPES_L6 if level_idx == 5 else (SPAWN_TYPES_L5 if level_idx == 4 else SPAWN_TYPES_DEFAULT)
+    spawn_map = {
+        1: SPAWN_TYPES_L2,
+        2: SPAWN_TYPES_L3,
+        3: SPAWN_TYPES_L4,
+        4: SPAWN_TYPES_L5,
+        5: SPAWN_TYPES_L6,
+    }
+    spawn_types = spawn_map.get(level_idx, SPAWN_TYPES_DEFAULT)
 
     rows = []
     n = 0

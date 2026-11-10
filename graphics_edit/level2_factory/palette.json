@@ -1,0 +1,178 @@
+[
+  {
+    "pen": 0,
+    "ink_number": 26,
+    "ga_code": "0x4B",
+    "rgb": [
+      255,
+      255,
+      255
+    ],
+    "color_name": "Bright White"
+  },
+  {
+    "pen": 1,
+    "ink_number": 16,
+    "ga_code": "0x47",
+    "rgb": [
+      255,
+      128,
+      128
+    ],
+    "color_name": "Pink"
+  },
+  {
+    "pen": 2,
+    "ink_number": 13,
+    "ga_code": "0x40",
+    "rgb": [
+      128,
+      128,
+      128
+    ],
+    "color_name": "White / Gray"
+  },
+  {
+    "pen": 3,
+    "ink_number": 10,
+    "ga_code": "0x46",
+    "rgb": [
+      0,
+      128,
+      128
+    ],
+    "color_name": "Cyan"
+  },
+  {
+    "pen": 4,
+    "ink_number": 1,
+    "ga_code": "0x44",
+    "rgb": [
+      0,
+      0,
+      128
+    ],
+    "color_name": "Blue"
+  },
+  {
+    "pen": 5,
+    "ink_number": 16,
+    "ga_code": "0x47",
+    "rgb": [
+      255,
+      128,
+      128
+    ],
+    "color_name": "Pink"
+  },
+  {
+    "pen": 6,
+    "ink_number": 12,
+    "ga_code": "0x5E",
+    "rgb": [
+      128,
+      128,
+      0
+    ],
+    "color_name": "Yellow"
+  },
+  {
+    "pen": 7,
+    "ink_number": 16,
+    "ga_code": "0x47",
+    "rgb": [
+      255,
+      128,
+      128
+    ],
+    "color_name": "Pink"
+  },
+  {
+    "pen": 8,
+    "ink_number": 11,
+    "ga_code": "0x57",
+    "rgb": [
+      0,
+      128,
+      255
+    ],
+    "color_name": "Sky Blue"
+  },
+  {
+    "pen": 9,
+    "ink_number": 12,
+    "ga_code": "0x5E",
+    "rgb": [
+      128,
+      128,
+      0
+    ],
+    "color_name": "Yellow"
+  },
+  {
+    "pen": 10,
+    "ink_number": 12,
+    "ga_code": "0x5E",
+    "rgb": [
+      128,
+      128,
+      0
+    ],
+    "color_name": "Yellow"
+  },
+  {
+    "pen": 11,
+    "ink_number": 0,
+    "ga_code": "0x54",
+    "rgb": [
+      0,
+      0,
+      0
+    ],
+    "color_name": "Black"
+  },
+  {
+    "pen": 12,
+    "ink_number": 13,
+    "ga_code": "0x40",
+    "rgb": [
+      128,
+      128,
+      128
+    ],
+    "color_name": "White / Gray"
+  },
+  {
+    "pen": 13,
+    "ink_number": 3,
+    "ga_code": "0x5C",
+    "rgb": [
+      128,
+      0,
+      0
+    ],
+    "color_name": "Red"
+  },
+  {
+    "pen": 14,
+    "ink_number": 3,
+    "ga_code": "0x5C",
+    "rgb": [
+      128,
+      0,
+      0
+    ],
+    "color_name": "Red"
+  },
+  {
+    "pen": 15,
+    "ink_number": 13,
+    "ga_code": "0x40",
+    "rgb": [
+      128,
+      128,
+      128
+    ],
+    "color_name": "White / Gray"
+  }
+]

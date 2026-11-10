@@ -13,8 +13,6 @@
 #include "fdc.h"
 #include "level_params.h"
 
-#define LEVEL_PKG_DEFS_ONLY
-#include "level_pkg.h"
 
 // Slots fixos de la taula de salts del Banc 5: a moving.h (font unica).
 
@@ -28,6 +26,14 @@ u16 bc_a, bc_b, bc_c, bc_d, bc_e;
 i16 bc_r;
 i16 g_belt_push;
 u8  g_on_ice;
+
+i16 g_en_view_x, g_en_view_y;
+i16 g_en_jake_x, g_en_jake_y;
+i16 g_en_act_xmin, g_en_act_ymin8;
+i16 g_en_y, g_en_nx, g_en_dx;
+i16 g_en_dy, g_en_dx_jake;
+i16 g_en_clip_x0, g_en_clip_x1, g_en_clip_y0, g_en_clip_y1;
+u8  g_en_start_byte, g_en_byte_count, g_en_start_row, g_en_row_count;
 
 u8 s_conveyor_phase;
 u8 s_conveyor_tick;
@@ -49,41 +55,7 @@ u8 s_dance_timer;
 
 void moving_update(void) { call_banked(0xC5, BC_UPDATE); }
 
-// Tick d'anims 1:1 DOS (level.c:385-387: cada 4 game-loops avança 1 pas
-// cada seqüència segons la SEVA longitud 2/3/4/20; cicle raig = 80 loops
-// = 3,2 s a 25 fps, com els 2,67 s del DOS a 30 Hz). Viu al resident
-// perquè el C5 va ple. C5 mapejat (cridat des del Banc 5).
-// bc_a=tick_spans, bc_b=n, bc_c=data, bc_d=offs, bc_e=lens (sentinella 0).
-// Sense array de fases: índex = stamp mod len per resta (len<=20, barat;
-// el salt de fase cada 256 stamps és d'1 frame i invisible).
-void anim_tick_c5(void) {
-    if (++s_conveyor_tick >= 4) {
-        const u8* lens = (const u8*)bc_e;
-        const AnimSpan* sp = (const AnimSpan*)bc_a;
-        const u8* data = (const u8*)bc_c;
-        const u8* offs = (const u8*)bc_d;
-        u8 n = (u8)bc_b, s;
-        u8* map = (u8*)0x4000;
-        u8 q;
-        s_conveyor_tick = 0;
-        s_conveyor_phase++; // segell per al repintat (moving_bank_conveyor)
-        // Avancar 1 pas cada sequencia (lens te sentinella 0).
-        for (q = 0; lens[q]; q++) {
-            if ((u8)(s_anim_pos[q] + 1) >= lens[q]) s_anim_pos[q] = 0;
-            else s_anim_pos[q]++;
-        }
-        for (s = 0; s < n; s++, sp++) {
-            u8 tile = data[offs[sp->seq] + s_anim_pos[sp->seq]];
-            u8* dst = &map[((u16)sp->row << 7) + sp->col_start];
-            // Si el mapa ja te aquest tile, no cal reescriure'l (60% dels
-            // passos de les seqs 10/11 de L2 repeteixen tile).
-            if (*dst != tile) {
-                u8 c = (u8)(sp->col_end - sp->col_start + 1);
-                while (c--) *dst++ = tile;
-            }
-        }
-    }
-}
+// anim_tick_c5() viu en ASM natiu a engine/tile_blit.s (0 B d'IX frame).
 
 // 1:1 DOS init_level(): reinicia el MON (plataformes, fases, instrument)
 // sense tocar els comptadors. Es crida al reinici per mort.
@@ -149,34 +121,14 @@ u8 enemy_check_crate_hit(i16 cx, i16 cy, i16 cvx) {
     return (u8)bc_r;
 }
 
-void enemy_room_exit(i16 px, i16 py) {
-    u8 i;
-    for (i = 0; i < MAG_MOVER_COUNT; i++) {
-        g_mag_elevators[i].drawn[0] = 0;
-        g_mag_elevators[i].drawn[1] = 0;
-    }
-    bc_a = (u16)px;
-    bc_b = (u16)py;
-    call_banked(0xC6, EN_SLOT(6));
-}
-
+// enemy_room_exit i fdc_crc16 viuen en ASM natiu a engine/tile_blit.s.
 
 // --- Carregador FDC banquet (F1) ---
-// El motor FDC (fdc.c + assets_fdc.s, TAL QUAL) viu al banc 0xC6 (FDC.BIN,
-// slot C6:0x7000). Com que el motor commuta la finestra on s'executaria,
-// NO pot correr ni al banc ni a 0x7000 central (paginable!): l'stub el
-// copia a scratch central 0x8000 (VRAM pag.2, fora de 0x4000-0x7FFF,
-// invisible, esborrat pel GAME post-carregues) i l'hi crida, amb
-// comportament bit-identic al resident d'abans. Una sola copia per sessio
-// (l'scratch sobreviu: el joc no escriu a 0x8000 central fins al memset;
-// FRONT futur: per sota de 0x8000!). Mateixa signatura que fdc.h: main.c
-// no canvia. Guany: ~1600 B fora del Bloc 0 + carrega a mig joc (nivells).
 #define FDC_BANK_BASE 0x8000
 #define FDC_BANK_ENTRY ((u8(*)(u8, const DiskFileDesc*, u8, void*))FDC_BANK_BASE)
 extern const u16 g_crc_fdc;
 extern const u16 g_len_fdc; // = FDC.BIN sencer (main.c; el build ho verifica)
 static u8 s_fdc_ready = 0;
-static u8 s_fdc_master_saved = 0;
 
 void fdc_motor_off(void) {
     __asm
@@ -188,19 +140,6 @@ void fdc_motor_off(void) {
     *(volatile u8*)0xBE0C = 0;
     *(volatile u8*)0xBE0D = 0xFF;
     *(volatile u8*)0xBE0E = 0;
-}
-
-// CRC16-CCITT compartit (dieta Bloc 0): tambe l'usa el loop de carregues
-// de main.c (abans inline duplicat). Global (era static).
-u16 fdc_crc16(const u8* p, u16 len) {
-    u16 crc = 0xFFFF;
-    while (len--) {
-        u8 k;
-        crc ^= (u16)(*p++) << 8;
-        for (k = 0; k < 8; k++)
-            crc = (crc & 0x8000) ? (u16)((crc << 1) ^ 0x1021) : (u16)(crc << 1);
-    }
-    return crc;
 }
 u8 fdc_load_file(u8 home_bank, const DiskFileDesc* d, u8 bk, void* ad) {
     volatile const DiskFileDesc* file_d = d;

@@ -25,6 +25,10 @@
 #define LEVEL_ELEVATOR_STORAGE 1
 #define LEVEL_PRESS_COUNT 0
 #define LEVEL_PRESS_STORAGE 1
+#define LEVEL_SCAFFOLD_COUNT 0
+#define LEVEL_HAS_WATER 1
+#define LEVEL_HAS_PIPE 0
+#define LEVEL_HAS_CONVEYOR 1
 #define LEVEL_HAS_ACID 1
 #define LEVEL_HAS_BALLOON 0
 #define LEVEL_HAS_UMBRELLA 0
@@ -89,7 +93,7 @@ static const LevelTriggerEntry s_level_trig3[LEVEL_TRIG3_STORAGE] = {
     { 11,  19,  0,  0, 0,  0, 4, 0,   0, 0 }, // DOS b6=38
     { 11,  59,  0,  0, 0, 21, 0, 1,   0, 0 }, // DOS b6=39
     { 12,  21,  0,  0, 0,  0, 0, 0,   2, 1 }, // DOS b6=57
-    { 11, 214,  0,  0, 0,  0, 0, 0,   1, 0 }, // DOS b6=58
+    { 11, 199,  0,  0, 0,  0, 0, 0,   1, 0 }, // DOS b6=58
 };
 
 // LUT ràpida: byte 6 de TRIG.BIN (0..63) -> índex a s_level_trig3 (0xFF = cap)

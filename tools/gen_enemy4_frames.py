@@ -44,11 +44,12 @@ CELLS = [
     (5, 7),    # tipus 34 / 26 peix gran / monstre walk B
     (6, 9),    # tipus 27 rata gran walk A
     (7, 10),   # tipus 27 rata gran walk B
-    (8, 18),   # tipus 29 rata petita
-    (9, 13),   # tipus 30 estatic
+    (8, 18),   # tipus 29 rata petita walk A
+    (9, 19),   # tipus 29 rata petita walk B
     (10, 20),  # tipus 31 walker mitja walk A
     (11, 21),  # tipus 31 walker mitja walk B
     (12, 23),  # tipus 32 aranya
+    (13, 13),  # tipus 30 estatic
     (14, 25),  # tipus 33 peix petit decoratiu swim A
     (15, 26),  # tipus 33 peix petit decoratiu swim B
 ]
@@ -84,10 +85,6 @@ def main():
         assert w <= 32 and h <= 32, (idx, w, h)
         cells[cell] = pack_cell(px, w, h)
 
-    # Projectils: la cela 13 d'ENEMI1.BIN te ou/bala/plat alineats.
-    l1 = open(L1_BIN, "rb").read()
-    assert len(l1) >= 14 * 512, len(l1)
-    cells[13] = l1[13 * 512:14 * 512]
 
     out = b"".join(cells)
     assert len(out) == 16 * 512

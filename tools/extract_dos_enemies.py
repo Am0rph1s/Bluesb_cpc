@@ -112,6 +112,23 @@ def get_l1_projectiles(sqv_frames):
                             pbox[oy][ox] = val
     return pbox
 
+def get_l2_projectiles(sqv_frames):
+    projs = [(32, 0), (18, 7), (34, 16)]
+    pbox = [[0]*32 for _ in range(32)]
+    for sqv_idx, row_start in projs:
+        w, h, px = sqv_frames[sqv_idx]
+        xs = (32 - w) // 2
+        for y in range(h):
+            oy = row_start + y
+            if 0 <= oy < 32:
+                for x in range(w):
+                    ox = x + xs
+                    if 0 <= ox < 32:
+                        val = px[y][x]
+                        if val != 0:
+                            pbox[oy][ox] = val
+    return pbox
+
 def get_l5_projectiles(sqv_frames):
     projs = [(4, 0), (32, 13), (12, 19)]
     pbox = [[0]*32 for _ in range(32)]
@@ -167,7 +184,9 @@ def main():
                     px, w, h = mod.crop_content(px, w, h)
                 cells[cell_idx] = make_cell(w, h, px)
 
-            if lid == 5:
+            if lid == 2:
+                cells[13] = get_l2_projectiles(sqv_frames)
+            elif lid == 5:
                 cells[13] = get_l5_projectiles(sqv_frames)
             elif lid == 3:
                 cells[12] = l1_proj_cell

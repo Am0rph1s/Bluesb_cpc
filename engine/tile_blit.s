@@ -743,10 +743,12 @@ ifs_check_op$:
     cp      #0xFF
     jr      z, ifs_ret_0$
 
-    ;; Ops sòlides sempre: 0, 1, 2, 3, 20, 27, 28, 29, 40
+    ;; Ops sòlides sempre: 0, 1, 2, 3, 20, 21, 27, 28, 29, 40
     cp      #4
     jr      c, ifs_ret_1$       ;; 0, 1, 2, 3
     cp      #20
+    jr      z, ifs_ret_1$
+    cp      #21
     jr      z, ifs_ret_1$
     cp      #27
     jr      z, ifs_ret_1$
@@ -762,16 +764,16 @@ ifs_check_op$:
     jr      nz, ifs_ret_0$
 
     ;; vy >= 0:
-    ;; if (op == 14 || op == 15) return !crouch;
+    ;; if (op == 14 || op == 15 || op == 22) return !crouch;
     cp      #14
     jr      z, ifs_not_crouch$
     cp      #15
     jr      z, ifs_not_crouch$
-    ;; if (op >= 30 && op <= 35) return 1;
+    cp      #22
+    jr      z, ifs_not_crouch$
+    ;; if (op == 30) return 1; (op 32..39 son rampes diagonals gestionades per moving_bank)
     cp      #30
-    jr      c, ifs_check_24$
-    cp      #36
-    jr      c, ifs_ret_1$
+    jr      z, ifs_ret_1$
 ifs_check_24$:
     cp      #24
     jr      nz, ifs_ret_0$

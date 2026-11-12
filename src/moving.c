@@ -18,9 +18,6 @@
 
 MovingElevator g_mag_elevators[MAG_MOVER_COUNT];
 
-// Estat de la tuberia (vegeu moving.h).
-u8 s_pipe_up;
-
 // Bloc de paràmetres resident per crides bankades (CP-2.2).
 u16 bc_a, bc_b, bc_c, bc_d, bc_e;
 i16 bc_r;

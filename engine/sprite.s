@@ -25,6 +25,8 @@
     .globl _g_grate_enable
     .globl _g_grate_phase_x
     .globl _g_grate_base_y
+    .globl _g_grate_left
+    .globl _g_grate_right
     .globl _bank_set
     .globl _bank_restore
     .globl _g_bank
@@ -37,8 +39,11 @@
 _g_grate_enable::   .db 0
 _g_grate_phase_x::  .db 0
 _g_grate_base_y::   .db 0
+_g_grate_left::     .db 0
+_g_grate_right::    .db 0
 s_grate_cur_y:      .db 0
 s_grate_ptr:        .dw 0
+s_grate_buf:        .ds 16
 
 _g_spr_y::          .db 0
 _g_spr_x::          .db 0
@@ -390,7 +395,56 @@ blit_grate_line:
     add     hl, hl              ;; *16
     ld      de, #_grate_lut
     add     hl, de
+
+    ;; Si tots dos costats tenen reixa, utilitza la LUT directa
+    ld      a, (_g_grate_left)
+    or      a
+    jr      z, bg_l_masked
+    ld      a, (_g_grate_right)
+    or      a
+    jr      z, bg_l_masked
     ld      (s_grate_ptr), hl
+    jr      bg_l_ready
+
+bg_l_masked:
+    push    bc
+    ld      de, #s_grate_buf
+    ld      bc, #16
+    ldir
+    ld      a, (_g_grate_left)
+    or      a
+    jr      nz, 11$
+    ld      hl, #s_grate_buf
+    call    mask_half_grate
+11$:
+    ld      a, (_g_grate_right)
+    or      a
+    jr      nz, 12$
+    ld      hl, #(s_grate_buf + 4)
+    call    mask_half_grate
+12$:
+    pop     bc
+    ld      hl, #s_grate_buf
+    ld      (s_grate_ptr), hl
+    jr      bg_l_ready
+
+mask_half_grate:
+    ld      a, #0xFF
+    call    m_fill4
+    xor     a
+m_fill4:
+    ld      b, #4
+m_lp:
+    ld      (hl), a
+    inc     hl
+    djnz    m_lp
+    inc     hl
+    inc     hl
+    inc     hl
+    inc     hl
+    ret
+
+bg_l_ready:
     pop     de
     ld      hl, (s_spr_ptr)
 

@@ -1,10 +1,23 @@
 # Handoff Global — Blues Brothers CPC (Estat Actual i Guia de Continuació)
 
 > **Document unificat de referència per reprendre el desenvolupament**
-> **Data d'actualització**: 10 de novembre de 2026
-> **Branca**: `fix-c1-l3-unlock` — estat 10/11/2026 (Harmonització de paletes Mode 0 L1/L2/L3, eines gràfiques graphics_tool, extracció DOS i correcció bugs 1:1 DOS)
+> **Data d'actualització**: 12 de novembre de 2026
+> **Branca**: `fix-c1-l3-unlock` — estat 12/11/2026 (Mecàniques 1:1 DOS L2: rampes diagonals, gel, xemeneia; clipping reixa L1; projectils i enemics L2-L4)
 > **Repo**: `https://github.com/Am0rph1s/Bluesb_cpc`
 > **Target**: Amstrad CPC 6128 (128 KB RAM) — Z80, Mode 0 (16 colors), SDCC 4.5.0 + sdasz80, build amb Python 3.
+
+### Actualització 12/11/2026: Mecàniques 1:1 DOS a Nivell 2, Clipping Reixa L1 i Projectils
+1. **Nivell 2 (Fàbrica / ENT) — Mecàniques 1:1 DOS**:
+   - **Rampes diagonals del sostre (`op 32..39`)**: implementades de manera suau al Banc 5 (`src/moving_bank.c`, `engine/tile_blit.s`), sense esglaons en lliscar i usant `g_on_ice = 2` (`src/main.c`) per a l'impuls de pendent.
+   - **Gel (`g_on_ice = 1`)**: ajustada l'inèrcia, la retenció d'inici/frenada (`acc = 1`) i l'aterratge lliscós (`s_on_ground || s_vy > 0` a `src/moving_bank.c` i `engine/bank5_table.s`).
+   - **Xemeneia amb scroll fins a les banderes**: entrada ocultant en Jake (`jcol` centrat, `jrow >= 8`, `jx < 80 * 8` per evitar activació fora de lloc) i desplaçament amb scroll fins a la sortida correcta a la zona de banderes.
+   - **Premses**: restringides a `level_idx == 1` a `tools/pack_level.py`.
+2. **Reixa de Primer Pla a Magasin L1 (`engine/sprite.s`, `src/moving_bank.c`)**:
+   - Afegit clipping per meitats (`_g_grate_left` / `_g_grate_right` amb `s_grate_buf`) perquè la textura de reixa no sobresurti fora dels llindars de les portes.
+3. **Enemics i Projectils 1:1 DOS (`src/enemy.c`, `assets/bbdata/ENEMI2.BIN`, `ENEMI4.BIN`)**:
+   - Comprovació d'encarament (`facing_jake`) abans d'entrar en rang i tipificació 1:1 de projectils segons `throw_cell` (`12` pistola pneumàtica, `6` mecànic, `9` obrer, `4` i plat L1).
+   - Actualitzats els fulls d'enemics L2/L3/L4 a `graphics_edit/` i els scripts `tools/extract_dos_enemies.py` / `tools/gen_enemy2_frames.py`.
+4. **Pressupost de memòria resident**: `_CODE` fins a `0x359A` (102 B lliures fins a `_DATA` a `0x3600`).
 
 ### Actualització 10/11/2026: Harmonització Paletes Mode 0 (L1-L3) i Eines Gràfiques
 1. **Harmonització de Paletes de Mode 0 (16 colors CPC Gate Array)**:

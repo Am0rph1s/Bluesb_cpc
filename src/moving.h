@@ -86,8 +86,6 @@ extern u8  g_checkpoint;
 extern u8  g_enemy_decomp_cnt;   // diagnostic: descompressions de cela d'enemic (cache miss)
 extern u8 s_dance_timer;
 extern u8 s_dying_timer;
-extern u8 s_pipe_up; // Tuberia (op 17/18/19 del DOS): 1 = el jugador esta dins
-                     // del trigger i puja amb forca -> gravetat invertida (DOS: yacc = -3).
 
 // Tram animat del tilemap (row, col_ini, col_fi, seq). El defineix moving.h
 // (no level_pkg.h) perquè el tick resident hi accedeix per bc_*.

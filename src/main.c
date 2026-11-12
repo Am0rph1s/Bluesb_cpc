@@ -116,7 +116,6 @@ u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
 
 static u8 s_back_page = 1;
 static u8 s_complete_wait;
-static u8 s_pipe_prev;
 
 void main(void);
 
@@ -541,7 +540,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
 
     // --- Moviment horitzontal i col·lisió de parets ---
     {
-        s_ps_feet_row = (u16)((s_ps_py + 29) >> 4);
+        s_ps_feet_row = (u16)((s_ps_py + 28) >> 4);
         s_ps_head_row = (u16)((s_ps_py + 16) >> 4);
         s_ps_top_row  = (u16)(s_ps_py >> 4);
         if (s_ps_evx > 0) {
@@ -578,8 +577,9 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
 
     // --- Moviment vertical i gravetat ---
     {
+        u8 h_off = s_ps_crouch ? 13 : 0;
         s_ps_prev_feet = (i16)(s_ps_py + PH);
-        s_ps_prev_head = (u16)(s_ps_py >> 4);
+        s_ps_prev_head = (u16)((s_ps_py + h_off) >> 4);
         if (!s_ps_climbing) {
             if (s_carry_kind == 2 && !s_carry_state) {
                 s_vy = -8;
@@ -587,15 +587,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                 s_ground_elevator = -1;
             } else {
                 if (!s_on_ground) {
-                    if (s_pipe_up) {
-                        s_vy = (i16)(s_vy - 24);
-                    } else {
-                        if (s_pipe_prev) {
-                            s_invuln_timer = 25;
-                        }
-                        s_vy = (i16)(s_vy + GRAV);
-                    }
-                    s_pipe_prev = s_pipe_up;
+                    s_vy = (i16)(s_vy + GRAV);
                     if (s_vy > VY_MAX) s_vy = VY_MAX;
                     if (s_vy < -VY_MAX_UP) s_vy = -VY_MAX_UP;
                 } else {
@@ -604,7 +596,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                 if (s_ps_jump && !s_jump_prev && s_on_ground) {
                     u8 di, si;
                     s_ps_col = (u16)((s_ps_px + 5) >> 3);
-                    s_ps_feet_row = (u16)((s_ps_py + 29) >> 4);
+                    s_ps_feet_row = (u16)((s_ps_py + 28) >> 4);
                     di = (s_ps_feet_row >= 2) ? tile_type(s_ps_col, (u16)(s_ps_feet_row - 2)) : 0;
                     si = tile_type(s_ps_col, s_ps_feet_row);
                     if (di == 10 && (si == 0 || si == 1)) {
@@ -632,7 +624,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
             s_ps_c_mid2 = (u16)((s_ps_px + 8) >> 3);
             s_ps_landed = 0;
 
-            if (s_vy >= 0 && !s_ps_climbing) {
+            if (s_vy >= 0 && s_ps_climbing != 1 && g_on_ice != 2) {
                 i8 elevator_id;
                 bc_a = (u16)s_ps_px; bc_b = (u16)s_ps_prev_feet; bc_c = (u16)s_ps_curr_feet;
                 bc_d = (u16)s_vy; bc_e = (u16)&s_ps_elev_top;
@@ -677,7 +669,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
             } else if (s_vy < 0) {
                 u16 r = s_ps_prev_head;
                 u8 n = 0;
-                s_ps_head_row = (u16)(s_ps_py >> 4);
+                s_ps_head_row = (u16)((s_ps_py + h_off) >> 4);
                 while (r >= s_ps_head_row && n < 4) {
                     if (is_ceiling_solid(s_ps_c_mid1, r)) {
                         s_ps_head_row = r;
@@ -687,7 +679,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                     r--; n++;
                 }
                 if (is_ceiling_solid(s_ps_c_mid1, s_ps_head_row)) {
-                    s_ps_py = (i16)((s_ps_head_row + 1) << 4);
+                    s_ps_py = (i16)(((s_ps_head_row + 1) << 4) - h_off);
                     s_py8 = (i16)(s_ps_py * SUB);
                     s_vy = 0;
                 }
@@ -899,46 +891,32 @@ static void load_level_packages(void) {
 // estat persisteix entre morts (com al DOS).
 static void restore_level_tiles(void) {
     u8 prev = bank_set(0xC6);
-    const u8* tbl = ENEMY_RESTORE_TABLE;
-    u16 n = (u16)(tbl[0] | (tbl[1] << 8));
-    u16 i;
-    for (i = 0; i < n; i++) {
-        const u8* e = tbl + 2 + (u16)(i * 3);
+    const u8* e = ENEMY_RESTORE_TABLE;
+    u16 n = *(const u16*)e;
+    e += 2;
+    while (n--) {
         u8 col = e[0];
         u8 row = e[1];
         u8 tile = e[2];
-        bank_restore(prev);
-        prev = bank_set(0xC5);
+        e += 3;
+        bank_set(0xC5);
         ((u8*)0x4000)[((u16)row << 7) + col] = tile;
-        bank_restore(prev);
-        prev = bank_set(0xC6);
+        bank_set(0xC6);
     }
-    bank_restore(prev);
 
-    // Les HABITACIONS (sales a C5 des de la Fase 3.2) tenen els seus propis
-    // items consumibles (els discs de les sales). Al DOS el paquet de nivell
-    // es rellegeix a cada mort, aixi que a les sales tambe tornen a
-    // aparaitre. La taula (C1, restore_off) diu quines posicions dins el bloc
-    // de sales tenen un disc i quin es el seu tile inicial: la taula viu a C1
-    // i les dades a C5, per tant es commuta per entrada.
-    // L'instrument (tile 159) NO hi es: l'item secret persisteix (1:1 DOS).
-    prev = bank_set(0xC1);
-    tbl = (const u8*)(u16)s_lv.restore_off;
-    n = (u16)(tbl[0] | (tbl[1] << 8));
-    bank_restore(prev);
-    for (i = 0; i < n; i++) {
-        const u8* e;
-        u16 off;
-        u8 tile, prev5;
-        prev = bank_set(0xC1);
-        e = (const u8*)(u16)s_lv.restore_off + 2 + (u16)(i * 3);
-        off = (u16)(e[0] | (e[1] << 8));
-        tile = e[2];
-        prev5 = bank_set(0xC5);
+    bank_set(0xC1);
+    e = (const u8*)(u16)s_lv.restore_off;
+    n = *(const u16*)e;
+    e += 2;
+    while (n--) {
+        u16 off = *(const u16*)e;
+        u8 tile = e[2];
+        e += 3;
+        bank_set(0xC5);
         ((u8*)(u16)s_lv.rooms_off)[off] = tile;
-        bank_restore(prev5);
-        bank_restore(prev);
+        bank_set(0xC1);
     }
+    bank_restore(prev);
 }
 
 // GAME OVER: codi comu al Banc 1 (src/hud_bank.c, MUSBANK). Escriu VRAM -> 0xC0.
@@ -976,18 +954,6 @@ void main(void) {
 
     g_map_level = 0;
     g_front_map_only = 0;
-    cpct_scanKeyboard_f();
-    if (cpct_isKeyPressed(Key_2) || cpct_isKeyPressed(Key_F2)) {
-        g_map_level = 1;
-    } else if (cpct_isKeyPressed(Key_3) || cpct_isKeyPressed(Key_F3)) {
-        g_map_level = 2;
-    } else if (cpct_isKeyPressed(Key_4) || cpct_isKeyPressed(Key_F4)) {
-        g_map_level = 3;
-    } else if (cpct_isKeyPressed(Key_5) || cpct_isKeyPressed(Key_F5)) {
-        g_map_level = 4;
-    } else if (cpct_isKeyPressed(Key_6) || cpct_isKeyPressed(Key_F6)) {
-        g_map_level = 5;
-    }
     while (1) {
         {
             u8 prev = bank_set(0xC4);
@@ -1004,12 +970,12 @@ void main(void) {
     g_mus_hold = 1;
 
     cpct_scanKeyboard_f();
-    if (cpct_isKeyPressed(Key_1) || cpct_isKeyPressed(Key_F1)) g_map_level = 0;
-    else if (cpct_isKeyPressed(Key_2) || cpct_isKeyPressed(Key_F2)) g_map_level = 1;
-    else if (cpct_isKeyPressed(Key_3) || cpct_isKeyPressed(Key_F3)) g_map_level = 2;
-    else if (cpct_isKeyPressed(Key_4) || cpct_isKeyPressed(Key_F4)) g_map_level = 3;
-    else if (cpct_isKeyPressed(Key_5) || cpct_isKeyPressed(Key_F5)) g_map_level = 4;
-    else if (cpct_isKeyPressed(Key_6) || cpct_isKeyPressed(Key_F6)) g_map_level = 5;
+    if (cpct_isKeyPressed(Key_1)) g_map_level = 0;
+    else if (cpct_isKeyPressed(Key_2)) g_map_level = 1;
+    else if (cpct_isKeyPressed(Key_3)) g_map_level = 2;
+    else if (cpct_isKeyPressed(Key_4)) g_map_level = 3;
+    else if (cpct_isKeyPressed(Key_5)) g_map_level = 4;
+    else if (cpct_isKeyPressed(Key_6)) g_map_level = 5;
 
     load_level_packages();
 
@@ -1085,10 +1051,11 @@ void main(void) {
             s_vx = 0;
         }
 
-        // Acceleració horitzontal
+        // Acceleració horitzontal 1:1 DOS (level.c:1724-1760)
+        // g_on_ice: 0=normal (MOVE_ACC), 1=gel (acc=1), 2=rampa (acc=0, només unk2F)
         {
             i16 max_spd = s_on_ground ? SPEED_MAX : SPEED_AIR;
-            u8 acc = (s_on_ground && g_on_ice) ? 2 : MOVE_ACC;
+            u8 acc = (!s_on_ground || !g_on_ice) ? MOVE_ACC : (u8)(2 - g_on_ice);
             if (s_mn_move > 0)      { s_vx = (i16)(s_vx + acc); if (s_vx >  max_spd) s_vx =  max_spd; }
             else if (s_mn_move < 0) { s_vx = (i16)(s_vx - acc); if (s_vx < -max_spd) s_vx = -max_spd; }
             else {
@@ -1111,7 +1078,7 @@ void main(void) {
         // 1:1 DOS Col·lisió Jake <-> Enemics / Projectils (level.c:1583-1658)
         if (s_invuln_timer) {
             s_invuln_timer--;
-        } else if (!s_in_room && !s_dying_timer && !s_pipe_up) {
+        } else if (!s_in_room && !s_dying_timer) {
             s_ps_px = (i16)(s_px8 >> 3);
             s_ps_py = (i16)(s_py8 >> 3);
             if (enemy_check_player_hit(s_ps_px, s_ps_py, s_mn_crouch)) {
@@ -1215,7 +1182,9 @@ void main(void) {
 
         // 2. Pas de física genèrica de col·lisió sòlida al motor resident
         dbg_border(0x57);
-        player_physics_step(g_belt_push, s_climb_prev, s_mn_jump, (u8)(s_mn_crouch || s_crouch_hold));
+        if (s_climb_prev != 3) {
+            player_physics_step(g_belt_push, s_climb_prev, s_mn_jump, (u8)(s_mn_crouch || s_crouch_hold));
+        }
 
         // 3. Càmera i deadzone
         {
@@ -1239,8 +1208,7 @@ void main(void) {
                     s_mn_move_y = (i8)d;
                 } else if (sy < DEAD_T && g_cam_row > 0) {
                     u16 d = ((u16)(DEAD_T - sy) + 7) >> 3;
-                    u16 max_d = s_pipe_up ? 4 : 2;
-                    if (d > max_d) d = max_d;
+                    if (d > 2) d = 2;
                     if (d > g_cam_row) d = g_cam_row;
                     g_cam_row -= (u16)d;
                     s_mn_move_y = (i8)(-(i8)d);
@@ -1297,7 +1265,7 @@ void main(void) {
         g_spr_y = (u8)s_mn_dsy;
         g_spr_x = (u8)s_mn_dsx;
 
-        if (s_dying_timer || !(s_invuln_timer & 2)) {
+        if (s_climb_prev != 3 && (s_dying_timer || !(s_invuln_timer & 2))) {
             const u8* fr_addr = (const u8*)(u16)(PLAYER_FRAMES_BASE + ((u16)s_mn_cur << 9) - ((u16)s_mn_cur << 5));
             u8 prev_b = bank_set(PLAYER_FRAMES_BANK);
             if (g_face == 0) {

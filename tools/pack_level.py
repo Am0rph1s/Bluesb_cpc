@@ -121,7 +121,7 @@ def build_level_pkg(level_idx=0, out_dir=None):
     obj_types = arrays["level_objtypes"]
     presses = []
     for slot, obj_kind in enumerate(level_data):
-        if obj_kind < len(obj_types) and obj_types[obj_kind] == 12:
+        if level_idx == 1 and obj_kind < len(obj_types) and obj_types[obj_kind] == 12:
             dos_x = xpos_arr[slot]
             dos_y = ypos_arr[slot]
             presses.append((slot, dos_x >> 1, dos_y, dos_x >> 4))
@@ -389,7 +389,8 @@ def build_level_pkg(level_idx=0, out_dir=None):
         f"#define LEVEL_SCAFFOLD_COUNT {len(elev_x) if level_idx == 4 else 0}",
         f"#define LEVEL_HAS_WATER {(1 if any(trig_bin[x * 10] in (11, 12, 13, 14, 15) for x in (set(map_bin) | set(rooms_bin))) else 0)}",
         f"#define LEVEL_HAS_PIPE {(1 if any((t in (17, 18, 19)) for t in set(trig_bin[x * 10 + 2] for x in (set(map_bin) | set(rooms_bin)))) else 0)}",
-        f"#define LEVEL_HAS_CONVEYOR {(1 if any((t in (27, 28, 30, 32, 33, 34, 35, 36, 37, 38, 39)) for t in set(trig_bin[x * 10 + 2] for x in (set(map_bin) | set(rooms_bin)))) else 0)}",
+        f"#define LEVEL_HAS_CONVEYOR {(1 if any((t in (27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39)) for t in set(trig_bin[x * 10 + 2] for x in (set(map_bin) | set(rooms_bin)))) else 0)}",
+        f"#define LEVEL_HAS_SLOPES {(1 if any((t in (32, 33, 34, 35, 36, 37, 38, 39)) for t in set(trig_bin[x * 10 + 2] for x in (set(map_bin) | set(rooms_bin)))) else 0)}",
         f"#define LEVEL_HAS_ACID {(1 if any((t in (2, 3, 4, 5)) for t in set(trig_bin[x * 10 + 6] for x in (set(map_bin) | set(rooms_bin)))) else 0)}",
         f"#define LEVEL_HAS_BALLOON {(1 if any((trig_bin[x * 10] == 8) for x in (set(map_bin) | set(rooms_bin))) else 0)}",
         f"#define LEVEL_HAS_UMBRELLA {(1 if any((trig_bin[x * 10] == 9) for x in (set(map_bin) | set(rooms_bin))) else 0)}",

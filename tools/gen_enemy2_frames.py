@@ -57,6 +57,48 @@ CELLS = [
 ]
 
 
+def pack_projectiles_cell(frames):
+    """Empaqueta els 3 projectils 1:1 de DOS del Nivell 2 a la cela 13 (512 B Mode 0):
+      - files  0..6  (h=7):  frame 32 SQV (1:1 DOS frame 178 - tipus 21 noi gorra)
+      - files  7..15 (h=9):  frame 18 SQV (1:1 DOS frame 164 - tipus 13 mecànic)
+      - files 16..26 (h=11): frame 34 SQV (1:1 DOS frame 180 - tipus 14 obrer)
+      - files 27..31: lliures (zeros)
+    """
+    from gen_extra_frames import encode_pair, dos_to_cpc_pen
+    box = [[None] * 16 for _ in range(32)]
+    projs = [
+        (32, 0),   # 1:1 DOS frame 178 (SQV 32, tipus 21) a files 0..6 (h=7)
+        (18, 7),   # 1:1 DOS frame 164 (SQV 18, tipus 13) a files 7..15 (h=9)
+        (34, 16),  # 1:1 DOS frame 180 (SQV 34, tipus 14) a files 16..26 (h=11)
+    ]
+    for sqv_idx, row_start in projs:
+        w, h, px = frames[sqv_idx]
+        w_m0 = (w + 1) // 2
+        x_shift = (16 - w_m0) // 2
+        for y in range(h):
+            oy = row_start + y
+            for xm in range(16):
+                xdos = (xm - x_shift) * 2
+                p0 = px[y][xdos] if 0 <= xdos < w else 0
+                p1 = px[y][xdos + 1] if 0 <= (xdos + 1) < w else 0
+                val = 0
+                if p0 != 0 and p1 != 0:
+                    val = p0 if p0 not in (3, 11) else p1
+                elif p0 != 0:
+                    val = p0
+                elif p1 != 0:
+                    val = p1
+                if val != 0:
+                    box[oy][xm] = dos_to_cpc_pen.get(val)
+    raw = bytearray()
+    for y in range(32):
+        for xb in range(8):
+            inv, img = encode_pair(box[y][xb * 2], box[y][xb * 2 + 1])
+            raw.append(inv)
+            raw.append(img)
+    return bytes(raw)
+
+
 def crop_content(px, w, h):
     """Retalla el frame al bbox del contingut real (la tela del SQV pot ser
     mes ampla que el dibuix: a L2 hi ha frames de 48 px amb el personatge
@@ -93,14 +135,8 @@ def main():
         assert w <= 32 and h <= 32, (idx, w, h)
         cells[cell] = pack_cell(px, w, h)
 
-    # Projectils: la cela 13 d'ENEMI1.BIN te bala (0..7), ou (8..18) i plat (19..31).
-    # A L2 nomes es llencen plats (kind 9, files 19..31). Netejar les files 0..18
-    # a zero permet comprimir millor la cela i guanyar marge a C6.
-    l1 = open(L1_BIN, "rb").read()
-    assert len(l1) >= 14 * 512, len(l1)
-    proj = bytearray(l1[13 * 512:14 * 512])
-    proj[0:19 * 16] = bytes(19 * 16)
-    cells[13] = bytes(proj)
+    # Projectils: la cela 13 conté els projectils reals de L2 (dard, clau, pot d'oli)
+    cells[13] = pack_projectiles_cell(frames)
 
     out = b"".join(cells)
     assert len(out) == 16 * 512

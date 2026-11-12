@@ -66,16 +66,16 @@ void moving_bank_respawn(void) {
     __endasm;
 
 #if LEVEL_SCAFFOLD_COUNT > 0
-    e = g_mag_elevators;
-    for (i = 0; i < LEVEL_SCAFFOLD_COUNT; i++, e++) {
-        e->center_x = s_bank_start_x[i];
-        e->y = s_bank_start_y[i];
-        e->direction = -1;
-        e->map_col = s_bank_map_col[i];
-    }
+#define LEVEL_ACTIVE_ELEV_COUNT LEVEL_SCAFFOLD_COUNT
 #elif LEVEL_ELEVATOR_COUNT > 0
+#define LEVEL_ACTIVE_ELEV_COUNT LEVEL_ELEVATOR_COUNT
+#else
+#define LEVEL_ACTIVE_ELEV_COUNT 0
+#endif
+
+#if LEVEL_ACTIVE_ELEV_COUNT > 0
     e = g_mag_elevators;
-    for (i = 0; i < LEVEL_ELEVATOR_COUNT; i++, e++) {
+    for (i = 0; i < LEVEL_ACTIVE_ELEV_COUNT; i++, e++) {
         e->center_x = s_bank_start_x[i];
         e->y = s_bank_start_y[i];
         e->direction = -1;
@@ -453,12 +453,15 @@ static void b5_check_bonus_triggers(u8 col, u8 row, u8 crouch) {
         if (s_carry_kind) carry_abort();
     }
     b5_set_tile(col, row, e->bg_tile);
+#if LEVEL_POPUP_COUNT > 0
     if (e->kind == 12 && e->popup_or_chk < LEVEL_POPUP_COUNT) {
         s_popup_idx = e->popup_or_chk;
         s_popup_wx = (i16)((s_px8 >> 3) & ~1);
         s_popup_wy = (i16)((s_py8 >> 3) - 8);
         s_popup_timer = 30;
-    } else if (e->popup_or_chk && !g_checkpoint) {
+    } else
+#endif
+    if (e->popup_or_chk && !g_checkpoint) {
         g_checkpoint = e->popup_or_chk;
     }
     if (e->add_vinyls) {
@@ -500,7 +503,7 @@ static void b5_apply_switch(u8 idx) {
 static u8 b5_solid_ceil(u8 col, u8 row) {
     const u8* tp = b5_trig_ptr(col, row);
     u8 op = tp ? tp[2] : 255;
-    return (op <= 3 || op == 20 || (op >= 27 && op <= 29));
+    return (op <= 3 || op == 20 || op == 21 || (op >= 27 && op <= 29));
 }
 
 void moving_bank_update(void) {
@@ -515,10 +518,10 @@ void moving_bank_update(void) {
     if (crouch) {
         s_crouch_hold = 1;
     } else if (s_crouch_hold) {
-        i16 px = (i16)(s_px8 >> 3);
-        u8 cy  = (u8)(s_py8 >> 7);
-        if (!b5_solid_ceil((u8)((px + 1) >> 3), cy) &&
-            !b5_solid_ceil((u8)((px + 14) >> 3), cy)) {
+        u8 c1 = (u8)(((s_px8 >> 3) + 4) >> 3);
+        u8 c2 = (u8)(((s_px8 >> 3) + 11) >> 3);
+        u8 cy = (u8)(s_py8 >> 7);
+        if (!b5_solid_ceil(c1, cy) && (c1 == c2 || !b5_solid_ceil(c2, cy))) {
             s_crouch_hold = 0;
         }
     }
@@ -533,14 +536,12 @@ void moving_bank_update(void) {
 
     col = (u8)(((s_px8 >> 3) + 8) >> 3);
     row = (u8)(((s_py8 >> 3) + PH - 1) >> 4);
-    s_pipe_up = 0;
 #if LEVEL_HAS_PIPE
     {
         const u8* tp = b5_trig_ptr(col, row);
         u8 op = tp ? tp[2] : 255;
         if (op >= 17 && op <= 19 && s_vy < -2 * SUB) {
             s_vy = (i16)(s_vy - 3 * SUB);
-            s_pipe_up = 1;
             s_px8 = (i16)((s_px8 & ~63) +
                            (op == 17 ? 28 : (op == 18 ? 68 : -4)));
         }
@@ -618,6 +619,7 @@ void moving_bank_update(void) {
                 climbing = 2;
                 s_climb_t6 = 0;
                 s_on_ground = 0;
+                s_crouch_hold = 1;
                 if (s_carry_kind == 2 || s_carry_kind == 8) carry_abort();
                 if (jump) {
                     u8 cr = (u8)(((s_py8 >> 3) + 10) >> 4);
@@ -629,8 +631,6 @@ void moving_bank_update(void) {
                     }
                 } else if (crouch) {
                     s_vy = 16;
-                } else if (tt != 13) {
-                    s_vy = 4;
                 } else {
                     s_vy = 0;
                 }
@@ -706,7 +706,7 @@ void moving_bank_update(void) {
     s_grab_prev = grab;
 
 #if LEVEL_HAS_CONVEYOR
-    if (s_on_ground) {
+    if (s_on_ground || s_vy > 0) {
         bc_a = (u8)(((s_px8 >> 3) + 3) >> 3);
         bc_b = col;
         bc_c = (u8)(((s_py8 >> 3) + PH) >> 4);
@@ -715,12 +715,111 @@ void moving_bank_update(void) {
         g_on_ice = 0;
         bc_r = 0;
     }
+    if (!s_on_ground) bc_r = 0;
     g_belt_push = bc_r;
 #else
-    if (!s_on_ground) g_on_ice = 0;
+    if (!s_on_ground && s_vy <= 0) g_on_ice = 0;
     g_belt_push = 0;
     bc_r = 0;
 #endif
+#if LEVEL_HAS_SLOPES
+    // Rampes diagonals 1:1 DOS (level.c:1447-1470 do_level_fixup_object_position + tiles.c:480-529 op 32..35)
+    if (!climbing && s_carry_kind == 0 && s_vy >= 0) {
+        u8 fc = (u8)(((s_px8 >> 3) + 8) >> 3);
+        u8 fr = (u8)(((s_py8 >> 3) + PH) >> 4);
+        u8 stt = b5_tile_type(fc, fr);
+        if (stt != 2 && stt != 3 && stt != 14 && stt != 15 && fr > 0) {
+            fr--;
+            stt = b5_tile_type(fc, fr);
+        }
+        if (stt == 2 || stt == 3 || stt == 14 || stt == 15) {
+            const u8* stp;
+            u8 sop;
+            if ((stt == 3 || stt == 15) && fr > 0) {
+                fr--;
+            }
+            stp = b5_trig_ptr(fc, fr);
+            sop = stp ? stp[2] : 32;
+            {
+                u8 sub_x = (u8)((((s_px8 >> 3) + 8) & 7) << 1);
+                i8 yoff = (sop == 34 || sop == 35 || sop == 38 || sop == 39)
+                          ? (i8)sub_x
+                          : (i8)(15 - sub_x);
+                s_py8 = (i16)((((i16)fr << 4) + yoff - PH) * SUB);
+                s_vy = 0;
+                s_on_ground = 1;
+                g_on_ice = 2;
+                if (sop >= 32 && sop <= 35) {
+                    if (sop <= 33) {
+                        if (s_vx > -30) s_vx -= 2;
+                        g_face = 1;
+                    } else {
+                        if (s_vx < 30) s_vx += 2;
+                        g_face = 0;
+                    }
+                }
+                if (jump && !s_jump_prev) {
+                    s_vy = -96;
+                    s_on_ground = 0;
+                    g_on_ice = 0;
+                }
+            }
+        }
+    }
+#endif
+#if LEVEL_ID == 1
+    // Xemeneia / Canonada de transport de la factoria (1:1 DOS tiles.c:72-117 trigger_func_op3 / op2)
+    {
+        static u8 s_chimney_scroll = 0;
+        i16 jx = s_px8 >> 3;
+        i16 jy = s_py8 >> 3;
+        u8 jcol = (u8)((jx + 4) >> 3);
+        u8 jrow = (u8)((jy + PH) >> 4);
+        if (jx < 80 * 8) s_chimney_scroll = 0;
+
+        if (s_chimney_scroll) {
+            climbing = 3; // Oculta sprite mentre l'scroll arriba a (101, 70)
+            s_on_ground = 1;
+            s_vx = 0;
+            s_vy = 0;
+            // Quan la càmera ja ha centrat la sortida de la canonada (col 101, row 70),
+            // DOS switch_player_scrolling_flag passa a 0 i trigger_func_op2 dóna unk1C = 5
+            if (g_cam_x4 >= 179 && g_cam_row >= 122) {
+                s_chimney_scroll = 0;
+                climbing = 0;
+                s_climb_prev = 0;
+                g_face = 0;
+                s_vx = 30;
+                g_belt_push = 20;
+            }
+        } else if (jcol >= 38 && jcol <= 39 && jrow >= 5 && jrow <= 8 && s_vy >= 0) {
+            // Centrar dins el tub i ocultar sprite només entrar per la boca (row >= 5)
+            s_px8 = (i16)((38 * 8) * SUB);
+            s_vx = 0;
+            s_vy = 16;
+            s_py8 += 16;
+            s_on_ground = 0;
+            climbing = 3;
+            if (jrow >= 8) {
+                // trigger_func_op3 (tiles.c:97-117):
+                if (g_has_instrument == 2) {
+                    // Teletransport a (101, 70) i inici de switch_player_scrolling_flag = 1
+                    s_px8 = (i16)((101 * 8 - 4) * SUB);
+                    s_py8 = (i16)((71 * 16 - PH) * SUB);
+                    s_vy = 0;
+                    s_on_ground = 1;
+                    s_chimney_scroll = 1;
+                } else {
+                    // Sense l'instrument: yfriction = 15 (rebot cap amunt fora de la xemeneia!)
+                    s_vy = -120;
+                    s_on_ground = 0;
+                    climbing = 0;
+                }
+            }
+        }
+    }
+#endif
+
     s_climb_prev = climbing;
 }
 
@@ -780,14 +879,21 @@ void moving_bank_conveyor(void) {
 
 #if LEVEL_ID == 0
     {
-        u16 px = (u16)(s_px8 >> 3);
-        u16 py = (u16)(s_py8 >> 3);
-        const u8* tp = b5_trig_ptr((u8)((px + 8) >> 3), (u8)((py + 16) >> 4));
-        u8 avt = tp ? tp[TP_AVT] : 255;
-        if ((u8)(avt - 12) <= 5) {
-            g_grate_enable = 1;
-            g_grate_phase_x = (u8)((px >> 1) & 1);
-            g_grate_base_y = (u8)(py & 7);
+        u8 r = (u8)(((s_py8 >> 3) + 16) >> 4);
+        if ((r >= 39 && r <= 41) || (r >= 45 && r <= 47)) {
+            u8 max_c = (r <= 41) ? 79 : 62;
+            u16 px = (u16)(s_px8 >> 3);
+            u8 cl = (u8)(px >> 3);
+            u8 cr = (u8)((px + 15) >> 3);
+            g_grate_left = (cl >= 49 && cl <= max_c);
+            g_grate_right = (cr >= 49 && cr <= max_c);
+            if (g_grate_left || g_grate_right) {
+                g_grate_enable = 1;
+                g_grate_phase_x = (u8)((px >> 1) & 1);
+                g_grate_base_y = (u8)((s_py8 >> 3) & 7);
+            } else {
+                g_grate_enable = 0;
+            }
         } else {
             g_grate_enable = 0;
         }

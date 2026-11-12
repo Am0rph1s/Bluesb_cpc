@@ -26,6 +26,8 @@ void sprite_hflip(const u8* src, u8* dst);
 extern u8 g_grate_enable;
 extern u8 g_grate_phase_x;
 extern u8 g_grate_base_y;
+extern u8 g_grate_left;
+extern u8 g_grate_right;
 
 #endif
 

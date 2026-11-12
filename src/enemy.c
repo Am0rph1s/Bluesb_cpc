@@ -291,7 +291,8 @@ void en2_update(void) {
             i16 max_y = (is_cop || sp->kind == 23) ? 20 : 10;
             i16 min_y = is_cop ? -60 : -30;
             i16 max_x = is_cop ? 40 : (is_throw ? 40 : 80);
-            if (g_en_dy <= max_y && g_en_dy >= min_y && abs_dx < max_x) {
+            u8 facing_jake = (e->dir > 0 && g_en_dx_jake >= 0) || (e->dir < 0 && g_en_dx_jake <= 0);
+            if (facing_jake && g_en_dy <= max_y && g_en_dy >= min_y && abs_dx < max_x) {
                 in_range = 1;
                 // 1:1 DOS: gira encarant en Jake immediatament quan entra en rang
                 e->dir = (g_en_dx_jake >= 0) ? 1 : -1;
@@ -315,13 +316,33 @@ void en2_update(void) {
                         s_proj.kind = 4;
                         s_proj.ht = 6;
                         s_proj.row_offset = 13;
+                        s_proj.y8 = (i16)((g_en_y + 8) << 3);
+                    } else if (sp->throw_cell == 12) {
+                        // Tipus 21 (obrer pistola pneumàtica): 1:1 DOS frame 178 (SQV 32, 16x7 px)
+                        s_proj.kind = 21;
+                        s_proj.ht = 7;
+                        s_proj.row_offset = 0;
+                        s_proj.y8 = (i16)((g_en_y + 8) << 3);
+                    } else if (sp->throw_cell == 6) {
+                        // Tipus 13 (mecanic): 1:1 DOS frame 164 (SQV 18, 16x9 px)
+                        s_proj.kind = 13;
+                        s_proj.ht = 9;
+                        s_proj.row_offset = 7;
+                        s_proj.y8 = (i16)((g_en_y + 5) << 3);
+                    } else if (sp->throw_cell == 9) {
+                        // Tipus 14 (obrer): 1:1 DOS frame 180 (SQV 34, 16x11 px)
+                        s_proj.kind = 14;
+                        s_proj.ht = 11;
+                        s_proj.row_offset = 16;
+                        s_proj.y8 = (i16)((g_en_y + 3) << 3);
                     } else {
+                        // L1: 1:1 DOS frame 157 (SQV 11, plat 16x11 px)
                         s_proj.kind = 9;
                         s_proj.ht = 11;
                         s_proj.row_offset = 19;
+                        s_proj.y8 = (i16)((g_en_y + 8) << 3);
                     }
                     s_proj.x = (i16)(e->x + ((e->dir > 0) ? 16 : 0));
-                    s_proj.y8 = (i16)((g_en_y + 8) << 3);
                     s_proj.vx = (e->dir > 0) ? 64 : -64;
                     s_proj.vy = 0;
                     s_proj.cooldown = (SHOOT_CYCLE_FRAMES - (AIM_FRAMES / 2));

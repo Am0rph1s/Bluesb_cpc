@@ -319,45 +319,59 @@ _moving_bank_push::
     ld      a, (de)
     ld      c, a                ;; C = op1
 
-    ;; 1. Deteccio de gel (op=30 o rampes 32..35 i gel 36..39)
+    ;; 1. Deteccio de gel / superfície lliscant 1:1 DOS (op 29, 30, 32..39)
+    ;;    op=29: unk2D=1 (gel fort) -> g_on_ice=1
+    ;;    op=30, 36..39: unk2D=2    -> g_on_ice=1
+    ;;    op=32..35: unk2D=0 (rampa)-> g_on_ice=2 (sense acceleració ni fricció pròpia, només unk2F)
     ld      a, b
+    cp      #32
+    jr      c, chk_ice_b$
+    cp      #36
+    jr      c, slope_on$
+chk_ice_b$:
+    cp      #29
+    jr      z, ice_on$
     cp      #30
     jr      z, ice_on$
-    cp      #32
+    cp      #36
     jr      c, chk_c$
     cp      #40
     jr      c, ice_on$
 chk_c$:
     ld      a, c
+    cp      #32
+    jr      c, chk_ice_c$
+    cp      #36
+    jr      c, slope_on$
+chk_ice_c$:
+    cp      #29
+    jr      z, ice_on$
     cp      #30
     jr      z, ice_on$
-    cp      #32
+    cp      #36
     jr      c, ice_off$
     cp      #40
     jr      c, ice_on$
 ice_off$:
     xor     a
     jr      ice_set$
+slope_on$:
+    ld      a, #2
+    jr      ice_set$
 ice_on$:
     ld      a, #1
 ice_set$:
     ld      (_g_on_ice), a
 
-    ;; 2. Arrossegament de cintes (op 27/28) i lliscament de rampes (32..35)
+    ;; 2. Arrossegament de cintes (op 27/28 -> +/-16 = DOS unk1C +/-4)
+    ;;    A les rampes (op 32..35), DOS afegeix unk2F = +/-3 a xvelocity a cada frame,
+    ;;    cosa que ja fem a moving_bank.c juntament amb el fixup diagonal.
     ld      hl, #0
     ld      a, b
     cp      #27
     jr      z, push_r$
-    cp      #34
-    jr      z, push_r$
-    cp      #35
-    jr      z, push_r$
     ld      a, c
     cp      #27
-    jr      z, push_r$
-    cp      #34
-    jr      z, push_r$
-    cp      #35
     jr      nz, chk_l$
 push_r$:
     ld      hl, #16
@@ -365,16 +379,8 @@ chk_l$:
     ld      a, b
     cp      #28
     jr      z, push_l$
-    cp      #32
-    jr      z, push_l$
-    cp      #33
-    jr      z, push_l$
     ld      a, c
     cp      #28
-    jr      z, push_l$
-    cp      #32
-    jr      z, push_l$
-    cp      #33
     jr      nz, push_done$
 push_l$:
     ld      de, #-16

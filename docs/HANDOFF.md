@@ -124,6 +124,14 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
 - **Unificació de paletes per no malgastar pens**:
   - En Mode 0 els **16 pens (0..15)** són compartits simultàniament per **jugador + HUD + tileset + enemics**.
   - **Slots reservats per Jake/Elwood i HUD**: Pen `0` (`0x4B` blanc), Pen `1` (`0x47` pell), Pen `4` (`0x44` blau marí), Pen `11` (`0x54` negre), Pen `12` (blau/reflex).
+  - **Com funciona `import` amb les paletes** (`tools/graphics_tool.py:504-826`): parteix de `DEFAULT_PALETTES` (còpia a `graphics_tool.py:153`), hi superposa `palette.json` de cada nivell (`ga_code`/`hw_code`/`rgb` més proper) i, si el resultat difereix, reescriu `LEVEL_PALETTES` a `tools/pack_level.py` i repacka els 6 nivells. **`palette.json` mana sobre `pack_level.py`**.
+  - **Particularitats / perills coneguts**:
+    1. Cal mantenir sincronitzats `DEFAULT_PALETTES`, `LEVEL_PALETTES` i els `palette.json` (estat verificat 12/11: tots tres coincideixen). Si edites `LEVEL_PALETTES` a mà, actualitza també els altres dos o `import` et revertirà el canvi.
+    2. **Bug obert**: el `re.sub(r"LEVEL_PALETTES\s*=\s*\[[^\]]+\]", ...)` de `graphics_tool.py:808` s'atura al primer `]` i **deixaria `pack_level.py` corrupte** (files de paleta sobrants) en canviar qualsevol paleta; a més esborra els comentaris `# L1..L6`. Fer commit abans d'executar `import` amb canvis de paleta fins que es corregeixi.
+    3. Mides obligatòries: `tileset.png` 128×256, `enemies.png` 64×128, pantalles 160×200, jugadors 96×150 (si no, `assert`).
+    4. Si existeix `edit/tileset_edit.png` o `edit/enemies_cpc.png`/`enemies_edit.png`, **sobreescriu** `tileset.png`/`enemies.png` abans d'importar.
+    5. Enemics i jugadors usen alfa (`<128` = transparent, màscara); tileset i pantalles no.
+    6. Un canvi de paleta força repacking dels 6 nivells; un canvi de personatge crida `build_level_bundles`; sempre acaba amb `build.main()`.
   - **Regla d'auditoria creuada**: no crear pens nous sense revisar els ja existents entre tileset i enemics; s'unifiquen colors equivalents i s'eliminen duplicats o slots morts per aprofitar tots els 16 pens (taula `LEVEL_PALETTES[0..5]` a `tools/pack_level.py` sincronitzada amb `graphics_edit/level*/palette.json`).
 
 ---

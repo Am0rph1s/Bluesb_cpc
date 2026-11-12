@@ -127,7 +127,7 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
   - **Com funciona `import` amb les paletes** (`tools/graphics_tool.py:504-826`): parteix de `DEFAULT_PALETTES` (còpia a `graphics_tool.py:153`), hi superposa `palette.json` de cada nivell (`ga_code`/`hw_code`/`rgb` més proper) i, si el resultat difereix, reescriu `LEVEL_PALETTES` a `tools/pack_level.py` i repacka els 6 nivells. **`palette.json` mana sobre `pack_level.py`**.
   - **Particularitats / perills coneguts**:
     1. Cal mantenir sincronitzats `DEFAULT_PALETTES`, `LEVEL_PALETTES` i els `palette.json` (estat verificat 12/11: tots tres coincideixen). Si edites `LEVEL_PALETTES` a mà, actualitza també els altres dos o `import` et revertirà el canvi.
-    2. **Bug obert**: el `re.sub(r"LEVEL_PALETTES\s*=\s*\[[^\]]+\]", ...)` de `graphics_tool.py:808` s'atura al primer `]` i **deixaria `pack_level.py` corrupte** (files de paleta sobrants) en canviar qualsevol paleta; a més esborra els comentaris `# L1..L6`. Fer commit abans d'executar `import` amb canvis de paleta fins que es corregeixi.
+    2. ~~Bug del `re.sub` que corrompia `pack_level.py`~~ **Corregit 12/11/2026**: ara el bloc `LEVEL_PALETTES` es reescriu fins a la línia `]` i es conserven els comentaris `# L1..L6` (simulat sobre el fitxer real: sintaxi vàlida, mateix nombre de línies).
     3. Mides obligatòries: `tileset.png` 128×256, `enemies.png` 64×128, pantalles 160×200, jugadors 96×150 (si no, `assert`).
     4. Si existeix `edit/tileset_edit.png` o `edit/enemies_cpc.png`/`enemies_edit.png`, **sobreescriu** `tileset.png`/`enemies.png` abans d'importar.
     5. Enemics i jugadors usen alfa (`<128` = transparent, màscara); tileset i pantalles no.

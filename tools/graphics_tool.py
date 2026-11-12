@@ -800,12 +800,16 @@ def import_assets():
         pl_path = os.path.join(HERE, "pack_level.py")
         txt = open(pl_path, "r", encoding="utf-8").read()
         import pprint
+        names = ["L1", "L2", "L3", "L4", "L5", "L6"]
         pal_code = "LEVEL_PALETTES = [\n"
-        for p in new_palettes:
+        for n, p in zip(names, new_palettes):
+            pal_code += "    # %s\n" % n
             pal_code += "    [" + ", ".join("0x%02X" % x for x in p) + "],\n"
         pal_code += "]"
         import re
-        txt = re.sub(r"LEVEL_PALETTES\s*=\s*\[[^\]]+\]", pal_code, txt, flags=re.DOTALL)
+        # El bloc acaba a la primera linia que es nomes "]" (no al primer "]" intern)
+        txt = re.sub(r"LEVEL_PALETTES\s*=\s*\[\n.*?^\]", lambda m: pal_code, txt,
+                     count=1, flags=re.DOTALL | re.MULTILINE)
         open(pl_path, "w", encoding="utf-8").write(txt)
 
     # Executar pack_level.py per als nivells modificats

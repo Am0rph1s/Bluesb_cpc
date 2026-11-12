@@ -82,6 +82,8 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
 .\zesarux.exe --machine CPC6128 --enable-dsk --dsk-file ..\..\bluesb.dsk --enable-remoteprotocol --remoteprotocol-port 10000
 ```
 
+Per al manual complet de connexió en mode silenciós o sobre sessió engegada, comandes ZRCP i lectura de variables en viu, consulta [`docs/ZESARUX_ZRCP.md`](ZESARUX_ZRCP.md).
+
 Dreceres de test a `src/main.c`: mantenir **`2`** en arrencar entra directament a L2; **`3`** entra a L3; **`4`** entra a L4; **`5`** entra a L5; **`6`** entra a L6.
 Són només per a depuració i no afecten el flux normal.
 

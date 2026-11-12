@@ -115,7 +115,16 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
 
 - **Dreceres de test al menú (`src/main.c`)**: mantenir **`1`..`6`** en prémer `SPACE` al menú salta directament a `L1..L6`.
 - **Depuració en viu amb ZEsarUX (ZRCP port 10000)**: consulta [`docs/ZESARUX_ZRCP.md`](ZESARUX_ZRCP.md) (mode gràfic i mode silenciós `--vo null --ao null --noconsole`, lectura de memòria en decimal `%d`, resolució de símbols amb `obj/bluesb.map`).
-- **Eines gràfiques**: `tools/graphics_tool.py` i `graphics_edit/` per a tilesets, enemics i paletes Mode 0.
+
+### 4.1 Gràfics Editats i Unificació de Paletes (Mode 0, 16 Pens)
+- **Flux d'edició i reintegració** ([`graphics_edit/README.md`](../graphics_edit/README.md)):
+  - Edita els PNGs i `palette.json` dins `graphics_edit/` (`level*/tileset.png`, `enemies.png`, `player_jake/jake.png`, `player_elwood/elwood.png`, `screen_splash/`, `screen_map/`).
+  - Per sincronitzar des del joc cap a `graphics_edit/`: `py -3 tools/graphics_tool.py export`
+  - Per reimportar els teus canvis als binaris (`TILESET*.BIN`, `ENEMI*.BIN`, `PFRAMES.BIN`, etc.) i generar el disc: `py -3 tools/graphics_tool.py import` (i `py -3 tools/build.py --check` per validar el `.dsk`).
+- **Unificació de paletes per no malgastar pens**:
+  - En Mode 0 els **16 pens (0..15)** són compartits simultàniament per **jugador + HUD + tileset + enemics**.
+  - **Slots reservats per Jake/Elwood i HUD**: Pen `0` (`0x4B` blanc), Pen `1` (`0x47` pell), Pen `4` (`0x44` blau marí), Pen `11` (`0x54` negre), Pen `12` (blau/reflex).
+  - **Regla d'auditoria creuada**: no crear pens nous sense revisar els ja existents entre tileset i enemics; s'unifiquen colors equivalents i s'eliminen duplicats o slots morts per aprofitar tots els 16 pens (taula `LEVEL_PALETTES[0..5]` a `tools/pack_level.py` sincronitzada amb `graphics_edit/level*/palette.json`).
 
 ---
 

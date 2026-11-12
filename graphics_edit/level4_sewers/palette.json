@@ -45,25 +45,25 @@
   },
   {
     "pen": 4,
-    "ink_number": 10,
-    "ga_code": "0x46",
+    "ink_number": 1,
+    "ga_code": "0x44",
     "rgb": [
       0,
-      128,
+      0,
       128
     ],
-    "color_name": "Cyan"
+    "color_name": "Blue"
   },
   {
     "pen": 5,
-    "ink_number": 16,
-    "ga_code": "0x47",
+    "ink_number": 11,
+    "ga_code": "0x57",
     "rgb": [
-      255,
+      0,
       128,
-      128
+      255
     ],
-    "color_name": "Pink"
+    "color_name": "Sky Blue"
   },
   {
     "pen": 6,
@@ -89,36 +89,36 @@
   },
   {
     "pen": 8,
-    "ink_number": 0,
-    "ga_code": "0x54",
+    "ink_number": 7,
+    "ga_code": "0x45",
     "rgb": [
+      255,
       0,
-      0,
-      0
+      128
     ],
-    "color_name": "Black"
+    "color_name": "Purple"
   },
   {
     "pen": 9,
-    "ink_number": 13,
-    "ga_code": "0x40",
+    "ink_number": 4,
+    "ga_code": "0x58",
     "rgb": [
       128,
-      128,
+      0,
       128
     ],
-    "color_name": "White / Gray"
+    "color_name": "Magenta"
   },
   {
     "pen": 10,
-    "ink_number": 13,
-    "ga_code": "0x40",
+    "ink_number": 5,
+    "ga_code": "0x5D",
     "rgb": [
       128,
-      128,
-      128
+      0,
+      255
     ],
-    "color_name": "White / Gray"
+    "color_name": "Mauve"
   },
   {
     "pen": 11,
@@ -133,36 +133,36 @@
   },
   {
     "pen": 12,
-    "ink_number": 13,
-    "ga_code": "0x40",
+    "ink_number": 3,
+    "ga_code": "0x5C",
     "rgb": [
       128,
-      128,
-      128
+      0,
+      0
     ],
-    "color_name": "White / Gray"
+    "color_name": "Red"
   },
   {
     "pen": 13,
-    "ink_number": 12,
-    "ga_code": "0x5E",
+    "ink_number": 6,
+    "ga_code": "0x4C",
     "rgb": [
-      128,
-      128,
+      255,
+      0,
       0
     ],
-    "color_name": "Yellow"
+    "color_name": "Bright Red"
   },
   {
     "pen": 14,
-    "ink_number": 10,
-    "ga_code": "0x46",
+    "ink_number": 2,
+    "ga_code": "0x55",
     "rgb": [
       0,
-      128,
-      128
+      0,
+      255
     ],
-    "color_name": "Cyan"
+    "color_name": "Bright Blue"
   },
   {
     "pen": 15,

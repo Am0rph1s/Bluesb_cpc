@@ -133,46 +133,46 @@
   },
   {
     "pen": 12,
-    "ink_number": 23,
-    "ga_code": "0x5B",
+    "ink_number": 2,
+    "ga_code": "0x55",
     "rgb": [
-      128,
-      255,
+      0,
+      0,
       255
     ],
-    "color_name": "Pastel Cyan"
+    "color_name": "Bright Blue"
   },
   {
     "pen": 13,
-    "ink_number": 0,
-    "ga_code": "0x54",
-    "rgb": [
-      0,
-      0,
-      0
-    ],
-    "color_name": "Black"
-  },
-  {
-    "pen": 14,
-    "ink_number": 4,
-    "ga_code": "0x58",
+    "ink_number": 5,
+    "ga_code": "0x5D",
     "rgb": [
       128,
       0,
-      128
+      255
     ],
-    "color_name": "Magenta"
+    "color_name": "Mauve"
+  },
+  {
+    "pen": 14,
+    "ink_number": 6,
+    "ga_code": "0x4C",
+    "rgb": [
+      255,
+      0,
+      0
+    ],
+    "color_name": "Bright Red"
   },
   {
     "pen": 15,
-    "ink_number": 26,
-    "ga_code": "0x4B",
+    "ink_number": 8,
+    "ga_code": "0x4D",
     "rgb": [
       255,
-      255,
+      0,
       255
     ],
-    "color_name": "Bright White"
+    "color_name": "Bright Magenta"
   }
 ]

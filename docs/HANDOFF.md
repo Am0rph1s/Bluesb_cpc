@@ -123,16 +123,37 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
   - Per reimportar els teus canvis als binaris (`TILESET*.BIN`, `ENEMI*.BIN`, `PFRAMES.BIN`, etc.) i generar el disc: `py -3 tools/graphics_tool.py import` (i `py -3 tools/build.py --check` per validar el `.dsk`).
 - **Unificació de paletes per no malgastar pens**:
   - En Mode 0 els **16 pens (0..15)** són compartits simultàniament per **jugador + HUD + tileset + enemics**.
-  - **Slots reservats per Jake/Elwood i HUD**: Pen `0` (`0x4B` blanc), Pen `1` (`0x47` pell), Pen `4` (`0x44` blau marí), Pen `11` (`0x54` negre), Pen `12` (blau/reflex).
+  - **Slots reservats per Jake/Elwood i HUD**: Pen `0` (`0x4B` blanc), Pen `1` (`0x47` pell), Pen `4` (`0x44` blau marí), Pen `11` (`0x54` negre). Són els **contracte d'identitat**: el jugador i el HUD es dibuixen amb la paleta del nivell, així que aquests 4 pens han de tenir el mateix color als 6 nivells.
+  - **Pens reals que fa servir cada asset** (mesurat 12/11/2026, `tools/palette_audit.py`): Jake `0,1,4,5,11,12` · Elwood `0,1,4,5,10,11,13` · HUD `0,1,2,4,7,11,12,13` · enemics `0,1,4,9,10,11,12,13`.
   - **Com funciona `import` amb les paletes** (`tools/graphics_tool.py:504-826`): parteix de `DEFAULT_PALETTES` (còpia a `graphics_tool.py:153`), hi superposa `palette.json` de cada nivell (`ga_code`/`hw_code`/`rgb` més proper) i, si el resultat difereix, reescriu `LEVEL_PALETTES` a `tools/pack_level.py` i repacka els 6 nivells. **`palette.json` mana sobre `pack_level.py`**.
+  - **Com funciona la quantització (el punt clau)**: `import` converteix cada píxel del PNG al **pen més proper de la paleta**. Per tant (a) un color que no existeix a la paleta **es canvia de color en silenci**, i (b) la **paleta és la font de veritat dels colors**, no el PNG. Abans d'editar un PNG amb un color nou, cal afegir un pen nou a la paleta.
+  - **`palette.json` del jugador NO és la paleta de runtime**: `player_jake/palette.json` i `player_elwood/palette.json` són només el mapa d'importació RGB→pen. La paleta que es veu al joc és `LEVEL_PALETTES[nivell]` → `s_lv.palette` → `palette_table` (`src/main.c:836`).
   - **Particularitats / perills coneguts**:
-    1. Cal mantenir sincronitzats `DEFAULT_PALETTES`, `LEVEL_PALETTES` i els `palette.json` (estat verificat 12/11: tots tres coincideixen). Si edites `LEVEL_PALETTES` a mà, actualitza també els altres dos o `import` et revertirà el canvi.
+    1. Cal mantenir sincronitzats `DEFAULT_PALETTES`, `LEVEL_PALETTES` i els `palette.json` (estat verificat 12/11: tots tres coincideixen). `import` **no llegeix** `LEVEL_PALETTES`: compara `palette.json` amb `DEFAULT_PALETTES` i només reescriu si difereixen.
     2. ~~Bug del `re.sub` que corrompia `pack_level.py`~~ **Corregit 12/11/2026**: ara el bloc `LEVEL_PALETTES` es reescriu fins a la línia `]` i es conserven els comentaris `# L1..L6` (simulat sobre el fitxer real: sintaxi vàlida, mateix nombre de línies).
     3. Mides obligatòries: `tileset.png` 128×256, `enemies.png` 64×128, pantalles 160×200, jugadors 96×150 (si no, `assert`).
-    4. Si existeix `edit/tileset_edit.png` o `edit/enemies_cpc.png`/`enemies_edit.png`, **sobreescriu** `tileset.png`/`enemies.png` abans d'importar.
+    4. Si existeix `edit/tileset_edit.png` o `edit/enemies_cpc.png`/`enemies_edit.png`, **sobreescriu** `tileset.png`/`enemies.png` abans d'importar. **Aquestes sobrescriptures són el master real**: `edit/tileset_edit.png` de L4/L6 és l'art editat que encara no era als binaris (12/11/2026).
     5. Enemics i jugadors usen alfa (`<128` = transparent, màscara); tileset i pantalles no.
     6. Un canvi de paleta força repacking dels 6 nivells; un canvi de personatge crida `build_level_bundles`; sempre acaba amb `build.main()`.
   - **Regla d'auditoria creuada**: no crear pens nous sense revisar els ja existents entre tileset i enemics; s'unifiquen colors equivalents i s'eliminen duplicats o slots morts per aprofitar tots els 16 pens (taula `LEVEL_PALETTES[0..5]` a `tools/pack_level.py` sincronitzada amb `graphics_edit/level*/palette.json`).
+
+### 4.2 Eines de paletes (auditoria i ajust)
+
+```powershell
+py -3 tools/palette_audit.py            # sincronia, pens per asset, duplicats, coherencia PNG<->binari
+py -3 tools/palette_fit.py --preview    # paleta proposada ajustada als colors reals de l'art + previews
+py -3 tools/palette_fit.py --apply      # escriu pack_level.py + graphics_tool.py + palette.json
+py -3 tools/refresh_enemy_png.py 1 3 --edit   # reexporta els PNG d'enemics des dels binaris vigents
+py -3 tools/reimport_level.py 3         # reimporta UN nivell (mateixa logica que graphics_tool import) i reconstrueix
+py -3 tools/verify_palettes.py          # ZEsarUX: paleta a la VRAM + contracte de pens dels 6 nivells
+```
+
+- **`palette_audit.py`**: detecta errors de sincronia entre les tres fonts de paleta, quins pens fa servir cada asset, colors duplicats, pens morts, **violacions del contracte de pens** i **PNG master desincronitzats amb el binaire**.
+- **`palette_fit.py`**: construeix una paleta que (1) fixa el contracte `0,1,4,11`, (2) conserva el color de tot pen que l'art fa servir, (3) dona pen a tot color de l'art que abans no en tenia i (4) deixa els 16 pens amb colors **inhibits**.
+- **`refresh_enemy_png.py`**: reexporta `enemies.png` des del binaire (i l'override `edit/`), perquè `import` no regressi l'art DOS 1:1.
+- **`reimport_level.py`**: reimporta i repacka només els nivells indicats (iteracions ràpides sense reimportar els 6).
+- **`verify_palettes.py`**: arrenca un ZEsarUX per nivell, llegeix `palette_table` de la VRAM i comprova que és idèntica a `LEVEL_PALETTES` i que els pens del contracte es compleixen.
+- Detall complet del diagnòstic i de les correccions: [`docs/AUDITORIA_PALETES.md`](AUDITORIA_PALETES.md).
 
 ---
 
@@ -141,6 +162,7 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
 | Document | Contingut |
 | :--- | :--- |
 | [`docs/CHANGELOG.md`](CHANGELOG.md) | Registre cronològic de canvis i sessions anteriors. |
+| [`docs/AUDITORIA_PALETES.md`](AUDITORIA_PALETES.md) | Diagnòstic i ajust de les paletes Mode 0 dels 6 nivells (contracte de pens, colors duplicats, coherència PNG↔binari). |
 | [`docs/ZESARUX_ZRCP.md`](ZESARUX_ZRCP.md) | Manual de connexió i depuració remota amb ZEsarUX (ZRCP). |
 | [`docs/DOS_CPC_COORDINATES.md`](DOS_CPC_COORDINATES.md) | Fórmules oficials de conversió de coordenades DOS ↔ CPC. |
 | [`docs/LEVEL_PACKAGE.md`](LEVEL_PACKAGE.md) | Format binari dels paquets `.PAK` i `.ZX0`. |

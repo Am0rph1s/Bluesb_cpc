@@ -67,14 +67,14 @@
   },
   {
     "pen": 6,
-    "ink_number": 16,
-    "ga_code": "0x47",
+    "ink_number": 2,
+    "ga_code": "0x55",
     "rgb": [
-      255,
-      128,
-      128
+      0,
+      0,
+      255
     ],
-    "color_name": "Pink"
+    "color_name": "Bright Blue"
   },
   {
     "pen": 7,
@@ -166,13 +166,13 @@
   },
   {
     "pen": 15,
-    "ink_number": 26,
-    "ga_code": "0x4B",
+    "ink_number": 4,
+    "ga_code": "0x58",
     "rgb": [
-      255,
-      255,
-      255
+      128,
+      0,
+      128
     ],
-    "color_name": "Bright White"
+    "color_name": "Magenta"
   }
 ]

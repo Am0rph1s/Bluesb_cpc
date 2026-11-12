@@ -23,25 +23,25 @@
   },
   {
     "pen": 2,
-    "ink_number": 13,
-    "ga_code": "0x40",
+    "ink_number": 4,
+    "ga_code": "0x58",
     "rgb": [
       128,
-      128,
+      0,
       128
     ],
-    "color_name": "White / Gray"
+    "color_name": "Magenta"
   },
   {
     "pen": 3,
-    "ink_number": 13,
-    "ga_code": "0x40",
+    "ink_number": 11,
+    "ga_code": "0x57",
     "rgb": [
+      0,
       128,
-      128,
-      128
+      255
     ],
-    "color_name": "White / Gray"
+    "color_name": "Sky Blue"
   },
   {
     "pen": 4,
@@ -78,14 +78,14 @@
   },
   {
     "pen": 7,
-    "ink_number": 16,
-    "ga_code": "0x47",
+    "ink_number": 23,
+    "ga_code": "0x5B",
     "rgb": [
-      255,
       128,
-      128
+      255,
+      255
     ],
-    "color_name": "Pink"
+    "color_name": "Pastel Cyan"
   },
   {
     "pen": 8,
@@ -100,14 +100,14 @@
   },
   {
     "pen": 9,
-    "ink_number": 3,
-    "ga_code": "0x5C",
+    "ink_number": 2,
+    "ga_code": "0x55",
     "rgb": [
-      128,
       0,
-      0
+      0,
+      255
     ],
-    "color_name": "Red"
+    "color_name": "Bright Blue"
   },
   {
     "pen": 10,
@@ -133,25 +133,25 @@
   },
   {
     "pen": 12,
-    "ink_number": 0,
-    "ga_code": "0x54",
-    "rgb": [
-      0,
-      0,
-      0
-    ],
-    "color_name": "Black"
-  },
-  {
-    "pen": 13,
-    "ink_number": 3,
-    "ga_code": "0x5C",
+    "ink_number": 5,
+    "ga_code": "0x5D",
     "rgb": [
       128,
       0,
+      255
+    ],
+    "color_name": "Mauve"
+  },
+  {
+    "pen": 13,
+    "ink_number": 6,
+    "ga_code": "0x4C",
+    "rgb": [
+      255,
+      0,
       0
     ],
-    "color_name": "Red"
+    "color_name": "Bright Red"
   },
   {
     "pen": 14,

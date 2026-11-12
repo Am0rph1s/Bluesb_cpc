@@ -4,6 +4,20 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
 
 ---
 
+### 12/11/2026 — Auditoria i ajust de les paletes Mode 0 (contracte de pens, colors duplicats, coherència PNG↔binari)
+1. **Diagnòstic** ([`tools/palette_audit.py`](../tools/palette_audit.py)):
+   - El pipeline quantitza cada píxel del PNG editat al **pen més proper de la paleta**: un color que no hi és **es canvia en silenci**, i la paleta és la font de veritat dels colors (no el PNG).
+   - `palette.json` del jugador és només el mapa d'importació RGB→pen; la paleta de runtime és `LEVEL_PALETTES[nivell]` → `s_lv.palette`.
+   - Contracte d'identitat real: Jake `0,1,4,5,11,12` · Elwood `0,1,4,5,10,11,13` · HUD `0,1,2,4,7,11,12,13` · enemics `0,1,4,9,10,11,12,13`.
+2. **Correccions**:
+   - **L4 no tenia blau marí a la paleta**: 9.465 px d'art editat (blau marí `#000080`) es convertien en **cian**, i el **vestit de Jake/Elwood sortia cian** a les clavegueres. Afegit `pen 4 = 0x44` (com al DOS, on l'índex 4 és blau fosc a tots els nivells).
+   - **PNG d'enemics obsolets a L2 i L4**: els `edit/enemies_cpc.png` eren l'art anterior a l'extracció DOS 1:1 del 12/11, i `import` **regressava** l'art. Nou `tools/refresh_enemy_png.py` per reexportar-los des dels binaris.
+   - **Paletes reajustades** als colors reals de l'art ([`tools/palette_fit.py`](../tools/palette_fit.py)): els 6 nivells passen a **16 colors únics de 16 pens** (L4 passava de 8, L2 de 9, L6 de 11).
+   - Escripta la proposta a les tres fonts (`pack_level.py`, `graphics_tool.py`, `palette.json`) i reimportat l'art.
+3. **Documentació**: nova secció 4.2 al handoff (eines de paletes) i informe complet a [`docs/AUDITORIA_PALETES.md`](AUDITORIA_PALETES.md).
+4. **Eines noves**: `palette_audit.py` (auditoria), `palette_fit.py` (ajust + previews), `refresh_enemy_png.py` (reexportació d'enemics), `reimport_level.py` (import per nivell) i `verify_palettes.py` (verificació a ZEsarUX).
+5. **Verificació**: `smoke_test --dsk-only` i `--boot-only` verds; `palette_audit` amb 0 PNG desincronitzats i 16/16 colors únics als 6 nivells; `verify_palettes.py` confirma que la paleta a la VRAM és idèntica a l'esperada als 6 nivells i que el contracte `0/1/4/11` es compleix a tots.
+
 ### 12/11/2026 — Mecàniques 1:1 DOS a Nivell 2, Clipping Reixa L1 i Projectils
 1. **Nivell 2 (Fàbrica / ENT)**:
    - **Rampes diagonals del sostre (`op 32..39`)**: implementades de manera suau al Banc 5 (`src/moving_bank.c`, `engine/tile_blit.s`), sense esglaons en lliscar i usant `g_on_ice = 2` (`src/main.c`) per a l'impuls de pendent.

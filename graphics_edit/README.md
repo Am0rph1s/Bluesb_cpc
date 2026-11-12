@@ -58,6 +58,12 @@ Per garantir que els herois, els enemics i l'escenari conviuen sense corrompre e
 1. **Editar Gràfics o Paletes**:
    - Modifica directament els PNGs (`tileset.png`, `enemies.png`, `jake.png`, `splash.png`, etc.) o el fitxer `palette.json` del nivell corresponent.
    - Quan modifiquis colors RGB, el convertidor assignarà automàticament cada píxel al color de maquinari CPC més proper.
+   - **Avís**: el fitxer master del tileset i dels enemics és el de `levelN/edit/`
+     (`tileset_edit.png`, `enemies_cpc.png` / `enemies_edit.png`); l'`import` el copiola
+     sobre `tileset.png` / `enemies.png`. Edita el de `edit/`, no la còpia.
+   - **Avís**: si apliques un color que **no existeix a la paleta**, el convertidor el
+     canvia en silenci al color més proper. Abans de posar un color nou, **afegeix un
+     pen nou a `levelN/palette.json`** (16 pens = 16 colors de maquinari Mode 0).
 
 2. **Reintegrar automàticament al joc**:
    Executa des de la línia d'ordres:
@@ -71,7 +77,15 @@ Per garantir que els herois, els enemics i l'escenari conviuen sense corrompre e
    - Comprimeix amb l'accelerador natiu ZX0.
    - Construeix una nova imatge de disc `bluesb.dsk` llesta per jugar.
 
-3. **Exportar / Sincronitzar de nou des del joc**:
+3. **Auditar les paletes** (colors repetits, pens que canvien de color entre nivells,
+   PNG desincronitzats amb els binaris):
+   ```bash
+   py -3 tools/palette_audit.py          # informe
+   py -3 tools/palette_fit.py --preview  # paleta proposada ajustada als colors de l'art
+   ```
+   Detall: [`docs/AUDITORIA_PALETES.md`](../docs/AUDITORIA_PALETES.md).
+
+4. **Exportar / Sincronitzar de nou des del joc**:
    Si s'han fet canvis al codi base o es vol regenerar la graella d'edició completa:
    ```bash
    py -3 tools/graphics_tool.py export

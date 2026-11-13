@@ -4,6 +4,27 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
 
 ---
 
+### 13/11/2026 — Celes d'enemics de L3 corregides (el policia alternava amb la rata)
+1. **Diagnòstic** ([`tools/check_enemy_cells.py`](../tools/check_enemy_cells.py), eina nova):
+   identifica cada cel·la d'`ENEMI<n>.BIN` amb el frame DOS que li correspon
+   (`staticres.c` → `animframes_059d`) i confronta la taula de spawns
+   (`tools/gen_enemy_spawn.py`) amb el contingut real de les cel·les.
+2. **Bug corregit a L3 (presó)**: la taula de spawns apuntava a cel·les d'un altre
+   tipus d'enemic.
+   - `t4` (presidiari/policia, op3) caminava amb les cel·les **5 i 6**: la 5 és la
+     seva propia pose de tret i la 6 és **la rata** → el policia alternava el seu
+     fotograma amb el de la rata. Ara camina amb les cel·les **3 i 4** i fa el tret
+     amb la **5**.
+   - `t6` (rata, op1) caminava amb les cel·les **13 i 14**: la 13 és la cel·la de
+     **projectils** i la 14 és buida → **la rata sortia dibuixada com tots els
+     projectils**. Ara camina amb les cel·les **6 i 7** (el seu sprite real).
+3. **Auditoria dels 6 nivells**: 0 referències a cel·les incorrectes. (L4: `t26` i
+   `t34` comparteixen el mateix sprite DOS — no és un error.)
+4. **Eines noves**: `check_enemy_cells.py` (auditoria de cel·les), `peek_enemy.py` i
+   `check_l3_enemies.py` (captures a ZEsarUX amb teletransport).
+5. **Verificat**: `smoke_test --dsk-only` OK; a ZEsarUX la rata ja es dibuixa amb el
+   seu sprite i el policia amb els seus propis fotogrames.
+
 ### 12/11/2026 — Auditoria i ajust de les paletes Mode 0 (contracte de pens, colors duplicats, coherència PNG↔binari)
 1. **Diagnòstic** ([`tools/palette_audit.py`](../tools/palette_audit.py)):
    - El pipeline quantitza cada píxel del PNG editat al **pen més proper de la paleta**: un color que no hi és **es canvia en silenci**, i la paleta és la font de veritat dels colors (no el PNG).

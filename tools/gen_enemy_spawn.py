@@ -46,10 +46,17 @@ SPAWN_TYPES_L2 = {
 }
 
 # L3 PRISON (vegeu tools/gen_enemy3_frames.py per a les celes)
+# Les cel·les REALS d'ENEMI3.BIN (vegeu tools/check_enemy_cells.py):
+#   0,1,2  t3  (op2)  guardia amb escut   frames DOS 0,1,2
+#   3,4,5  t4  (op3)  presidiari amb bazuka frames DOS 5,6,11 (11 = pose de tret)
+#   6,7    t6  (op1)  rata                 frames DOS 26,27
+#   8,9,10 t23 (op11) presidiari de cel·les (mover, no implementat)
+#   11,12  t5  (op4)  presidiari amb casc  (mover, no implementat)
+#   13     projectiles (ou/bala/plat)
 SPAWN_TYPES_L3 = {
-    3: (18, 24, 0, 2, 2),     # guardia amb escut: patrulla walk 0/1 (op2)
-    4: (4, 24, 5, 11, 11),    # policia amb pistola: walk 5/6, aim 11
-    6: (24, 24, 13, 15, 15),  # gos/rata L3 op1: walk 13/14, hitbox h=10
+    3: (18, 24, 0, 2, 2),     # guardia amb escut (op2): walk 0/1, pose 2
+    4: (4, 24, 3, 5, 5),      # presidiari amb bazuka (op3): walk 3/4, tret 5
+    6: (24, 24, 6, 7, 7),     # rata (op1): walk 6/7, hitbox h=10
 }
 
 # L4 EGOU (vegeu tools/gen_enemy4_frames.py per a les celes)

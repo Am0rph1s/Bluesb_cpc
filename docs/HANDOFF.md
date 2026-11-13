@@ -16,7 +16,7 @@ El joc complet (tots 6 nivells + selector de personatge/mapa `FRONT`) cap en **u
 | :--- | :--- | :--- | :--- |
 | **L1** | `magasin` (Centre comercial) | **Completat i estable** | 5 ascensors, cintes transportadores, peixeres, ocells, caixes/globus/paraigües, sales interiors, clipping de reixa de primer pla (`engine/sprite.s`). |
 | **L2** | `ent` (Fàbrica / Magatzem) | **En validació fina** | Premses hidràuliques (`PRESS.BIN`), àcid, trampolins 3 altures (`op 24`), dipòsit d'aigua i desaigüe, rampes diagonals suaus (`op 32..39`), gel (`g_on_ice`), xemeneia amb scroll fins a les banderes, enemics/projectils L2. |
-| **L3** | `prison` (Presó) | **Integrat i jugable** | `L3WORLD.PAK` + `L3C1.PAK` separat (`code_exc_off = 0`), reixes escalables (`type 6`), palanques/comportes, trampilles temporitzades, forats d'1 tile ajupit. Pendent: `type 4`/op3 (llançadors) i movers `type 5`/`23`. |
+| **L3** | `prison` (Presó) | **Integrat i jugable** | `L3WORLD.PAK` + `L3C1.PAK` separat (`code_exc_off = 0`), reixes escalables (`type 6`), palanques/comportes, trampilles temporitzades, forats d'1 tile ajupit. Celes d'enemics corregides el 13/11 (el policia ja no alterna amb la rata). Pendent: comportament `op3` del presidiari amb bazuka i els movers `type 5`/`23`. |
 | **L4** | `egou` (Clavegueres) | **Integrat i verificat** | Natació 1:1 DOS (`tt == 11/12`), línia de flotació, comportes automàtiques (`b4=67/68`), 16 cel·les `ENEMI4.BIN` (peix petit decoratiu `class 0`, peix gran agressiu `class 2`, rates, aranya). |
 | **L5** | `ville` (Ciutat / Teulades) | **Integrat** | `L5WORLD.PAK` + `L5C1.PAK`, bastides (`SCAFFOLD`), paleta Mode 0 ajustada. |
 | **L6** | `concert` (Escenari final) | **Integrat** | 2 ascensors d'escenari (`LIFT6.BIN`), spans de focus, seqüència endgame `trigger_func_op40` (ball i retorn al menú). |
@@ -116,6 +116,8 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
 - **Dreceres de test al menú (`src/main.c`)**: mantenir **`1`..`6`** en prémer `SPACE` al menú salta directament a `L1..L6`.
 - **Depuració en viu amb ZEsarUX (ZRCP port 10000)**: consulta [`docs/ZESARUX_ZRCP.md`](ZESARUX_ZRCP.md) (mode gràfic i mode silenciós `--vo null --ao null --noconsole`, lectura de memòria en decimal `%d`, resolució de símbols amb `obj/bluesb.map`).
 
+- **Auditoria de cel·les d'enemics** (`py -3 tools/check_enemy_cells.py`): identifica cada cel·la d'`ENEMI<n>.BIN` amb el frame DOS que li correspon (`staticres.c` → `animframes_059d`) i comprova que la taula de spawns (`tools/gen_enemy_spawn.py`) apunta a les cel·les correctes. **Executa'l després de tocar `gen_enemy_spawn.py` o `gen_enemy*_frames.py`**: ha detectat el bug de L3 (13/11/2026) en què el policia alternava el seu fotograma amb el de la rata i la rata sortia dibuixada com un projectil.
+
 ### 4.1 Gràfics Editats i Unificació de Paletes (Mode 0, 16 Pens)
 - **Flux d'edició i reintegració** ([`graphics_edit/README.md`](../graphics_edit/README.md)):
   - Edita els PNGs i `palette.json` dins `graphics_edit/` (`level*/tileset.png`, `enemies.png`, `player_jake/jake.png`, `player_elwood/elwood.png`, `screen_splash/`, `screen_map/`).
@@ -168,6 +170,7 @@ py -3 tools/verify_palettes.py          # ZEsarUX: paleta a la VRAM + contracte 
 | [`docs/LEVEL_PACKAGE.md`](LEVEL_PACKAGE.md) | Format binari dels paquets `.PAK` i `.ZX0`. |
 | [`docs/OPTIMITZACIO_BUILD.md`](OPTIMITZACIO_BUILD.md) | Arquitectura del build ràpid (C# ZX0, SHA-256 cache, CHS). |
 | [`docs/INVENTARI_NIVELLS.md`](INVENTARI_NIVELLS.md) | Mides i recursos dels 6 nivells originals. |
+| [`docs/AUDITORIA_PALETES.md`](AUDITORIA_PALETES.md) | Diagnòstic i ajust de les paletes Mode 0 (contracte de pens, colors duplicats, coherència PNG↔binari). |
 | [`docs/PLA_NIVELLS_UNIVERSAL.md`](PLA_NIVELLS_UNIVERSAL.md) | Disseny de l'arquitectura multi-nivell universal. |
 | [`docs/PERF_REPORT_L1L2.md`](PERF_REPORT_L1L2.md) | Mesures i anàlisi de rendiment / FPS del motor. |
 | [`tools/blues_dos/`](../tools/blues_dos/) | Codi font DOS original de referència absoluta. |

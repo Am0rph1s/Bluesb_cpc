@@ -4,6 +4,28 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
 
 ---
 
+### 13/11/2026 — CRÍTIC: freezes/resets en carregar L2-L6 (fals `code_ready`)
+
+1. **Símptoma**: L1 arrenca, però seleccionar qualsevol altre nivell (número+espai
+   al selector) peta just en carregar: a vegades congelat, a vegades reset a BASIC
+   o barres de color.
+2. **Causa**: `main.c` es saltava la càrrega del codi compartit de C6 si el byte
+   `C6:0x5A00` era `0xC3`:
+   `u8 code_ready = (*(const u8*)0x5A00 == 0xC3);`
+   Aquest byte pot ser `0xC3` per RAM inicialitzada o per dades del FRONT, i llavors
+   s'executava brossa a `0x5A00` → reset a BASIC. L1 no ho patia perquè no fa la
+   comprovació.
+3. **Reproducció determinista**: escriure `0xC3` a `C6:0x5A00` (físic `0x19A00`) i
+   carregar L2 deixa exactament l'estat del crash: `magic=0x3C`, `px8=3120`,
+   canari `e0606c...`, PC a la ROM (`0x1BD6`).
+4. **Correcció**: carregar SEMPRE el codi compartit (`load_level_file(0,1)`) per a
+   `lvl != 0`; s'elimina l'optimització fràgil. Cost: una lectura redundant de
+   L1ENEMI (~8 KB) en els nivells 2-6.
+5. **Verificat**: amb `0xC3` forçat a `0x5A00`, el joc carrega L2/L3 i corre; el
+   selector número+espai ja no reseteja.
+
+---
+
 ### 13/11/2026 — Celes d'enemics de L3 corregides (el policia alternava amb la rata)
 1. **Diagnòstic** ([`tools/check_enemy_cells.py`](../tools/check_enemy_cells.py), eina nova):
    identifica cada cel·la d'`ENEMI<n>.BIN` amb el frame DOS que li correspon

@@ -835,13 +835,13 @@ static void load_level_packages(void) {
         level_params_load();
         cpct_memcpy(palette_table, s_lv.palette, 16);
         if (lvl != 0) {
-            u8 prev = bank_set(0xC6);
-            u8 code_ready = (*(const u8*)0x5A00 == 0xC3);
-            bank_restore(prev);
-            if (!code_ready) {
-                if (!load_level_file(0, 1)) {
-                    cpct_setBorder(0x43); while (1) { }
-                }
+            // Carrega SEMPRE el codi compartit de C6 (L1ENEMI). La
+            // comprovacio "0x5A00 == 0xC3" es fragil: aquest byte pot
+            // ser 0xC3 per RAM inicialitzada o per un preview del FRONT,
+            // i llavors se saltava la carrega i s'executava brossa a
+            // 0x5A00 (freeze/reset en carregar L2-L6).
+            if (!load_level_file(0, 1)) {
+                cpct_setBorder(0x43); while (1) { }
             }
         }
         if (!load_level_file(lvl, 1)) {

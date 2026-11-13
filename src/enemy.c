@@ -58,13 +58,13 @@ typedef struct {
 typedef struct {
     i16 x;
     i16 y8;
-    i8 dir;
+    i8 dir;         // REUTILITZAT: offset horitzontal dins la fila (0 o 4)
     i16 vx;
     i16 vy;
-    u8 kind;        // 0=inactiu, 4=bala, 9=plat, 10=ou, 26=coet L3
+    u8 kind;        // 0=inactiu, 4=bala, 9=plat, 10=ou, 26=coet L3, 27=bola L3
     u8 ht;          // alÃ§ada (bala=6, plat=11, ou=13)
-    u8 row_offset;  // a la cela 13 (bala=13, plat=19, ou=0)
-    u8 cell;        // cela del projectil (13 = ou/bala/plat, 14 = coet L3)
+    u8 row_offset;  // a la cela (bala=13, plat=19, ou=0)
+    u8 cell;        // cela del projectil (13 = ou/bala/plat, 14 = coet, 15 = bola)
     u8 cooldown;
     u8 drawn_byte_count[2];
     u8 drawn_row_count[2];
@@ -205,6 +205,7 @@ void en2_init(void) {
     s_proj.kind = 0;
     s_proj.cooldown = 0;
     s_proj.cell = 13;
+    
     s_proj.drawn_row_count[0] = 0;
     s_proj.drawn_row_count[1] = 0;
 }
@@ -284,7 +285,8 @@ void en2_update(void) {
 
         u8 in_range = 0;
         if (sp->kind == 4 || sp->kind == 17 || sp->kind == 21 || sp->kind == 23 || sp->kind == 26) {
-            // 1:1 DOS object_func_op2 (policia), op10 (cambrera), op7 i op3 (L3)
+            // 1:1 DOS: op2 (policia), op10 (cambrera/llançador), op7, op4 (bazuka L3)
+            // i op11 (presidiari L3, via throw_cell == 10)
             g_en_dy = g_en_jake_y - g_en_y;
             g_en_dx_jake = g_en_jake_x - e->x;
             i16 abs_dx = (g_en_dx_jake >= 0) ? g_en_dx_jake : -g_en_dx_jake;
@@ -295,9 +297,16 @@ void en2_update(void) {
             i16 max_x = is_cop ? 40 : (is_throw ? 40 : 80);
             u8 facing_jake = (e->dir > 0 && g_en_dx_jake >= 0) || (e->dir < 0 && g_en_dx_jake <= 0);
             if (sp->kind == 26) {
-                // 1:1 DOS object_func_op3: ydist<=20 && ydist>-160 && xdist<160 &&
-                // direction_ud>-30; NO exigeix encarament previ (gira al moment).
+                // 1:1 DOS object_func_op3 (op4, bazuka): ydist<=20 && >-160 &&
+                // xdist<160; NO exigeix encarament previ.
                 max_y = 20;
+                min_y = -160;
+                max_x = 160;
+                facing_jake = 1;
+            } else if (sp->throw_cell == 10) {
+                // 1:1 DOS object_func_op10 (op11, presidiari): ydist<=10,
+                // |xdist|<160; NO exigeix encarament previ.
+                max_y = 10;
                 min_y = -160;
                 max_x = 160;
                 facing_jake = 1;
@@ -322,15 +331,21 @@ void en2_update(void) {
             g_en_nx = e->x;
             if (e->shoot_timer == (SHOOT_CYCLE_FRAMES - (AIM_FRAMES / 2))) {
                 if (!s_proj.kind && !s_proj.cooldown) {
-                    s_proj.cell = (sp->kind == 26) ? 14 : 13;
+                    s_proj.cell = (sp->kind == 26) ? 14 : ((sp->throw_cell == 10) ? 15 : 13);
                     if (sp->kind == 26) {
                         // 1:1 DOS object_func_op3 + do_level_update_projectile:
-                        // grab_type 5 -> coet de la bazuka (frame 13 de l'SQV L3),
-                        // xvelocity = yvelocity = 64 (diagonal 45 graus).
+                        // grab_type 5 -> coet de la bazuka (frame SQV 25).
                         s_proj.kind = 26;
-                        s_proj.ht = 5;
+                        s_proj.ht = 9;
                         s_proj.row_offset = 13;
-                        s_proj.y8 = (i16)((g_en_y + 6) << 3);
+                        s_proj.y8 = (i16)((g_en_y + 14) << 3);
+                    } else if (sp->throw_cell == 10) {
+                        // 1:1 DOS object_func_op10: grab_type 12 -> bola amb
+                        // cadena (frame SQV 22), arran de terra.
+                        s_proj.kind = 27;
+                        s_proj.ht = 7;
+                        s_proj.row_offset = 13;
+                        s_proj.y8 = (i16)((g_en_y + 25) << 3);
                     } else if (sp->kind == 4) {
                         s_proj.kind = 4;
                         s_proj.ht = 6;
@@ -362,7 +377,10 @@ void en2_update(void) {
                         s_proj.y8 = (i16)((g_en_y + 8) << 3);
                     }
                     s_proj.x = (i16)(e->x + ((e->dir > 0) ? 16 : 0));
-                    s_proj.vx = (e->dir > 0) ? 64 : -64;
+                    {
+                        i16 pv = (sp->kind == 27) ? 32 : 64;
+                        s_proj.vx = (e->dir > 0) ? pv : (i16)-pv;
+                    }
                     s_proj.vy = (sp->kind == 26) ? 64 : 0;
                     s_proj.cooldown = (SHOOT_CYCLE_FRAMES - (AIM_FRAMES / 2));
                 }
@@ -574,7 +592,7 @@ void en2_draw(void) {
             u8 cell = (u8)(sp->base_cell + step);
             if (is_aiming) {
                 if (sp->kind == 4 || sp->kind == 26) cell = sp->aim_cell;   // pose de tret
-                else if (sp->kind == 17 || sp->kind == 21 || sp->kind == 23) cell = sp->throw_cell;  // llancament
+                else if (sp->kind == 17 || sp->kind == 21 || sp->kind == 23) cell = sp->throw_cell;
             }
             frame = en2_cell(cell, (u8)(e->dir < 0));
         }

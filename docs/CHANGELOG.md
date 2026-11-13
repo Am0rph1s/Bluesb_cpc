@@ -36,6 +36,20 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
    **PNG editat** (`edit/enemies_cpc.png`, commit `5181c3e`), que fa servir els pens
    `{0,1,2,3,4,5,7,10,13}` en lloc del mapatge semàntic DOS
    `{0,1,4,9,10,11,12,13}`. Regenerar des del DOS destruiria l'art editat.
+7. **Correcció del mapa de comportaments d'L3 (13/11/2026)**: la decompilació té els
+   noms de funció desplaçats (`switch (obj->op - 1)` → `object_func_opN` implementa
+   **op N+1**). La taula real és:
+   | Tipus | Op | Comportament | CPC |
+   |---|---|---|---|
+   | t3 (escut) | op2 | patrulla | kind 18 |
+   | t4 (policia) | op3 | patrulla i dispara (com L1) | kind 4 |
+   | t5 (bazuka) | op4 | estàtic + dispara en camp de visió | kind 26 (coet, cela 14) |
+   | t6 (rata) | op1 | patrulla | kind 24 |
+   | t23 (presidiari) | op11 | estàtic + llança la bola en camp de visió | kind 17 + throw_cell 10 (bola, cela 15) |
+   Els sprites dels projectils són el **frame SQV 25** (coet) i el **frame SQV 22**
+   (bola amb cadena), extrets amb `tools/add_l3_projectiles.py` a les cel·les 14/15.
+   C6 va just: `enemy.c` es compila amb `--max-allocs-per-node 40000` (SDCC genera
+   ~225 B menys) i el codi acaba a `0x78B2` (78 B lliures).
 
 ### 12/11/2026 — Auditoria i ajust de les paletes Mode 0 (contracte de pens, colors duplicats, coherència PNG↔binari)
 1. **Diagnòstic** ([`tools/palette_audit.py`](../tools/palette_audit.py)):

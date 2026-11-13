@@ -46,17 +46,22 @@ SPAWN_TYPES_L2 = {
 }
 
 # L3 PRISON (vegeu tools/gen_enemy3_frames.py per a les celes)
-# Les cel·les REALS d'ENEMI3.BIN (vegeu tools/check_enemy_cells.py):
-#   0,1,2  t3  (op2)  guardia amb escut   frames DOS 0,1,2
-#   3,4,5  t4  (op3)  presidiari amb bazuka frames DOS 5,6,11 (11 = pose de tret)
-#   6,7    t6  (op1)  rata                 frames DOS 26,27
-#   8,9,10 t23 (op11) presidiari de cel·les (mover, no implementat)
-#   11,12  t5  (op4)  presidiari amb casc  (mover, no implementat)
-#   13     projectiles (ou/bala/plat)
+# Atenció: a la decompilacio, object_func_opN implements op N+1
+# (level_call_object_func fa switch(obj->op - 1)). Per tant:
+#   t3  -> op2  -> object_func_op1  : patrulla (es gira a les parets)
+#   t4  -> op3  -> object_func_op2  : patrulla i dispara (com la policia de L1)
+#   t5  -> op4  -> object_func_op3  : ESTATIC, dispara en camp de visio (bazuka)
+#   t6  -> op1  -> object_func_op0  : patrulla (rata)
+#   t23 -> op11 -> object_func_op10 : ESTATIC, llança la bola en camp de visio
+# Celes REALS d'ENEMI3.BIN (vegeu tools/check_enemy_cells.py):
+#   0,1,2 t3 | 3,4,5 t4 | 6,7 t6 | 8,9,10 t23 | 11,12 t5 | 13 projectils
+#   14 coet de la bazuka | 15 bola del presidiari
 SPAWN_TYPES_L3 = {
-    3: (18, 24, 0, 2, 2),     # guardia amb escut (op2): walk 0/1, pose 2
-    4: (26, 24, 3, 5, 5),     # presidiari amb bazuka (op3): walk 3/4, tret 5, coet cell 14
-    6: (24, 24, 6, 7, 7),     # rata (op1): walk 6/7, hitbox h=10
+    3: (18, 24, 0, 2, 2),      # guardia amb escut (op2): walk 0/1
+    4: (4, 24, 3, 5, 5),       # policia (op3): walk 3/4, tret 5
+    5: (26, 0, 11, 12, 12),    # bazuka (op4): estatic, 11/12, coet cell 14
+    6: (24, 24, 6, 7, 7),      # rata (op1): walk 6/7
+    23: (17, 0, 8, 10, 10),    # presidiari (op11): estatic, 8 -> 10, bola cell 15
 }
 
 # L4 EGOU (vegeu tools/gen_enemy4_frames.py per a les celes)
@@ -166,6 +171,16 @@ def generate(level_idx, out_path):
         n += 1
 
     max_enemies = 26
+    if level_idx == 2:
+        # L3 te 28 objectes (11 t3 + 4 t4 + 4 t5 + 7 t6 + 2 t23) i ENEMY_N=26.
+        # Prioritzem els tipus especials (t23 presidiari, t5 bazuka, t4 policia)
+        # i deixem fora els guardians/rats sobrants. A mes, l'objecte t23 del
+        # slot 10 es a les SALES (y=1344, row 84 > 72): el port encara no te
+        # enemics a les sales, aixi que el deixem fora i conservem el del slot 28
+        # (y=1120, row 70, visible al nivell).
+        PRIO = {23: 0, 5: 1, 4: 2, 6: 3, 3: 4}
+        rows = [r for r in rows if not (r[1] == 23 and r[3] >= 72 * 16)]
+        rows.sort(key=lambda r: (PRIO.get(r[1], 9), r[0]))
     if len(rows) > max_enemies:
         rows = rows[:max_enemies]
     n = len(rows)

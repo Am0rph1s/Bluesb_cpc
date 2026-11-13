@@ -26,6 +26,11 @@ SDASZ80 = r"C:\Program Files\SDCC\bin\sdasz80.exe"
 
 CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "15000",
              "--disable-warning", "110"]
+# El banc C6 (enemics) va molt just: amb 15000 el codi de L3 no hi cap i amb
+# 40000 en surt ~225 B mes petit (millor assignacio de registres de SDCC).
+# Nomes s'aplica a enemy.c; la resta del projecte segueix amb CFLAGS.
+CFLAGS_ENEMY = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "40000",
+                "--disable-warning", "110"]
 # El _DATA comença a 0x3880. El Bloc 0 esta ple; amb el codi dels ascensors
 # fora del resident (Banc 1) el marge de codi es de 836 B.
 # La PILA no canvia: el canari (0x3E10) i el limit de la pila (SP=0x3FFE) son
@@ -755,7 +760,7 @@ def build_enemybank(force, level_idx=None):
         rel = os.path.join(vdir, "enemy.rel")
         headers = [hdr] + [os.path.join(PROJ, name) for name in ENEMY_C_HEADERS["src/enemy.c"]] + [spawn_h]
         if force or is_stale(rel, [src_c] + headers):
-            run([SDCC, "-I" + vdir] + INCLUDES + CFLAGS + ["-c", src_c, "-o", rel])
+            run([SDCC, "-I" + vdir] + INCLUDES + CFLAGS_ENEMY + ["-c", src_c, "-o", rel])
             mark_fresh(rel, [src_c] + headers)
         en_rels.append(rel)
     en_rels.append(os.path.join(obj, "bank_equ.rel"))
@@ -1974,7 +1979,11 @@ def build_level_packages(force=False):
 
         if force or is_stale(en_dst, [en_src]):
             en_raw = open(en_src, "rb").read()
-            e_zx, _ = zx0_compress(bytes(en_raw), classic=True, quick=ZX0_QUICK)
+            # L1ENEMI es l'unic paquet d'enemics que porta el CODI compartit de
+            # C6 (L2-L6 nomes porten les 16 celes, 4 KB). Va molt just de 16
+            # sectors: comprimim amb quick=False (estalvia ~230 B) com ja es fa
+            # amb els tilesets de L3/L5. El resultat es queda a la cache ZX0.
+            e_zx, _ = zx0_compress(bytes(en_raw), classic=True, quick=False)
             write_package(en_dst, lv["id"], 0, [(0xC6, True, 0x4000, bytes(e_zx), len(en_raw))])
             mark_fresh(en_dst, [en_src])
             print("PAK: %sENEMI %d B" % (tag, os.path.getsize(en_dst)))

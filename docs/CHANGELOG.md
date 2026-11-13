@@ -18,7 +18,12 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
    - `t6` (rata, op1) caminava amb les cel·les **13 i 14**: la 13 és la cel·la de
      **projectils** i la 14 és buida → **la rata sortia dibuixada com tots els
      projectils**. Ara camina amb les cel·les **6 i 7** (el seu sprite real).
-3. **Auditoria dels 6 nivells**: 0 referències a cel·les incorrectes. (L4: `t26` i
+3. **Bazuka de L3 implementada (op3, 13/11/2026)**: el presidiari (tipus 4) ara fa
+   servir el comportament `object_func_op3` (rang `ydist<=20`, `>-160`,
+   `xdist<160`, sense exigir encarament previ) i dispara el **coet del frame 13**
+   de l'SQV en diagonal (xvelocity = yvelocity = 64), amb la cel·la **14** (abans
+   buida) afegida al PNG master i al binaire. Tipus nou `kind 26`.
+4. **Auditoria dels 6 nivells**: 0 referències a cel·les incorrectes. (L4: `t26` i
    `t34` comparteixen el mateix sprite DOS — no és un error.)
 4. **Eines noves**: `check_enemy_cells.py` (auditoria de cel·les), `peek_enemy.py` i
    `check_l3_enemies.py` (captures a ZEsarUX amb teletransport).

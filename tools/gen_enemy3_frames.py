@@ -114,20 +114,25 @@ def main():
 
     diff = [c for c in range(16) if cur[c * 512:(c + 1) * 512] != out[c * 512:(c + 1) * 512]]
     print("DIVERGENCIA amb %s: cel·les %s" % (OUT_BIN, diff))
-    print("  (el fitxer del disc es va construir amb un altre empaquetat: el binaire")
-    print("   del disc usa els indexs de color DOS tal qual, i aquest script usa el")
-    print("   mapatge semantic de pack_cell. NO s'ha d'escriure a ciegas.)")
+    print("  (el fitxer del disc es va construir a partir del PNG editat; aquest script")
+    print("   fa servir el mapatge semantic de pack_cell i el sobreescriuria.)")
 
-    if "--force" not in sys.argv:
-        print("No s'escriu res (passa --force si de debò vols substituir el binaire,")
-        print("i aleshores refresca el PNG master amb 'graphics_tool.py export').")
-        return 1
+    if not cur:
+        # bootstrap: no hi ha fitxer, el generem
+        open(OUT_BIN, "wb").write(out)
+        print("escrit %s (bootstrap): %d bytes" % (OUT_BIN, len(out)))
+        return 0
 
-    open(OUT_BIN, "wb").write(out)
-    print("escrit %s: %d bytes (16 celes)" % (OUT_BIN, len(out)))
-    print("ATENCIO: refresca el PNG master amb 'graphics_tool.py export' i torna a")
-    print("          importar amb 'graphics_tool.py import'.")
-    return 0
+    if "--force" in sys.argv:
+        open(OUT_BIN, "wb").write(out)
+        print("escrit %s: %d bytes (16 celes)" % (OUT_BIN, len(out)))
+        print("ATENCIO: refresca el PNG master amb 'graphics_tool.py export' i torna a")
+        print("          importar amb 'graphics_tool.py import'.")
+        return 0
+
+    print("Es CONSERVA el fitxer existent (master = graphics_edit/.../edit/enemies_cpc.png).")
+    print("Passa --force si de debò vols substituir-lo pel que genera aquest script.")
+    return 0 if "--check" not in sys.argv else 1
 
 
 if __name__ == "__main__":

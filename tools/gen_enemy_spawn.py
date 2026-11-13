@@ -55,7 +55,7 @@ SPAWN_TYPES_L2 = {
 #   13     projectiles (ou/bala/plat)
 SPAWN_TYPES_L3 = {
     3: (18, 24, 0, 2, 2),     # guardia amb escut (op2): walk 0/1, pose 2
-    4: (4, 24, 3, 5, 5),      # presidiari amb bazuka (op3): walk 3/4, tret 5
+    4: (26, 24, 3, 5, 5),     # presidiari amb bazuka (op3): walk 3/4, tret 5, coet cell 14
     6: (24, 24, 6, 7, 7),     # rata (op1): walk 6/7, hitbox h=10
 }
 

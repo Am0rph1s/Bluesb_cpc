@@ -61,9 +61,10 @@ typedef struct {
     i8 dir;
     i16 vx;
     i16 vy;
-    u8 kind;        // 0=inactiu, 4=bala, 9=plat, 10=ou
+    u8 kind;        // 0=inactiu, 4=bala, 9=plat, 10=ou, 26=coet L3
     u8 ht;          // alÃ§ada (bala=6, plat=11, ou=13)
-    u8 row_offset;  // a cela 13 (bala=13, plat=19, ou=0)
+    u8 row_offset;  // a la cela 13 (bala=13, plat=19, ou=0)
+    u8 cell;        // cela del projectil (13 = ou/bala/plat, 14 = coet L3)
     u8 cooldown;
     u8 drawn_byte_count[2];
     u8 drawn_row_count[2];
@@ -203,6 +204,7 @@ void en2_init(void) {
     for (i = 0; i < BG_SLOTS; i++) s_bg_owner[i] = -1;
     s_proj.kind = 0;
     s_proj.cooldown = 0;
+    s_proj.cell = 13;
     s_proj.drawn_row_count[0] = 0;
     s_proj.drawn_row_count[1] = 0;
 }
@@ -281,8 +283,8 @@ void en2_update(void) {
         g_en_y = (i16)(e->y8 >> 3);
 
         u8 in_range = 0;
-        if (sp->kind == 4 || sp->kind == 17 || sp->kind == 21 || sp->kind == 23) {
-            // 1:1 DOS object_func_op2 (policia), op10 (cambrera) i op7
+        if (sp->kind == 4 || sp->kind == 17 || sp->kind == 21 || sp->kind == 23 || sp->kind == 26) {
+            // 1:1 DOS object_func_op2 (policia), op10 (cambrera), op7 i op3 (L3)
             g_en_dy = g_en_jake_y - g_en_y;
             g_en_dx_jake = g_en_jake_x - e->x;
             i16 abs_dx = (g_en_dx_jake >= 0) ? g_en_dx_jake : -g_en_dx_jake;
@@ -292,6 +294,14 @@ void en2_update(void) {
             i16 min_y = is_cop ? -60 : -30;
             i16 max_x = is_cop ? 40 : (is_throw ? 40 : 80);
             u8 facing_jake = (e->dir > 0 && g_en_dx_jake >= 0) || (e->dir < 0 && g_en_dx_jake <= 0);
+            if (sp->kind == 26) {
+                // 1:1 DOS object_func_op3: ydist<=20 && ydist>-160 && xdist<160 &&
+                // direction_ud>-30; NO exigeix encarament previ (gira al moment).
+                max_y = 20;
+                min_y = -160;
+                max_x = 160;
+                facing_jake = 1;
+            }
             if (facing_jake && g_en_dy <= max_y && g_en_dy >= min_y && abs_dx < max_x) {
                 in_range = 1;
                 // 1:1 DOS: gira encarant en Jake immediatament quan entra en rang
@@ -312,7 +322,16 @@ void en2_update(void) {
             g_en_nx = e->x;
             if (e->shoot_timer == (SHOOT_CYCLE_FRAMES - (AIM_FRAMES / 2))) {
                 if (!s_proj.kind && !s_proj.cooldown) {
-                    if (sp->kind == 4) {
+                    s_proj.cell = (sp->kind == 26) ? 14 : 13;
+                    if (sp->kind == 26) {
+                        // 1:1 DOS object_func_op3 + do_level_update_projectile:
+                        // grab_type 5 -> coet de la bazuka (frame 13 de l'SQV L3),
+                        // xvelocity = yvelocity = 64 (diagonal 45 graus).
+                        s_proj.kind = 26;
+                        s_proj.ht = 5;
+                        s_proj.row_offset = 13;
+                        s_proj.y8 = (i16)((g_en_y + 6) << 3);
+                    } else if (sp->kind == 4) {
                         s_proj.kind = 4;
                         s_proj.ht = 6;
                         s_proj.row_offset = 13;
@@ -344,7 +363,7 @@ void en2_update(void) {
                     }
                     s_proj.x = (i16)(e->x + ((e->dir > 0) ? 16 : 0));
                     s_proj.vx = (e->dir > 0) ? 64 : -64;
-                    s_proj.vy = 0;
+                    s_proj.vy = (sp->kind == 26) ? 64 : 0;
                     s_proj.cooldown = (SHOOT_CYCLE_FRAMES - (AIM_FRAMES / 2));
                 }
             }
@@ -554,7 +573,7 @@ void en2_draw(void) {
             u8 step = (e->dead || sp->vx == 0 || e->shoot_timer || sp->base_cell == sp->aim_cell) ? 0 : (u8)((e->tick >> 2) & 1);
             u8 cell = (u8)(sp->base_cell + step);
             if (is_aiming) {
-                if (sp->kind == 4) cell = sp->aim_cell;              // pose de tret
+                if (sp->kind == 4 || sp->kind == 26) cell = sp->aim_cell;   // pose de tret
                 else if (sp->kind == 17 || sp->kind == 21 || sp->kind == 23) cell = sp->throw_cell;  // llancament
             }
             frame = en2_cell(cell, (u8)(e->dir < 0));
@@ -589,9 +608,9 @@ void en2_draw(void) {
                 // Cela 13: base + offset files projectil + 4 (centrat horitzontal 8 px Mode 0)
                 const u8* frame;
                 if (s_proj.vx < 0) {
-                    frame = en2_cell(13, 1) + (((u16)s_proj.row_offset + g_en_start_row) << 4) + 4 + (g_en_start_byte << 1);
+                    frame = en2_cell(s_proj.cell, 1) + (((u16)s_proj.row_offset + g_en_start_row) << 4) + 4 + (g_en_start_byte << 1);
                 } else {
-                    frame = en2_cell(13, 0) + (((u16)s_proj.row_offset + g_en_start_row) << 4) + 4 + (g_en_start_byte << 1);
+                    frame = en2_cell(s_proj.cell, 0) + (((u16)s_proj.row_offset + g_en_start_row) << 4) + 4 + (g_en_start_byte << 1);
                 }
 
                 g_moving_dst = (u16)ring_address(page, g_en_clip_x0, g_en_clip_y0);

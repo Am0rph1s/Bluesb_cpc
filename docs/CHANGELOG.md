@@ -24,6 +24,13 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
    `check_l3_enemies.py` (captures a ZEsarUX amb teletransport).
 5. **Verificat**: `smoke_test --dsk-only` OK; a ZEsarUX la rata ja es dibuixa amb el
    seu sprite i el policia amb els seus propis fotogrames.
+6. **Protecció del master editat**: `gen_enemy3_frames.py` (28/10) descrivia un
+   repartiment de cel·les diferent del fitxer del disc. Ara el repartiment de `CELLS`
+   és el real, però **l'script no escriu per defecte** (només avisa de la divergència;
+   cal `--force`). El motiu: `assets/bbdata/ENEMI3.BIN` es va generar a partir del
+   **PNG editat** (`edit/enemies_cpc.png`, commit `5181c3e`), que fa servir els pens
+   `{0,1,2,3,4,5,7,10,13}` en lloc del mapatge semàntic DOS
+   `{0,1,4,9,10,11,12,13}`. Regenerar des del DOS destruiria l'art editat.
 
 ### 12/11/2026 — Auditoria i ajust de les paletes Mode 0 (contracte de pens, colors duplicats, coherència PNG↔binari)
 1. **Diagnòstic** ([`tools/palette_audit.py`](../tools/palette_audit.py)):

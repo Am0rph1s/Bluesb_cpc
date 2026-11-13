@@ -6,18 +6,35 @@ ENEMI3.SQV. Els indexs de frame SON els del DOS: es treuen de
 `animframes_059d` (staticres.c), on el frame del nivell = index - SPRITES_COUNT
 (146). Vegeu tools/dump_level_sprites.py per veure les tires per tipus.
 
-Celes (16):
-  0,1,2  tipus 3 policia (op2)        frames 0,1,2 (walk A/B + tret)
-  5..11  tipus 4 llançador (op3)       frames 5..11 (reservat; op3 pendent)
-  12     projectils (copia d'ENEMI1.BIN: ou/bala/plat)
-  13,14  tipus 6 gos (op1)             frames 26,27
-  3,4,15 lliures
+Celes (16) - REPARTIMENT REAL (verificat amb tools/check_enemy_cells.py):
+   0,1,2   t3  (op2)  guardia amb escut       frames DOS 0,1,2
+   3,4,5   t4  (op3)  presidiari amb bazuka    frames DOS 5,6,11 (11 = tret)
+   6,7     t6  (op1)  rata                     frames DOS 26,27
+   8,9,10  t23 (op11) presidiari de cel·les    frames DOS 14,15,21
+   11,12   t5  (op4)  presidiari amb casc      frames DOS 23,24
+   13      projectils (copia de la cel·la 13 d'ENEMI1.BIN: ou/bala/plat)
+   14,15   lliures
 
-El tipus 5/op4 i el 23/op11 son movers, no walkers de C6 i no van en aquesta
-taula.
+El tipus 5/op4 i el 23/op11 son movers (ascensors), no walkers de C6: els
+frames hi son per quan s'implementin.
+
+IMPORTANT (13/11/2026): aquest fitxer ha estat DESACTUALITZAT des del 28/10 i
+el repartiment de cel·les que hi ha al disc era diferent (el policia usava les
+cel·les de la rata i la rata les de projectils). Ara el repartiment de CELLS
+esta corregit, pero l'empaquetat NO es correspon byte a byte amb el binaire del
+disc (aquell va fer-se amb els indexs de color DOS tal qual; aquest script fa
+servir el mapatge semantic de pack_cell). Per aixè l' script **no escriu res**
+per defecte: nomes informa de la divergencia i cal --force per substituir el
+binaire. Despres de substituir-lo, refresca el PNG master amb
+    py -3 tools/graphics_tool.py export
+i torna a importar amb
+    py -3 tools/graphics_tool.py import
+Per verificar la taula de cel·les contra el DOS (i no contra el binaire), fes
+servir tools/check_enemy_cells.py.
 
 Regenerar:
-  py -3 tools/gen_enemy3_frames.py
+  py -3 tools/gen_enemy3_frames.py            # escriu el binaire
+  py -3 tools/gen_enemy3_frames.py --check    # nomes verifica
 """
 import os
 import sys
@@ -34,20 +51,21 @@ SQV = os.path.join(PROJ, "assets", "bbdata", "ENEMI3.SQV")
 OUT_BIN = os.path.join(PROJ, "assets", "bbdata", "ENEMI3.BIN")
 L1_BIN = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 
-# (cela, frame SQV)
+# (cela, frame SQV) - repartiment real (vegeu la capçalera)
 CELLS = [
-    (0, 0),    # tipus 3 walk A
-    (1, 1),    # tipus 3 walk B
-    (2, 2),    # tipus 3 tret (op2 special_anim)
-    (5, 5),    # tipus 4 walk A (op3 pendent)
-    (6, 6),    # tipus 4 walk B
-    (7, 7),    # tipus 4
-    (8, 8),    # tipus 4
-    (9, 9),    # tipus 4
-    (10, 10),  # tipus 4
-    (11, 11),  # tipus 4
-    (13, 26),  # tipus 6 walk A
-    (14, 27),  # tipus 6 walk B
+    (0, 0),    # t3  guardia amb escut, walk A
+    (1, 1),    # t3  walk B
+    (2, 2),    # t3  pose
+    (3, 5),    # t4  presidiari, walk A
+    (4, 6),    # t4  walk B
+    (5, 11),   # t4  pose de tret
+    (6, 26),   # t6  rata, walk A
+    (7, 27),   # t6  rata, walk B
+    (8, 14),   # t23 presidiari de cel·les, walk A
+    (9, 15),   # t23 walk B
+    (10, 21),  # t23 pose
+    (11, 23),  # t5  presidiari amb casc, walk A
+    (12, 24),  # t5  walk B
 ]
 
 
@@ -84,13 +102,33 @@ def main():
     # Projectils: la cela 13 d'ENEMI1.BIN te ou/bala/plat alineats.
     l1 = open(L1_BIN, "rb").read()
     assert len(l1) >= 14 * 512, len(l1)
-    cells[12] = l1[13 * 512:14 * 512]
+    cells[13] = l1[13 * 512:14 * 512]
 
     out = b"".join(cells)
     assert len(out) == 16 * 512
+
+    cur = open(OUT_BIN, "rb").read() if os.path.exists(OUT_BIN) else b""
+    if cur == out:
+        print("OK: %s coincideix amb el repartiment de cel·les actual" % OUT_BIN)
+        return 0
+
+    diff = [c for c in range(16) if cur[c * 512:(c + 1) * 512] != out[c * 512:(c + 1) * 512]]
+    print("DIVERGENCIA amb %s: cel·les %s" % (OUT_BIN, diff))
+    print("  (el fitxer del disc es va construir amb un altre empaquetat: el binaire")
+    print("   del disc usa els indexs de color DOS tal qual, i aquest script usa el")
+    print("   mapatge semantic de pack_cell. NO s'ha d'escriure a ciegas.)")
+
+    if "--force" not in sys.argv:
+        print("No s'escriu res (passa --force si de debò vols substituir el binaire,")
+        print("i aleshores refresca el PNG master amb 'graphics_tool.py export').")
+        return 1
+
     open(OUT_BIN, "wb").write(out)
     print("escrit %s: %d bytes (16 celes)" % (OUT_BIN, len(out)))
+    print("ATENCIO: refresca el PNG master amb 'graphics_tool.py export' i torna a")
+    print("          importar amb 'graphics_tool.py import'.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -1992,8 +1992,12 @@ def build_level_packages(force=False):
 
 def package(starter_path, starter_start, game_path):
     dsk_path = os.path.join(PROJ, PROGNAME + ".dsk")
-    create_empty_cpc_dsk(dsk_path, 40)
-    dsk = DskPatcher(dsk_path)
+    # Escrivim a un temporal i renombrem al final: si un assert de pressupost
+    # (p. ex. L1ENEMI > 16 sectors) salta, NO deixem un bluesb.dsk corrupte
+    # que l'emulador carregaria i es quedaria penjat.
+    tmp_path = dsk_path + ".tmp"
+    create_empty_cpc_dsk(tmp_path, 40)
+    dsk = DskPatcher(tmp_path)
     chs_map = {}
 
     def add_file(name8, ext3, payload, load_addr, exec_addr, make_table=True):
@@ -2068,7 +2072,11 @@ def package(starter_path, starter_start, game_path):
         dsk.write_file_data(mb_blocs[0], m_hdr + m_raw)
         chs_map["MUSBANK"] = (len(m_raw) + 128, len(chs_map["MUSBANK"][2]) // 2, chs_map["MUSBANK"][2], crc16_ccitt(m_raw))
 
-    dsk.save(dsk_path)
+    dsk.save(tmp_path)
+    # Renombrat atomic: el bluesb.dsk bo nomes apareix si el build ha acabat be.
+    if os.path.exists(dsk_path):
+        os.remove(dsk_path)
+    os.replace(tmp_path, dsk_path)
     print("DSK: %s  (RUN\"%s\" -> starter load 0x%04X/run 0x%04X, game=%d bytes)" %
           (dsk_path, DSKNAME8, ST_LOAD, ST_RUN, len(gdata)))
     return chs_map, gentry, len(gdata), crc16_ccitt(gdata)

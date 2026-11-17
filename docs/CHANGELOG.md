@@ -4,6 +4,14 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
 
 ---
 
+### 17/11/2026 — Estabilització Single Buffer (`single-buffer-split`)
+- Documentació completa de l'arquitectura i del nou mapeig de RAM 2/RAM 0/C6 a [`docs/SINGLE_BUFFER.md`](SINGLE_BUFFER.md).
+- Eliminat el desdoblament/parpelleig de Jake (inclòs amb caixa/globus/paraigua) movent `crtc_set_display_start` a l'inici de `render_frame()` (`g_irq_phase == 5`), unificant `draw_fg_sprites` i ampliant la comprovació vertical `g_jake_en_near`.
+- Eliminat el tremolor del HUD en scroll horitzontal (`hud_render` abans de `sync_backbuffer`) i en scroll vertical (`dy > 0`: `hud_render` + `early_jake` + `render_rows_edge(19..18)` abans dels restores; `dy < 0`: `render_rows_edge(0..-dy-1)` primer).
+- Reubicat `_DATA` a `0x3800` i `CANARY_ADDR` a `0x3C40` (`_CODE` `14.003 B`, `77 B` de marge).
+
+---
+
 ### 14/11/2026 — Batch de proves d'usuari: bazuka, bola, rata, guardià, respawn i items de sala
 
 1. **Bazuka (L3)**: el tret passa a **horitzontal** (`s_proj.vy = 0`; el DOS

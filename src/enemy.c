@@ -498,7 +498,7 @@ void en2_update_vis(void) {
         }
 
     if ((u16)(e->x - g_en_jake_x + 22) < 44 &&
-        (u16)(g_en_y - g_en_jake_y + 46) < 92) {
+        (u16)(g_en_y - g_en_jake_y + 58) < 104) {
         g_jake_en_near = 1;
     }
     e->tick++;

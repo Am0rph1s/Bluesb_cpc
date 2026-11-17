@@ -16,6 +16,8 @@
     .globl _palette_black
     .globl _palette_restore
     .globl _palette_table
+    .globl _g_split_en
+    .globl _g_play_ma
 
     .area _CODE
 
@@ -29,8 +31,10 @@
 ;; ============================================================
 _video_init::
     di
+    xor     a
+    ld      (_g_split_en), a
 
-    ;; RMR: Mode 0 + ROMs desactivades (no canvia de mode)
+    ;; RMR: Mode 0 + ROMs desactivades (0x8C)
     ld      bc, #0x7F8C
     out     (c), c
 
@@ -109,6 +113,10 @@ pr_loop$:
 ;;   HL = adreça MA completa, incloent pàgina 0x2000/0x3000 i offset circular.
 ;; ============================================================
 _crtc_set_display_start::
+    ld      (_g_play_ma), hl
+    ld      a, (_g_split_en)
+    or      a
+    ret     nz
     ld      bc, #0xBC0D         ;; R13 = byte baix
     out     (c), c
     ld      a, l
@@ -125,7 +133,7 @@ _crtc_set_display_start::
 ;; R12=0x30: display start 0x3000 -> adreca fisica 0xC000
 ;; R13=0x00: sense scroll.
 crtc_table:
-    .db  0x3F, 0x28, 0x2E, 0x8E, 0x26, 0x00, 0x16, 0x1F
+    .db  0x3F, 0x28, 0x2E, 0x8E, 0x26, 0x00, 0x16, 0x20
     .db  0x00, 0x07, 0x00, 0x00, 0x30, 0x00
 
 ;; Paleta Mode 0 (Amiga -> CPC hardware):

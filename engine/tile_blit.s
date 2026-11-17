@@ -18,8 +18,18 @@
     .globl _anim_tick_c5
     .globl _fdc_crc16
     .globl _enemy_room_exit
+    .globl _init_tile_props
+    .globl _tile_props_at
+    .globl _walker_sense
     .globl _g_render_tile_offset
     .globl _g_vram_base_hi
+    .globl _g_bank
+    .globl _g_en_clip_x0
+    .globl _g_en_clip_x1
+    .globl _g_en_start_byte
+    .globl _g_en_byte_count
+    .globl _g_en_start_row
+    .globl _g_en_row_count
     .globl _cpc_bank_set
     .globl _cpc_bank_restore
     .globl _bank_set
@@ -944,8 +954,231 @@ ere_loop$:
     dec     hl
     add     hl, de
     djnz    ere_loop$
-    ld      de, #0x5A12         ;; EN_SLOT(6)
+    ld      de, #0x5212         ;; EN_SLOT(6)
     ld      a, #0xC6
     jp      _call_banked
+
+;; ============================================================
+;; void init_tile_props(void)
+;; Genera LUT de 256 B a RAM2 0xB600..0xB6FF des de TRIG (C5)
+;; bit0: tt==1, bit1: tt==12, bit2: ceil_solid(vy<0), bit3: floor_solid(vy>=0,!crouch)
+;; bit4: flags&1, bit5: flags&2, bit6: tt==10, bit7: tt==11
+;; ============================================================
+_init_tile_props::
+    ld      a, (_g_bank)
+    push    af
+    ld      a, #0xC5
+    call    _bank_set
+    ld      hl, (_s_lv + 69)    ;; s_lv.trig_off
+    ld      de, #0xB600
+    ld      b, #255             ;; IDs 0..254
+itp_loop$:
+    ld      c, #0
+    ld      a, (hl)             ;; byte 0: tile_type
+    inc     hl
+    cp      #1
+    jr      nz, 1$
+    set     0, c
+1$: cp      #12
+    jr      nz, 2$
+    set     1, c
+2$: cp      #10
+    jr      nz, 3$
+    set     6, c
+3$: cp      #11
+    jr      nz, 4$
+    set     7, c
+4$: ld      a, (hl)             ;; byte 1: tile_flags
+    inc     hl
+    bit     0, a
+    jr      z, 5$
+    set     4, c
+5$: bit     1, a
+    jr      z, 6$
+    set     5, c
+6$: ld      a, (hl)             ;; byte 2: op
+    inc     hl
+    inc     hl
+    inc     hl
+    cp      #4
+    jr      c, itp_ceil$
+    cp      #40
+    jr      z, itp_ceil$
+    sub     #27
+    cp      #3
+    jr      c, itp_ceil$        ;; 27, 28, 29
+    add     a, #7               ;; A = op - 20
+    cp      #2
+    jr      c, itp_ceil$        ;; 20, 21
+    cp      #2                  ;; op == 22
+    jr      z, itp_floor$
+    cp      #4                  ;; op == 24
+    jr      z, itp_floor$
+    cp      #10                 ;; op == 30
+    jr      z, itp_floor$
+    add     a, #6               ;; A = op - 14
+    cp      #2                  ;; 14, 15
+    jr      nc, itp_store$
+    jr      itp_floor$
+itp_ceil$:
+    set     2, c
+itp_floor$:
+    set     3, c
+itp_store$:
+    ld      a, c
+    ld      (de), a
+    inc     e
+    djnz    itp_loop$
+    ld      a, #0x01
+    ld      (de), a
+    pop     af
+    jp      _bank_restore
+
+;; Helper intern (amb 0xC5 actiu): HL=col, DE=row -> A=props (preserva BC!)
+tbl_prop_hl:
+    ld      a, d
+    or      a
+    jr      nz, tph_oob$
+    ld      a, (_s_lv + 53)     ;; map_h
+    dec     a                   ;; map_h - 1
+    cp      e
+    jr      c, tph_oob_bot$     ;; row >= map_h -> out of bottom
+    ld      a, h
+    or      a
+    jr      nz, tph_oob_chkrow$
+    ld      a, (_s_lv + 52)     ;; map_w
+    cp      l
+    jr      c, tph_oob_chkrow$
+    jr      z, tph_oob_chkrow$
+    ;; HL = 0x4000 + (E << 7) + L
+    ld      a, e
+    srl     a
+    ld      h, a
+    ld      a, #0
+    rra
+    or      l
+    ld      l, a
+    set     6, h
+    ld      l, (hl)
+    ld      h, #0xB6
+    ld      l, (hl)             ;; L = props
+    ld      a, (_s_lv + 53)
+    dec     a
+    cp      e
+    ld      a, l
+    ret     nz
+    or      #0x08               ;; fila inferior: floor_solid(vy>=0)=1
+    and     #0xFB               ;; ceil_solid(vy<0)=0
+    ret
+tph_oob_chkrow$:
+    ld      a, (_s_lv + 53)
+    dec     a
+    cp      e
+    jr      nz, tph_oob$
+tph_oob_bot$:
+    ld      a, #0x09            ;; tt=1, floor_vy>=0=1, ceil=0
+    ret
+tph_oob$:
+    ld      a, #0x01            ;; tt=1
+    ret
+
+;; u8 tile_props_at(u16 col, u16 row) __sdcccall(1): HL=col, DE=row -> A=props
+_tile_props_at::
+    ld      a, (_g_bank)
+    push    af
+    push    hl
+    push    de
+    ld      a, #0xC5
+    call    _bank_set
+    pop     de
+    pop     hl
+    call    tbl_prop_hl
+    ld      e, a
+    pop     af
+    push    de
+    call    _bank_restore
+    pop     de
+    ld      a, e
+    ret
+
+;; u8 walker_sense(void) -> A=1 si gira, 0 si segueix
+_walker_sense::
+    ld      a, (_g_bank)
+    push    af
+    ld      a, #0xC5
+    call    _bank_set
+
+    ld      hl, (_g_en_clip_x0) ;; pcol
+    ld      d, #0
+    ld      a, (_g_en_start_byte);; frow
+    ld      e, a
+    call    tbl_prop_hl
+    ld      c, a                ;; C = p_f
+
+    ld      hl, (_g_en_clip_x0) ;; pcol
+    ld      d, #0
+    ld      a, (_g_en_byte_count);; brow
+    ld      e, a
+    call    tbl_prop_hl
+    or      c
+    ld      b, a                ;; B = p_f | p_b
+    ld      a, (_bc_a)
+    and     #0x03               ;; 0x01 (or 0x03 si kind==21)
+    and     b
+    jr      nz, ws_turn$
+
+    ld      hl, (_g_en_clip_x1) ;; acol
+    ld      d, #0
+    ld      a, (_g_en_byte_count);; brow
+    ld      e, a
+    call    tbl_prop_hl
+    ld      c, a                ;; C = a_b
+    and     #0x04
+    jr      nz, ws_turn$
+
+    ld      a, (_g_en_start_row);; c2row
+    ld      e, a
+    ld      hl, (_g_en_byte_count)
+    cp      l
+    jr      z, ws_chk_h$
+    ld      d, #0
+    ld      hl, (_g_en_clip_x1)
+    call    tbl_prop_hl
+    ld      b, a
+    and     #0x04
+    jr      nz, ws_turn$
+    ld      a, c
+    or      b
+    ld      c, a
+ws_chk_h$:
+    ld      a, (_g_en_row_count);; hrow
+    ld      hl, (_g_en_start_row)
+    cp      l
+    jr      z, ws_chk_flags$
+    ld      hl, (_g_en_byte_count)
+    cp      l
+    jr      z, ws_chk_flags$
+    ld      e, a
+    ld      d, #0
+    ld      hl, (_g_en_clip_x1)
+    call    tbl_prop_hl
+    and     #0x04
+    jr      nz, ws_turn$
+ws_chk_flags$:
+    ld      a, (_bc_a)
+    and     #0x30
+    and     c
+    jr      nz, ws_turn$
+    ld      e, #0
+    jr      ws_done$
+ws_turn$:
+    ld      e, #1
+ws_done$:
+    pop     af
+    push    de
+    call    _bank_restore
+    pop     de
+    ld      a, e
+    ret
 
 

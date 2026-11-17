@@ -17,13 +17,33 @@ u16 g_render_tile_offset;
 // (obj/hud_ext.s), no constants al resident.
 extern void hud_init_o(void);
 extern void hud_render_o(void);
+extern void ram2_hud_copy(u8 full_v);
+extern u8 g_lives_count, g_vinyls_count, g_hearts_count, g_has_instrument;
+
+static u8 s_hud_ok;
+static u8 s_hlives, s_hvinyls, s_hhearts, s_hinst;
 
 void hud_init(void) {
+    s_hud_ok = 0;
     call_banked(0xC0, (void*)hud_init_o);
 }
 
 void hud_render(u8 page, u8 force) {
+    if (s_hud_ok &&
+        s_hlives == g_lives_count &&
+        s_hvinyls == g_vinyls_count &&
+        s_hhearts == g_hearts_count &&
+        s_hinst == g_has_instrument) {
+        if (!force && !page) return;
+        ram2_hud_copy(page);
+        return;
+    }
     bc_a = page;
     bc_b = force;
     call_banked(0xC0, (void*)hud_render_o);
+    s_hud_ok = 1;
+    s_hlives = g_lives_count;
+    s_hvinyls = g_vinyls_count;
+    s_hhearts = g_hearts_count;
+    s_hinst = g_has_instrument;
 }

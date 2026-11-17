@@ -8,9 +8,12 @@
 
     .globl _cpc_install_isr
     .globl _g_ticks
+    .globl _g_irq_phase
     .globl _g_mus_hold           ;; _DATA: 1 = motor FDC en lectura (pausa tick)
     .globl _mus_play           ;; stub central (mus.s): ISR-only (ja DI)
     .globl _g_mus_ready        ;; main.c: 1 = player iniciat
+    .globl _g_split_en         ;; 1 = split CRTC actiu (playfield C000 + HUD 8760)
+    .globl _g_play_ma          ;; MA del playfield (0x3000 + offset)
 
 ;; HOLD: ABANS era un absolut 0xBA10 (VRAM pag.2!). El memset(0x8000) del
 ;; GAME el posava a 0xFF i el render el trepitjava = la ISR no sonava mai
@@ -21,10 +24,16 @@
     .area _DATA
 _g_ticks::
     .db 0
+_g_irq_phase::
+    .db 0
 _mus_div::
     .db 0
 _g_mus_hold::
     .db 0
+_g_split_en::
+    .db 0
+_g_play_ma::
+    .dw 0x3000
 
     .area _CODE
 
@@ -40,8 +49,20 @@ _cpc_install_isr::
 isr_stub:
     push    af
     push    hl
+    push    bc
     ld      hl, #_g_ticks
     inc     (hl)
+    ;; Sincronitza _g_irq_phase amb VSYNC (PPI 0xF5 bit 0 == 1 -> fase 0; altres -> +1)
+    ld      bc, #0xF500
+    in      a, (c)
+    rrca
+    ld      hl, #_g_irq_phase
+    jr      nc, isr_phase_inc
+    ld      (hl), #0
+    jr      isr_phase_done
+isr_phase_inc:
+    inc     (hl)
+isr_phase_done:
     ;; Musica: 1 tick player cada 6 ticks ISR (300/6 = 50 Hz exactes),
     ;; independent del frame rate del joc. Salta si HOLD (motor FDC) o si
     ;; el player no esta iniciat (ready=0: C1 buit = reboot segur).
@@ -60,6 +81,7 @@ isr_stub:
     ld      (hl), #0
     call    _mus_play
 isr_done:
+    pop     bc
     pop     hl
     pop     af
     ei

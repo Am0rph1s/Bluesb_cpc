@@ -129,7 +129,9 @@ void lc_elev_draw_c(void) {
         if (e->drawn[page]) continue;
 
         world_x = (i16)(e->center_x - LC_SPR_HALF_W);
+        if ((u16)(world_x - view_x + (LC_SPR_W_PX - 1)) >= (u16)(160 + LC_SPR_W_PX - 1)) continue;
         world_y = (i16)(e->y - LC_OBJ_H);
+        if ((u16)(world_y - view_y + (LC_SPR_H - 1)) >= (u16)(160 + LC_SPR_H - 1)) continue;
         clip_x0 = world_x > view_x ? world_x : view_x;
         clip_x1 = (i16)(world_x + LC_SPR_W_PX) < (i16)(view_x + 160) ?
                   (i16)(world_x + LC_SPR_W_PX) : (i16)(view_x + 160);

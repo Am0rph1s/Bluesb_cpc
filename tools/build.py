@@ -36,7 +36,7 @@ CFLAGS_ENEMY = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "40000",
 # La PILA no canvia: el canari (0x3E10) i el limit de la pila (SP=0x3FFE) son
 # els mateixos; el _DATA acaba per sota del canari.
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0x3600", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0x36C0", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 
@@ -52,7 +52,6 @@ ASM_SOURCES = [
     "engine/video.s",
     "engine/isr.s",
     "engine/sprite.s",
-    "engine/moving_blit.s",
     "engine/tile_blit.s",
     "engine/sprite_hflip.s",
     "engine/mus.s",  # stubs AKG (Init/Play via EQU obj/mus_ext.s)
@@ -85,8 +84,8 @@ DSKNAME8 = "BLUESB"
 # Frames ENEMI1.BIN (14x512 B) a 0x4000; taula de salts fixa a 0x5A00
 # (engine/enemy_table.s, slots init/update/restore/draw); codi+dades
 # fins 0x8000 (pool de fons inclos). ENEMI.BIN = frames + imatge codi.
-ENEMY_BASE = 0x5A00
-ENEMY_DATA = 0x5800  # dins l'area alliberada pels frames comprimits (cache 0x5000..0x57FF, dades 0x5800..0x59FF)
+ENEMY_BASE = 0x5200
+ENEMY_DATA = 0x5000  # 512 B de dades (cache moguda a RAM 2); codi 0x5200..0x78FF
 ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 # L2-L6: ENEMI2.BIN..ENEMI6.BIN (mateix format de 16 celes); build_enemybank
 # els tria per level_idx.
@@ -464,7 +463,8 @@ def build_bank_equ(resident_map):
     lines = [".module bank_equ"]
     bank_local = ("moving_bank_", "_bc_update", "_bc_restore", "_bc_draw",
                   "_bc_push", "_bc_find", "_bc_init", "_bc_conveyor",
-                  "_en2_", "_en_", "_s_hud_strips", "_s_enemies", "_s_bg_")
+                  "_en2_", "_en_", "_s_hud_strips", "_s_enemies", "_s_bg_",
+                  "_ring_address", "_moving_blit_box", "_moving_restore_box", "_ram2_")
     for name in sorted(syms):
         if name.startswith(("s__", "l__")):
             continue
@@ -559,6 +559,7 @@ def build_bank(force, level_idx=None):
         run([SDASZ80, "-plosgff", equ_rel, equ_s])
         mark_fresh(equ_rel, [equ_s])
     bank_rels.append(equ_rel)
+    bank_rels.append(os.path.join(obj, "ram2_ext.rel"))
     suffix = "" if level_idx is None else "_%d" % level_idx
     ihx = os.path.join(obj, "bank5%s.ihx" % suffix)
     map_path = os.path.join(obj, "bank5%s.map" % suffix)
@@ -654,6 +655,7 @@ def build_levelcode(force, level_idx=None):
         mark_fresh(c_rel, [c_src] + headers)
     rels.append(c_rel)
     rels.append(equ_rel)
+    rels.append(os.path.join(obj, "ram2_ext.rel"))
     # Base del codi: just despres de la imatge C1 (MUSMAIN.BIN), alineada a 8.
     # Ja no es una constant: creix si la imatge creix (p. ex. parametres v2).
     mus_name = "MUSMAIN.BIN" if level_idx in (None, 0) else "MUSMAIN_%d.BIN" % level_idx
@@ -705,7 +707,7 @@ def parse_spawn_header(path):
         a_cell = int(m.group(6))
         t_cell = int(m.group(7))
         spawns += struct.pack("<hhBBBBB", x, y8, kind, vx, b_cell, a_cell, t_cell)
-    assert len(spawns) == 26 * 9, f"Expected 234 bytes, got {len(spawns)}"
+    assert len(spawns) == 27 * 9, f"Expected 243 bytes, got {len(spawns)}"
     return spawns
 
 def build_enemybank(force, level_idx=None):
@@ -760,10 +762,11 @@ def build_enemybank(force, level_idx=None):
         rel = os.path.join(vdir, "enemy.rel")
         headers = [hdr] + [os.path.join(PROJ, name) for name in ENEMY_C_HEADERS["src/enemy.c"]] + [spawn_h]
         if force or is_stale(rel, [src_c] + headers):
-            run([SDCC, "-I" + vdir] + INCLUDES + CFLAGS_ENEMY + ["-c", src_c, "-o", rel])
+            run([SDCC, "-DLEVEL_ID=%d" % (level_idx or 0), "-I" + vdir] + INCLUDES + CFLAGS_ENEMY + ["-c", src_c, "-o", rel])
             mark_fresh(rel, [src_c] + headers)
         en_rels.append(rel)
     en_rels.append(os.path.join(obj, "bank_equ.rel"))
+    en_rels.append(os.path.join(obj, "ram2_ext.rel"))
     suffix = "" if level_idx is None else "_%d" % level_idx
     ihx = os.path.join(obj, "enemybank%s.ihx" % suffix)
     run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % ENEMY_BASE,
@@ -830,18 +833,19 @@ def build_enemybank(force, level_idx=None):
     code = open(code_path, "rb").read()
     assert len(frames) % 512 == 0 and len(frames) // 512 >= 14, len(frames)
 
-    # --- Frames comprimits PER CELA (ZX0) + cache de 4 slots (veure enemy.c) ---
+    # --- Frames comprimits PER CELA (ZX0); cache a RAM 2 (veure enemy.c) ---
     # Layout dins C6 (imatge que es descomprimeix a 0x4000):
     #   0x4000..0x403F  taula de 16 punters absoluts (2 B/cela; 14 usades)
     #   0x4040..        blocs ZX0 per cela (1 flux independent per cela)
-    #   0x5000..0x57FF  cache de 4 slots de 512 B (scratch: no cal carregar-hi res)
-    #   0x5800..0x581F  estat de la cache (cela per slot + next + comptador)
-    #   0x5A00..        codi (ENEMYCODE.BIN)
+    #   0x4B20..0x4C1F  taula de spawn
+    #   0x4C20..0x4FFF  taula de restauracio
+    #   0x5000..0x51FF  dades _DATA del banc C6
+    #   0x5200..0x78FF  codi (ENEMYCODE.BIN)
     from zx0pkg.zx0 import zx0_compress
     EN_TABLE = 0x4000
     EN_BLOCKS = 0x4040
     EN_CACHE = 0x5000
-    EN_CACHE_SLOTS = 4
+    EN_CACHE_SLOTS = 8
     ncell = len(frames) // 512
     table = bytearray()
     blocks = bytearray()
@@ -854,11 +858,8 @@ def build_enemybank(force, level_idx=None):
         table += b"\x00\x00"
     blocks_end = EN_BLOCKS + len(blocks)
     if blocks_end > EN_CACHE:
-        print("\n[FATAL] Blocs ZX0 d'enemics (fins 0x%04X) envaeixen la cache 0x%04X!",
-              blocks_end, EN_CACHE)
-        sys.exit(1)
-    if EN_CACHE + EN_CACHE_SLOTS * 512 > ENEMY_BASE:
-        print("\n[FATAL] Cache d'enemics passa del inici de codi (0x%04X)!" % ENEMY_BASE)
+        print("\n[FATAL] Blocs ZX0 d'enemics (fins 0x%04X) envaeixen _DATA 0x%04X!" %
+              (blocks_end, EN_CACHE))
         sys.exit(1)
     raw_len = ENEMY_BASE - 0x4000           # 0x4000..ENEMY_BASE-1 (codi despres)
     im = bytearray(raw_len)
@@ -1285,7 +1286,7 @@ def build_music(force):
     # Escriuen a VRAM => han de viure a la RAM 1 i cridar-se amb 0xC0. Com que
     # son comuns a tots els nivells, van a MUSBANK (0x4C10, despres del player)
     # i no al bloc de codi del nivell.
-    hb_base, hb_data = 0x4C01, 0x4FA8
+    hb_base, hb_data = 0x4C01, 0x4FC0
     hb_src = os.path.join(PROJ, "src", "hud_bank.c")
     hb_rel = os.path.join(obj, "hud_bank.rel")
     hb_headers = [os.path.join(PROJ, n) for n in
@@ -1298,14 +1299,57 @@ def build_music(force):
     if force or is_stale(equ_rel, [equ_s]):
         run([SDASZ80, "-plosgff", equ_rel, equ_s])
         mark_fresh(equ_rel, [equ_s])
+
+    # --- RAM 2 resident fast code (0xB800..0xBBFF, 1024 B) ----------------
+    ram2_base = 0xB800
+    ram2_src = os.path.join(PROJ, "engine", "ram2_code.s")
+    ram2_rel = os.path.join(obj, "ram2_code.rel")
+    if force or is_stale(ram2_rel, [ram2_src]):
+        run([SDASZ80, "-plosgff", ram2_rel, ram2_src])
+        mark_fresh(ram2_rel, [ram2_src])
+    ram2_ihx = os.path.join(obj, "ram2_code.ihx")
+    run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % ram2_base,
+         "--data-loc", "0xB600", ram2_rel, equ_rel, "-o", ram2_ihx])
+    ram2_map = os.path.join(obj, "ram2_code.map")
+    ram2_bin = os.path.join(obj, "RAM2.BIN")
+    convert_ihx(ram2_ihx, ram2_bin, start_addr=ram2_base, max_length=image_length(ram2_map, ram2_base, 0x0400))
+    ram2_len = os.path.getsize(ram2_bin)
+    if ram2_len > 0x0400:
+        print("\n[FATAL] RAM2.BIN (%d B) excedeix 1024 B (0xB800..0xBBFF)!" % ram2_len)
+        sys.exit(1)
+    print("RAM2: %d B a 0x%04X..0x%04X (%d B lliures)" % (ram2_len, ram2_base, ram2_base + ram2_len, 0x0400 - ram2_len))
+    ram2_syms = {}
+    for line in open(ram2_rel, encoding="latin1"):
+        m = re.match(r"S (\S+) Def([0-9A-Fa-f]+)", line.strip())
+        if m:
+            ram2_syms[m.group(1)] = ram2_base + int(m.group(2), 16)
+    need_ram2 = ("_ring_address", "_moving_blit_box", "_moving_restore_box",
+                 "_ram2_hud_copy", "_ram2_en2_clip")
+    if any(k not in ram2_syms for k in need_ram2):
+        print("\n[FATAL] RAM2: simbols no trobats (%s)" % sorted(ram2_syms))
+        sys.exit(1)
+    ext_ram2 = os.path.join(obj, "ram2_ext.s")
+    ext_ram2_rel = os.path.join(obj, "ram2_ext.rel")
+    ext_ram2_txt = ("    .module ram2_ext\n" + "".join(
+        "    .globl %s\n%s = 0x%04X\n" % (k, k, ram2_syms[k]) for k in need_ram2))
+    if not os.path.exists(ext_ram2) or open(ext_ram2).read() != ext_ram2_txt:
+        open(ext_ram2, "w").write(ext_ram2_txt)
+    if force or is_stale(ext_ram2_rel, [ext_ram2]):
+        run([SDASZ80, "-plosgff", ext_ram2_rel, ext_ram2])
+        mark_fresh(ext_ram2_rel, [ext_ram2])
+
     hb_ihx = os.path.join(obj, "hudbank.ihx")
     run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x%04X" % hb_base,
          "--data-loc", "0x%04X" % hb_data] +
-        [hb_rel, equ_rel, os.path.join(obj, "enemy_ext.rel")] + ["-o", hb_ihx])
+        [hb_rel, equ_rel, ext_ram2_rel, os.path.join(obj, "enemy_ext.rel")] + ["-o", hb_ihx])
     hb_map = os.path.join(obj, "hudbank.map")
     code_s, code_l = map_area(hb_map, "CODE")
+    data_s, data_l = map_area(hb_map, "DATA")
     if code_s is not None and (code_s + code_l) > hb_data:
         print("\n[FATAL] HUD (MUSBANK): el codi arriba a les dades (0x%04X)!" % hb_data)
+        sys.exit(1)
+    if data_s is not None and (data_s + data_l) > 0x5000:
+        print("\n[FATAL] HUD (MUSBANK): les dades envaeixen 0x5000 (0x%04X)!" % (data_s + data_l))
         sys.exit(1)
     hb_bin = os.path.join(obj, "hud_bank.bin")
     convert_ihx(hb_ihx, hb_bin, start_addr=hb_base, max_length=code_l)
@@ -1343,9 +1387,11 @@ def build_music(force):
     old_tail = bytes(LVLCHS_LEN)
     if os.path.exists(mbin):
         old_mb = open(mbin, "rb").read()
-        if len(old_mb) == LVLCHS_MB_OFF + LVLCHS_LEN:
-            old_tail = old_mb[LVLCHS_MB_OFF:]
-    open(mbin, "wb").write(mb_prefix + old_tail)
+        if len(old_mb) >= LVLCHS_MB_OFF + LVLCHS_LEN:
+            old_tail = old_mb[LVLCHS_MB_OFF:LVLCHS_MB_OFF + LVLCHS_LEN]
+    ram2_data = open(ram2_bin, "rb").read()
+    ram2_pad = ram2_data + bytes(0x0400 - len(ram2_data))
+    open(mbin, "wb").write(mb_prefix + old_tail + bytes(2) + ram2_pad)
     # MUSMAIN = imatge C1 variable de cada nivell (canco + HUD + GAMEOVER +
     # portes + restore). El codi i els frames els afegeix build_level_packages.
     mainbin = build_c1_pre(0, songs["main"][0])
@@ -1424,6 +1470,12 @@ def compile_and_link(force):
         run([SDASZ80, "-plosgff", en_ext_rel, en_ext_s])
         mark_fresh(en_ext_rel, [en_ext_s])
     objs.append(en_ext_rel)
+    ram2_ext_s = os.path.join(obj, "ram2_ext.s")
+    ram2_ext_rel = os.path.join(obj, "ram2_ext.rel")
+    if force or is_stale(ram2_ext_rel, [ram2_ext_s]):
+        run([SDASZ80, "-plosgff", ram2_ext_rel, ram2_ext_s])
+        mark_fresh(ram2_ext_rel, [ram2_ext_s])
+    objs.append(ram2_ext_rel)
     ihx = os.path.join(obj, PROGNAME + ".ihx")
     run([SDCC] + LINKARGS + objs + ["-o", ihx])
     map_path = os.path.join(obj, PROGNAME + ".map")
@@ -2060,7 +2112,7 @@ def package(starter_path, starter_start, game_path):
     obj_dir = os.path.join(PROJ, "obj")
     mbin_path = os.path.join(obj_dir, "MUSBANK.BIN")
     mbin_data = bytearray(open(mbin_path, "rb").read())
-    assert len(mbin_data) == LVLCHS_MB_OFF + len(lvl_payload), (len(mbin_data), LVLCHS_MB_OFF + len(lvl_payload))
+    assert len(mbin_data) == LVLCHS_MB_OFF + len(lvl_payload) + 2 + 0x0400, (len(mbin_data), LVLCHS_MB_OFF + len(lvl_payload) + 2 + 0x0400)
     mbin_data[LVLCHS_MB_OFF:LVLCHS_MB_OFF + len(lvl_payload)] = lvl_payload
     open(mbin_path, "wb").write(bytes(mbin_data))
 
@@ -2186,6 +2238,16 @@ def main():
     if not os.path.exists(ext_seed):
         open(ext_seed, "w").write("    .module enemy_ext\n"
                                   "    .globl _s_hud_strips\n_s_hud_strips = 0x6000\n")
+    ram2_seed = os.path.join(PROJ, "obj", "ram2_ext.s")
+    if not os.path.exists(ram2_seed):
+        open(ram2_seed, "w").write(
+            "    .module ram2_ext\n"
+            "    .globl _ring_address\n_ring_address = 0xB200\n"
+            "    .globl _moving_blit_box\n_moving_blit_box = 0xB200\n"
+            "    .globl _moving_restore_box\n_moving_restore_box = 0xB200\n"
+            "    .globl _ram2_hud_copy\n_ram2_hud_copy = 0xB200\n"
+            "    .globl _ram2_en2_clip\n_ram2_en2_clip = 0xB200\n"
+        )
 
     import pack_level
     pack_level.build_level_pkg(0, os.path.join(PROJ, "src"))

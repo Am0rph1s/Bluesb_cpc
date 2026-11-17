@@ -52,8 +52,6 @@ _g_vram_start::     .dw 0
 
 _s_old_y_c0:        .db 0
 _s_old_x_c0:        .db 0
-_s_old_y_80:        .db 0
-_s_old_x_80:        .db 0
 s_cur_y:            .db 0
 s_line_cnt:         .db 0
 s_spr_ptr:          .dw 0
@@ -62,21 +60,17 @@ s_addr_segment:     .db 0
 s_byte_cnt:         .db 0
 
 _s_bloon_drawn_c0:  .db 0
-_s_bloon_drawn_80:  .db 0
 _s_bloon_old_y_c0:  .db 0
 _s_bloon_old_x_c0:  .db 0
-_s_bloon_old_y_80:  .db 0
-_s_bloon_old_x_80:  .db 0
 s_bloon_cur_x:      .db 0
 
 ;; Buffers de restauració de fons d'en Jake reubicats al Banc 7 (0x7660..0x783F)
 _s_player_bg_c0 = 0x7660
 _s_player_bg_80 = 0x7750
 
-;; Buffers de restauració de fons per a objectes portats (globus i paraigües) a _DATA resident:
-;; 10 bytes x 32 linies = 320 bytes per pagina (total 640 B). Mai col·lideix amb frames de Jake!
+;; Buffer de restauració de fons per a objectes portats (globus i paraigües) a _DATA resident:
+;; 10 bytes x 32 linies = 320 bytes (single buffer C0).
 _s_carry_bg_c0::    .ds 320
-_s_carry_bg_80::    .ds 320
 
 
 
@@ -94,20 +88,10 @@ _sprite_restore_player::
     push    af                  ;; desa banc anterior a la pila
     ld      a, #0xC7
     call    _bank_set           ;; commuta a Banc 7 (on viuen els buffers de fons)
-    ld      a, (_g_vram_base_hi)
-    cp      #0x80
-    jr      z, 9$
     ld      a, (_s_old_x_c0)
     ld      (s_cur_y), a        ;; reutilitzat temporalment per x
     ld      a, (_s_old_y_c0)
     ld      hl, #_s_player_bg_c0
-    jr      8$
-9$:
-    ld      a, (_s_old_x_80)
-    ld      (s_cur_y), a
-    ld      a, (_s_old_y_80)
-    ld      hl, #_s_player_bg_80
-8$:
     ld      (s_bg_read_ptr), hl
     call    sprite_calc_de      ;; A = y, (s_cur_y) = x -> DE = VRAM física
     ld      hl, (s_bg_read_ptr)
@@ -124,8 +108,9 @@ rst_line_loop:
     cp      #0xF8
     jr      nc, rst_wrap_copy
 rst_fast_copy:
-    ld      bc, #8
-    ldir
+    .rept 8
+    ldi
+    .endm
     jr      rst_copy_done
 rst_wrap_copy:
     ld      b, #8
@@ -168,31 +153,21 @@ sprite_calc_de:
 ;; Clobbers: A, D, E. Preserva BC i HL!
 sprite_step_de:
     ld      a, d
-    and     #0x38
-    cp      #0x38
-    jr      z, 1$
-    ld      a, d
     add     a, #0x08
     ld      d, a
-    ret
-1$:
+    ret     nc
     ld      a, e
     add     a, #0x50
     ld      e, a
     ld      a, d
-    adc     a, #0xC8            ;; +0x08 - 0x40 = -0x38 (+ carry)
-    and     #0xC7               ;; manté pàgina (0xC0/0x80), RA=0 i wrap 2KB
+    adc     a, #0xC0
+    and     #0xC7
     ld      d, a
     ret
 
 ;; DE = adreça de línia del mapa base. Retorna DE amb l'offset MA circular
 ;; incorporat, mantenint la pàgina i la línia de trama.
 sprite_map_line:
-    ld      a, (_g_vram_base_hi)
-    cp      #0x80
-    jr      nz, 1$
-    res     6, d
-1$:
     ld      a, d
     and     #0xF8
     ld      (s_addr_segment), a
@@ -293,22 +268,11 @@ _cpc_wait_vsync_start::
 _sprite_blit_player::
     ld      (s_spr_ptr), hl
 
-    ld      a, (_g_vram_base_hi)
-    cp      #0x80
-    jr      z, 1$
     ld      a, (_g_spr_y)
     ld      (_s_old_y_c0), a
     ld      a, (_g_spr_x)
     ld      (_s_old_x_c0), a
     ld      bc, #_s_player_bg_c0
-    jr      2$
-1$:
-    ld      a, (_g_spr_y)
-    ld      (_s_old_y_80), a
-    ld      a, (_g_spr_x)
-    ld      (_s_old_x_80), a
-    ld      bc, #_s_player_bg_80
-2$:
     ld      a, (_g_grate_enable)
     or      a
     jr      z, 3$
@@ -323,6 +287,48 @@ _sprite_blit_player::
     ld      a, (_g_spr_y)
     call    sprite_calc_de      ;; DE = adreça física VRAM de la 1a línia
     pop     bc
+
+    ;; Via ultra-ràpida: si no hi ha reixa ni cap línia pot creuar 0x07FF ((D & 7) < 6)
+    ld      a, (_g_grate_enable)
+    or      a
+    jr      nz, blit_line
+    ld      a, d
+    and     #0x07
+    cp      #0x06
+    jr      nc, blit_line
+    ld      hl, (s_spr_ptr)
+    push    ix
+    .db     0xDD, 0x26, 30      ;; ld ixh, #30
+blit_ultra_loop:
+    push    de
+    .rept 8
+    ld      a, (de)
+    ld      (bc), a
+    inc     bc
+    and     (hl)
+    inc     hl
+    or      (hl)
+    inc     hl
+    ld      (de), a
+    inc     de
+    .endm
+    pop     de
+    ld      a, d
+    add     a, #0x08
+    ld      d, a
+    jr      nc, blit_u_nowrap$
+    ld      a, e
+    add     a, #0x50
+    ld      e, a
+    ld      a, d
+    adc     a, #0xC0
+    and     #0xC7
+    ld      d, a
+blit_u_nowrap$:
+    .db     0xDD, 0x25          ;; dec ixh
+    jp      nz, blit_ultra_loop
+    pop     ix
+    ret
 
 blit_line:
     push    de                  ;; Desa DE d'inici de línia
@@ -564,7 +570,6 @@ _grate_lut:
 _sprite_balloon_init::
     xor     a
     ld      (_s_bloon_drawn_c0), a
-    ld      (_s_bloon_drawn_80), a
     ret
 
 
@@ -577,9 +582,6 @@ _sprite_balloon_init::
 _sprite_restore_umbrella::
 _sprite_restore_balloon::
 _sprite_restore_carry::
-    ld      a, (_g_vram_base_hi)
-    cp      #0x80
-    jr      z, 1$
     ld      a, (_s_bloon_drawn_c0)
     or      a
     ret     z
@@ -591,20 +593,6 @@ _sprite_restore_carry::
     ld      a, (_s_bloon_old_x_c0)
     ld      (s_bloon_cur_x), a
     ld      hl, #_s_carry_bg_c0
-    jr      2$
-1$:
-    ld      a, (_s_bloon_drawn_80)
-    or      a
-    ret     z
-    ld      c, a
-    xor     a
-    ld      (_s_bloon_drawn_80), a
-    ld      a, (_s_bloon_old_y_80)
-    ld      (s_cur_y), a
-    ld      a, (_s_bloon_old_x_80)
-    ld      (s_bloon_cur_x), a
-    ld      hl, #_s_carry_bg_80
-2$:
     ld      (s_bg_read_ptr), hl
 
     dec     c
@@ -672,24 +660,12 @@ _sprite_blit_balloon::
     add     a, #2               ;; centrat (+2 bytes = +4 px Mode 0)
     ld      (s_bloon_cur_x), a
 
-    ld      a, (_g_vram_base_hi)
-    cp      #0x80
-    jr      z, 1$
     ld      a, (s_cur_y)
     ld      (_s_bloon_old_y_c0), a
     ld      a, (s_bloon_cur_x)
     ld      (_s_bloon_old_x_c0), a
     ld      a, #1
     ld      (_s_bloon_drawn_c0), a
-    jr      2$
-1$:
-    ld      a, (s_cur_y)
-    ld      (_s_bloon_old_y_80), a
-    ld      a, (s_bloon_cur_x)
-    ld      (_s_bloon_old_x_80), a
-    ld      a, #1
-    ld      (_s_bloon_drawn_80), a
-2$:
 
     ld      a, (_g_bank)
     push    af
@@ -698,12 +674,7 @@ _sprite_blit_balloon::
 
     call    carry_calc_first
 
-    ld      a, (_g_vram_base_hi)
-    cp      #0x80
     ld      bc, #_s_carry_bg_c0
-    jr      nz, 3$
-    ld      bc, #_s_carry_bg_80
-3$:
 
     ld      hl, #0x7AA0         ;; BALLOON_SPRITE_FRAME al Banc 7 (0x7A20+128)
     ld      a, #28              ;; 28 linies
@@ -757,24 +728,12 @@ _sprite_blit_umbrella::
 5$:
     ld      (s_bloon_cur_x), a
 
-    ld      a, (_g_vram_base_hi)
-    cp      #0x80
-    jr      z, 1$
     ld      a, (s_cur_y)
     ld      (_s_bloon_old_y_c0), a
     ld      a, (s_bloon_cur_x)
     ld      (_s_bloon_old_x_c0), a
     ld      a, #2               ;; 2 = paraigua
     ld      (_s_bloon_drawn_c0), a
-    jr      2$
-1$:
-    ld      a, (s_cur_y)
-    ld      (_s_bloon_old_y_80), a
-    ld      a, (s_bloon_cur_x)
-    ld      (_s_bloon_old_x_80), a
-    ld      a, #2               ;; 2 = paraigua
-    ld      (_s_bloon_drawn_80), a
-2$:
 
     ld      a, (_g_bank)
     push    af
@@ -783,12 +742,7 @@ _sprite_blit_umbrella::
 
     call    carry_calc_first
 
-    ld      a, (_g_vram_base_hi)
-    cp      #0x80
     ld      bc, #_s_carry_bg_c0
-    jr      nz, 6$
-    ld      bc, #_s_carry_bg_80
-6$:
 
     ld      hl, #0x7B80         ;; UMBRELLA_FRAME al Banc 7 (0x7A20+128+224)
     ld      a, #32              ;; 32 linies
@@ -836,6 +790,5 @@ _sprite_abort_carry::
 _sprite_abort_balloon::
     xor     a
     ld      (_s_bloon_drawn_c0), a
-    ld      (_s_bloon_drawn_80), a
     ret
 

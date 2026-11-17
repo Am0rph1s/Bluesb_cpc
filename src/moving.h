@@ -83,6 +83,12 @@ extern u8  g_lives_count;
 extern u8  g_has_instrument;
 extern u8  g_level_complete;
 extern u8  g_checkpoint;
+// Posicio real on es va tocar el checkpoint (respawn de mig nivell).
+// Al DOS el restart es estatic, pero el punt estatic pot quedar dins un mur;
+// guardem el lloc valid on era Jake en activar-lo.
+extern i16 g_chk_px8, g_chk_py8;
+extern u16 g_chk_cam_x4, g_chk_cam_row;
+extern u8  g_chk_valid;
 extern u8  g_enemy_decomp_cnt;   // diagnostic: descompressions de cela d'enemic (cache miss)
 extern u8 s_dance_timer;
 extern u8 s_dying_timer;
@@ -137,9 +143,13 @@ extern u16 g_moving_sprite;
 extern u8 g_moving_span;
 extern u8 g_moving_rows;
 extern u8 g_moving_spr_skip;
+extern u8 g_jake_en_near;
 extern void moving_blit_box(void);
 extern void moving_restore_box(void);
 extern u8* ring_address(u8 page, i16 x, i16 y);
+extern void init_tile_props(void);
+extern u8 tile_props_at(u16 col, u16 row);
+extern u8 walker_sense(void);
 
 void moving_init(void);
 void moving_update(void);

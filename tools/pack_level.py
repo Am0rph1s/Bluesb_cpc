@@ -41,6 +41,11 @@ LEVEL_PALETTES = [
 ]
 
 DOS_ANIM_SEQS = {
+    0: [97, 97, 97, 97, 91, 91, 91, 91, 97, 97, 97, 97, 93, 93, 93, 93], # Càmeres de seguretat L3 (16 frames)
+    1: [206, 206, 206, 206, 207, 207, 207, 207, 208, 208, 208, 208, 207, 207, 207, 207], # Focus/llums L3 (16 frames)
+    9: [169] * 17 + [171] + [173] * 7 + [171], # Trampilla esquerra L3 (26 frames)
+    10: [170] * 17 + [172] + [174] * 7 + [172], # Trampilla dreta L3 (26 frames)
+    69: [214, 215], # Xispes elèctriques L3 (2 frames)
     67: [110, 110, 110, 110, 110, 110, 111, 112, 113, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 113, 112, 111, 110], # Comporta superior L4 (44 frames)
     68: [51, 51, 51, 51, 51, 51, 51, 51, 51, 110, 111, 112, 113, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 123, 113, 112, 111, 110, 51, 51, 51, 51], # Comporta inferior L4 (44 frames)
     19: [147, 146, 167, 146],  # level_tiledata_1cce (4 frames; 167 = buit b6=255)
@@ -264,6 +269,31 @@ def build_level_pkg(level_idx=0, out_dir=None):
     # Al mapa principal no hi ha d'aparèixer duplicat.
     inst_col, inst_row, inst_tile = (0, 0, 0)
 
+    # Items de les SALES: no son sempre el tile 208/159. A L4 el vinil de la
+    # sala es el tile 233; a L5 el 24/65. Detectem el tile REAL de la sala
+    # mirant el trigger (add_vinyls / instrument) dels tiles que hi apareixen.
+    room_vinyl_t = 0
+    room_instr_t = 0
+    room_vinyl_bg = 0
+    room_vinyl_add = 0
+    for _t in sorted(set(rooms_bin)):
+        _b6 = trig_bin[_t * 10 + 6]
+        for _e in trig_entries:
+            # Nomes bonus/malus reals (kind 11/12). Els b6<10 son switches
+            # i els seus camps p[3]/p[7] no son add_vinyls/instrument.
+            if _e[10] != _b6 or _e[0] not in (11, 12):
+                continue
+            # Si hi ha diversos tiles de vinil a la sala (L3: +1 i +50),
+            # triem el de menys valor: el pickup resident suma 1 i es el
+            # que l'usuari veu com a disc normal.
+            if _e[2] and (not room_vinyl_t or _e[2] < room_vinyl_add):
+                room_vinyl_t = _t
+                room_vinyl_bg = _e[1]
+                room_vinyl_add = _e[2]
+            if _e[6] and not room_instr_t:
+                room_instr_t = _t
+            break
+
     # --- Compactacio d'IDs de tile (build-time, 1:1) ---------------------
     # Es reordena el tileset amb els tiles realment usats i es remapegen
     # mapa, sales, TRIG, restore, sequencies animades i bg_tile dels triggers.
@@ -275,6 +305,14 @@ def build_level_pkg(level_idx=0, out_dir=None):
         used.add(entry[1])
     switch_targets = set()
     switch_targets.add(15)
+    for b6 in switch_b6s:
+        p = list(arrays[names6[b6]])
+        ns, nc = p[0], p[1]
+        base = 2 + (ns - 1) * nc * 4
+        for k in range(nc):
+            t_sw = p[base + k * 4 + 2]
+            if t_sw in (241, 246):
+                switch_targets.add(t_sw)
     if level_idx == 4:
         used |= {24, 65, 2}          # vinil, instrument, tile buit L5
     elif level_idx == 5:
@@ -311,17 +349,19 @@ def build_level_pkg(level_idx=0, out_dir=None):
     if inst_tile:
         inst_tile = remap[inst_tile]
     if level_idx == 4:
-        tile_vinyl_c = remap[24]
-        tile_instr_c = remap[65]
-        tile_empty_c = remap[2]
+        tile_vinyl_c = remap[room_vinyl_t] if room_vinyl_t else remap[24]
+        tile_instr_c = remap[room_instr_t] if room_instr_t else remap[65]
+        tile_empty_c = remap[room_vinyl_bg] if room_vinyl_bg else remap[2]
     elif level_idx == 5:
         tile_vinyl_c = 0
         tile_instr_c = 0
         tile_empty_c = remap[106]
     else:
-        tile_vinyl_c = remap[208]
-        tile_instr_c = remap[159]
-        tile_empty_c = remap[96]
+        # L1..L4: el tile real de la sala (L1 208, L4 233...). Si la sala no
+        # te cap trigger de vinil/instrument (L3), caiem al valor historic.
+        tile_vinyl_c = remap[room_vinyl_t] if room_vinyl_t else remap[208]
+        tile_instr_c = remap[room_instr_t] if room_instr_t else remap[159]
+        tile_empty_c = remap[room_vinyl_bg] if room_vinyl_bg else remap[96]
     # Taula compacta de switches: (b6, n_states, n_changes, offset) + tiles.
     switch_b6_c, switch_ns, switch_nc, switch_off, switch_tiles = [], [], [], [], []
     for b6 in switch_b6s:
@@ -333,7 +373,10 @@ def build_level_pkg(level_idx=0, out_dir=None):
             col = p[base + k * 4]
             row = p[base + k * 4 + 1]
             tile = p[base + k * 4 + 2]
-            if tile in (241, 245, 246):
+            if tile in (241, 246):
+                changes.append((col, row, remap[tile]))
+                continue
+            if tile == 245:
                 continue
             changes.append((col, row, remap[15]))
         if not changes:

@@ -36,6 +36,9 @@ extern void hud_render(u8 page, u8 force);
 extern void crtc_set_display_start(u16 ma);
 extern void cpc_install_isr(void);
 extern volatile u8 g_ticks;
+extern volatile u8 g_irq_phase;
+extern volatile u8 g_split_en;
+extern volatile u16 g_play_ma;
 
 #define MAP_PTR     ((const u8*)0x4000)
 #define TRIG_STRIDE 5
@@ -52,7 +55,7 @@ extern volatile u8 g_ticks;
 #define GRAV        16
 #define JUMP_VY     (-112)
 #define DEAD_L      48
-#define DEAD_R      88
+#define DEAD_R      89
 #define DEAD_T      32
 #define DEAD_B      116
 #define CRATE_FLY_FRAME ((const u8*)0x7A20)
@@ -94,9 +97,9 @@ u8  s_carry_state;
 i16 s_carry_x, s_carry_y;
 i16 s_carry_vx;
 u8  s_carry_drawn[2];
-static u8  s_carry_drawn_span[2];
-static u8  s_carry_drawn_rows[2];
-static u16 s_carry_dst[2];
+static u8  s_carry_drawn_span;
+static u8  s_carry_drawn_rows;
+static u16 s_carry_dst;
 // Buffers de fons de caixes al Banc 7 dins del gap lliure (0x7DE0..0x7EFF):
 // 64 B per pagina (0x7E00 per p=0, 0x7E40 per p=1). No col·lideix amb els frames d'en Jake!
 #define CRATE_BG_PAGE(p) ((u16)(0x7E00 + ((u16)(p) << 6)))
@@ -108,13 +111,14 @@ u8  s_dazed_timer;
 u8  s_dying_timer;
 u8  s_invuln_timer;
 
-static u8  s_have_drawn[2];
-static i8  s_pending_x, s_pending_y;
+static u8  s_have_drawn;
+static u8  s_hflip_cur = 0xFF;
+static u8  s_prev_jdsx, s_prev_jdsy;
+static u8  s_prev_jcur = 0xFF, s_prev_jface, s_prev_jgrate;
 
 u8  s_rep_n;
 u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
 
-static u8 s_back_page = 1;
 static u8 s_complete_wait;
 
 void main(void);
@@ -169,21 +173,16 @@ extern u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
 static void world_flush_repaints(void) {
     u8 i = 0;
     while (i < s_rep_n) {
-        if (s_rep_pages[i] & (u8)((u8)1 << s_back_page)) {
+        if (s_rep_pages[i] & 1) {
             render_tile_world(s_rep_tile[i], s_rep_col[i], s_rep_row[i],
                               g_cam_x4, g_cam_row);
-            s_rep_pages[i] &= (u8)~((u8)1 << s_back_page);
         }
-        if (s_rep_pages[i] == 0) {
-            s_rep_n--;
-            if (i != s_rep_n) {
-                s_rep_col[i] = s_rep_col[s_rep_n];
-                s_rep_row[i] = s_rep_row[s_rep_n];
-                s_rep_tile[i] = s_rep_tile[s_rep_n];
-                s_rep_pages[i] = s_rep_pages[s_rep_n];
-            }
-        } else {
-            i++;
+        s_rep_n--;
+        if (i != s_rep_n) {
+            s_rep_col[i] = s_rep_col[s_rep_n];
+            s_rep_row[i] = s_rep_row[s_rep_n];
+            s_rep_tile[i] = s_rep_tile[s_rep_n];
+            s_rep_pages[i] = s_rep_pages[s_rep_n];
         }
     }
 }
@@ -192,19 +191,13 @@ static u16 camera_ma(u16 x4, u16 row) {
     return (u16)((row * 40 + x4) & 0x03FF);
 }
 
-static void repaint_both_buffers(void) {
-    u8 p;
+static void repaint_screen(void) {
     g_vram_start = camera_ma(g_cam_x4, g_cam_row);
-    s_pending_x = 0;
-    s_pending_y = 0;
-    for (p = 0; p < 2; p++) {
-        g_vram_base_hi = p ? 0x80 : 0xC0;
-        if (s_in_room) render_room(0);
-        else render_all(g_cam_x4, g_cam_row);
-        hud_render(p, 1);
-    }
+    g_vram_base_hi = 0xC0;
+    if (s_in_room) render_room(0);
+    else render_all(g_cam_x4, g_cam_row);
+    hud_render(1, 1);
     crtc_set_display_start((u16)(0x3000 + g_vram_start));
-    s_back_page = 1;
 }
 
 static void enter_door(u8 dst_col, u8 dst_row) {
@@ -247,16 +240,14 @@ static void enter_door(u8 dst_col, u8 dst_row) {
         g_cam_row = (u16)(cam_r << 1);
         enemy_room_exit((i16)(s_px8 >> 3), (i16)(s_py8 >> 3));
     }
-    s_have_drawn[0] = 0;
-    s_have_drawn[1] = 0;
+    s_have_drawn = 0;
+    s_hflip_cur = 0xFF;
     s_carry_drawn[0] = 0;
-    s_carry_drawn[1] = 0;
     s_rep_n = 0;
 
-    repaint_both_buffers();
+    repaint_screen();
     if (!s_in_room) {
         moving_draw(0, g_cam_x4, g_cam_row);
-        moving_draw(1, g_cam_x4, g_cam_row);
     }
 
     palette_restore();
@@ -304,23 +295,23 @@ static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
     }
 }
 
-static void carry_restore(u8 page) {
+static void carry_restore(void) {
     u8 prev;
-    if (!s_carry_drawn[page]) return;
+    if (!s_carry_drawn[0]) return;
     prev = bank_set(0xC7);
-    g_moving_dst = s_carry_dst[page];
-    g_moving_background = CRATE_BG_PAGE(page);
-    g_moving_span = s_carry_drawn_span[page];
-    g_moving_rows = s_carry_drawn_rows[page];
+    g_moving_dst = s_carry_dst;
+    g_moving_background = 0x7E00;
+    g_moving_span = s_carry_drawn_span;
+    g_moving_rows = s_carry_drawn_rows;
     moving_restore_box();
     bank_restore(prev);
-    s_carry_drawn[page] = 0;
+    s_carry_drawn[0] = 0;
 }
 
 static u8 s_cd_prev, s_cd_start_byte, s_cd_byte_count, s_cd_start_row, s_cd_row_count;
 static i16 s_cd_cx, s_cd_cy, s_cd_view_x, s_cd_view_y, s_cd_clip_x0, s_cd_clip_x1, s_cd_clip_y0, s_cd_clip_y1;
 
-static void carry_draw(u8 page) {
+static void carry_draw(void) {
     if (s_carry_kind != 1) return;
     if (s_carry_state == 0) {
         if (s_invuln_timer & 2) return; // Parpelleig amb en Jake
@@ -349,18 +340,18 @@ static void carry_draw(u8 page) {
     if (!s_cd_byte_count || !s_cd_row_count) return;
 
     s_cd_prev = bank_set(0xC7);
-    g_moving_dst = (u16)ring_address(page, s_cd_clip_x0, s_cd_clip_y0);
-    s_carry_dst[page] = g_moving_dst;
-    s_carry_drawn_span[page] = s_cd_byte_count;
-    s_carry_drawn_rows[page] = s_cd_row_count;
-    g_moving_background = CRATE_BG_PAGE(page);
+    g_moving_dst = (u16)ring_address(0, s_cd_clip_x0, s_cd_clip_y0);
+    s_carry_dst = g_moving_dst;
+    s_carry_drawn_span = s_cd_byte_count;
+    s_carry_drawn_rows = s_cd_row_count;
+    g_moving_background = 0x7E00;
     g_moving_sprite = (u16)(CRATE_FLY_FRAME + ((u16)s_cd_start_row << 3) + (s_cd_start_byte << 1));
     g_moving_span = s_cd_byte_count;
     g_moving_rows = s_cd_row_count;
     g_moving_spr_skip = (u8)(8 - (s_cd_byte_count << 1));
     moving_blit_box();
     bank_restore(s_cd_prev);
-    s_carry_drawn[page] = 1;
+    s_carry_drawn[0] = 1;
 }
 
 void carry_abort(void) {
@@ -482,36 +473,7 @@ static i16 s_ps_px, s_ps_py, s_ps_evx, s_ps_prev_feet, s_ps_curr_feet, s_ps_elev
 static u16 s_ps_prev_head, s_ps_c_mid1, s_ps_c_mid2, s_ps_feet_row, s_ps_head_row, s_ps_top_row, s_ps_col;
 static u8  s_ps_climbing, s_ps_jump, s_ps_crouch, s_ps_landed;
 
-static u8  s_crb_r, s_crb_prev, s_crb_t, s_crb_last;
-static u16 s_crb_off;
-
-static void check_room_bonus(u8 col, u8 feet_row) {
-    if (col >= s_lv.room_total_cols) return;
-    s_crb_last = (u8)(s_lv.room_row0 + s_lv.room_rows);
-    for (s_crb_r = feet_row; s_crb_r >= (feet_row - 2) && s_crb_r >= s_lv.room_row0; s_crb_r--) {
-        if (s_crb_r >= s_crb_last) continue;
-        s_crb_off = (u16)(s_lv.room_rowoff[s_crb_r - s_lv.room_row0] + col);
-        s_crb_prev = bank_set(0xC5);
-        s_crb_t = ((const u8*)(u16)s_lv.rooms_off)[s_crb_off];
-        if (s_crb_t == s_lv.tile_vinyl) {
-            if (g_vinyls_count < 99) g_vinyls_count++;
-        } else if (s_crb_t == s_lv.tile_instr) {
-            g_has_instrument = (u8)(s_lv.level_id + 1);
-        } else {
-            bank_restore(s_crb_prev);
-            continue;
-        }
-        ((u8*)(u16)s_lv.rooms_off)[s_crb_off] = s_lv.tile_empty;
-        bank_restore(s_crb_prev);
-        if (s_rep_n < 3) {
-            s_rep_col[s_rep_n] = col;
-            s_rep_row[s_rep_n] = s_crb_r;
-            s_rep_tile[s_rep_n] = s_lv.tile_empty;
-            s_rep_pages[s_rep_n] = 3;
-            s_rep_n++;
-        }
-    }
-}
+// Col·lisió dels ítems de les sales: gestionada 1:1 per b5_check_bonus_triggers().
 
 static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) {
     s_ps_climbing = climbing;
@@ -688,9 +650,6 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
             }
         }
     }
-    if (s_in_room) {
-        check_room_bonus((u8)(((s_px8 >> 3) + 8) >> 3), (u8)(((s_py8 >> 3) + 28) >> 4));
-    }
 }
 
 extern void zx0_decompress(const void* src, void* dst);
@@ -781,6 +740,7 @@ static u8 load_level_file(u8 lvl, u8 typ) {
     prev = bank_set(0xC1);
     if (*(const u8*)0x7C00u != 'L') {
         cpct_memcpy((void*)0x7C00u, (const void*)0x5D00u, LVLCHS_LEN);
+        cpct_memcpy((void*)0xB800u, (const void*)0x6030u, 0x0400u);
     }
     e = (const u8*)(0x7C00u + 4u + (u16)(lvl * 3u + typ) * 5u);
     n = e[2];
@@ -921,8 +881,8 @@ static void restore_level_tiles(void) {
 
 // GAME OVER: codi comu al Banc 1 (src/hud_bank.c, MUSBANK). Escriu VRAM -> 0xC0.
 extern void gameover_o(void);
-static void draw_gameover_banner(u8 page) {
-    bc_a = page;
+static void draw_gameover_banner(void) {
+    bc_a = 0;
     call_banked(0xC0, (void*)gameover_o);
 }
 
@@ -941,6 +901,197 @@ static u8  s_mn_sv_lives, s_mn_sv_hearts, s_mn_sv_vinyls, s_mn_sv_keep, s_mn_las
 static i8  s_mn_move, s_mn_move_x, s_mn_move_y, s_mn_page_dx, s_mn_page_dy;
 static u8  s_mn_jump, s_mn_crouch, s_mn_grab, s_mn_cur, s_mn_up_key;
 static u16 s_mn_dsx, s_mn_dsy;
+
+static void restore_fg_sprites(void) {
+    sprite_restore_umbrella();
+    sprite_restore_balloon();
+    if (s_have_drawn) {
+        sprite_restore_player();
+        s_have_drawn = 0;
+    }
+    carry_restore();
+}
+
+static void draw_jake_now(u8 jake_vis) {
+    g_spr_y = (u8)s_mn_dsy;
+    g_spr_x = (u8)s_mn_dsx;
+    if (jake_vis) {
+        const u8* fr_addr = (g_face == 0)
+            ? (const u8*)(u16)(PLAYER_FRAMES_BASE + ((u16)s_mn_cur << 9) - ((u16)s_mn_cur << 5))
+            : (const u8*)0x7840;
+        u8 prev_b = bank_set(PLAYER_FRAMES_BANK);
+        sprite_blit_player(fr_addr);
+        bank_restore(prev_b);
+        s_have_drawn = 1;
+        s_prev_jdsx = (u8)s_mn_dsx;
+        s_prev_jdsy = (u8)s_mn_dsy;
+        s_prev_jcur = s_mn_cur;
+        s_prev_jface = g_face;
+        s_prev_jgrate = g_grate_enable;
+    } else {
+        s_have_drawn = 0;
+    }
+}
+
+static void render_frame(void) {
+    u16 old_ma = g_vram_start;
+    u16 new_ma = camera_ma(g_cam_x4, g_cam_row);
+    u8 do_scroll = (u8)(s_mn_page_dx != 0 || s_mn_page_dy != 0);
+    u8 jake_vis = (u8)(s_climb_prev != 3 && (s_dying_timer || !(s_invuln_timer & 2)));
+    u8 elev_near = 0;
+    u8 keep_jake, early_jake, mid_jake;
+
+    if (!s_in_room) {
+        const MovingElevator* ev = g_mag_elevators;
+        u8 k;
+        for (k = MAG_MOVER_COUNT; k; k--, ev++) {
+            if (ev->drawn[0] &&
+                (u16)(ev->center_x - s_ps_px + 16) < 48 &&
+                (u16)(ev->y - s_ps_py + 20) < 84) {
+                elev_near = 1;
+                break;
+            }
+        }
+    }
+
+    {
+        u8 no_ov = (u8)(!g_jake_en_near && !elev_near && !s_carry_kind && !s_carry_drawn[0]);
+        u8 conv_jake = (u8)(g_belt_push && s_page_conveyor_phase[0] != s_conveyor_phase);
+        keep_jake = (u8)(!do_scroll && no_ov && !s_rep_n && s_have_drawn && jake_vis &&
+                         !s_invuln_timer && !s_carry_state &&
+                         !g_grate_enable && !conv_jake &&
+                         (u8)s_mn_dsx == s_prev_jdsx && (u8)s_mn_dsy == s_prev_jdsy &&
+                         s_mn_cur == s_prev_jcur && g_face == s_prev_jface &&
+                         g_grate_enable == s_prev_jgrate);
+
+        early_jake = (u8)(!keep_jake && no_ov && !s_rep_n &&
+                          !g_grate_enable && !conv_jake &&
+                          (!s_mn_page_dx || ((u8)(s_prev_jdsx - 4) <= 64 && (u8)((u8)s_mn_dsx - 4) <= 64)) &&
+                          (!s_mn_page_dy || (s_mn_page_dy < 0
+                              ? ((u8)s_prev_jdsy >= 16 && (u8)s_mn_dsy >= 16)
+                              : ((u8)s_prev_jdsy < 114 && (u8)s_mn_dsy < 114))));
+
+        mid_jake = (u8)(!keep_jake && !early_jake && no_ov);
+    }
+
+    // 1. En scroll vertical cap amunt, netejar abans les files superiors que entraven
+    //    sobre el HUD antic abans que el CRTC canvii a new_ma.
+    if (!s_in_room && s_mn_page_dy < 0) {
+        u8 i;
+        g_vram_start = new_ma;
+        for (i = 0; i < (u8)(-s_mn_page_dy) && i < 4; i++) {
+            render_row(g_cam_x4, g_cam_row, i);
+        }
+    }
+
+    // 2. Camí atòmic d'en Jake dins el VBLANK (com a les habitacions):
+    //    restaura a old_ma i bliteja a new_ma abans que comenci l'escombrat actiu.
+    if (early_jake) {
+        dbg_border(0x52);
+        g_vram_start = old_ma;
+        restore_fg_sprites();
+        g_vram_start = new_ma;
+        draw_jake_now(jake_vis);
+    } else {
+        g_vram_start = new_ma;
+    }
+
+    if (do_scroll) {
+        crtc_set_display_start((u16)(0x3000 + new_ma));
+    }
+
+    // 3. Restauracions del món i scroll incremental
+    if (!keep_jake && !early_jake) {
+        dbg_border(0x55);
+        g_vram_start = old_ma;
+        restore_fg_sprites();
+        g_vram_start = new_ma;
+    }
+
+    if (!s_in_room) {
+        if (s_mn_page_dy || s_rep_n) {
+            enemy_restore(0);
+            moving_restore(0, 0);
+            moving_popup_restore(0);
+        } else if (do_scroll) {
+            enemy_restore(2);
+            moving_restore(0, 0);
+            moving_popup_restore(0);
+        } else {
+            moving_restore(0, 0);
+            moving_popup_restore(0);
+        }
+    }
+
+    if (s_mn_page_dy > 0) {
+        hud_render(1, 1);
+    }
+
+    if (do_scroll) {
+        dbg_border(0x4C);
+        sync_backbuffer(s_mn_page_dx, (s_mn_page_dy < 0) ? 0 : s_mn_page_dy, g_cam_x4, g_cam_row);
+    }
+    world_flush_repaints();
+
+    // 4. Cintes/reixa/globus, mid_jake i HUD (després de les restauracions, abans del feix a línia 160)
+    dbg_border(0x4E);
+    if (!s_in_room) {
+        bc_a = 0;
+        if (s_page_conveyor_phase[0] != s_conveyor_phase || s_carry_kind == 2 || g_grate_enable) {
+            moving_draw_conveyor_tiles();
+        }
+    }
+    if (mid_jake) {
+        dbg_border(0x52);
+        draw_jake_now(jake_vis);
+    }
+    if (s_mn_page_dy <= 0) {
+        hud_render((u8)(s_mn_page_dy != 0), do_scroll);
+    }
+
+    // 5. Dibuix d'ascensors, enemics i Jake solapat (late_jake)
+    if (!s_in_room) {
+        bc_a = 0;
+        moving_draw(0, g_cam_x4, g_cam_row);
+        if (!(s_mn_page_dy || s_rep_n)) enemy_restore(0);
+        enemy_draw(0);
+    }
+    carry_draw();
+
+    if (!keep_jake && !early_jake && !mid_jake) {
+        dbg_border(0x52);
+        draw_jake_now(jake_vis);
+    } else {
+        g_spr_y = (u8)s_mn_dsy;
+        g_spr_x = (u8)s_mn_dsx;
+    }
+    if (s_carry_kind == 2) {
+        if (!s_carry_state) {
+            sprite_blit_balloon();
+        } else {
+            i16 bx = (i16)(( (s_carry_x >> 3) - (i16)(g_cam_x4 * 4) ) >> 1);
+            i16 by = (i16)((s_carry_y >> 3) - (i16)(g_cam_row * 8));
+            if (bx >= 0 && bx <= (80 - SPR_WB) && by >= 28 && by <= 160) {
+                g_spr_x = (u8)bx;
+                g_spr_y = (u8)by;
+                sprite_blit_balloon();
+                g_spr_x = (u8)s_mn_dsx;
+                g_spr_y = (u8)s_mn_dsy;
+            } else {
+                s_carry_kind = 0;
+                s_carry_state = 0;
+            }
+        }
+    } else if (s_carry_kind == 8) {
+        sprite_blit_umbrella();
+    }
+
+    if (s_dying_timer && g_lives_count <= 1) {
+        draw_gameover_banner();
+    }
+
+    dbg_border(0x54);
+}
 
 void main(void) {
     cpct_memset((void*)CRT_DATA_START, 0, CRT_DATA_LEN);
@@ -983,7 +1134,7 @@ void main(void) {
     mus_init();
 
     cpct_memset((void*)0xC000, 0xFF, 0x4000);
-    cpct_memset((void*)0x8000, 0xFF, 0x4000);
+    init_tile_props();
 
     s_mn_sv_lives = g_lives_count; s_mn_sv_hearts = g_hearts_count; s_mn_sv_vinyls = g_vinyls_count;
     s_mn_sv_keep = g_keep_counters;
@@ -996,22 +1147,24 @@ void main(void) {
     }
     enemy_init();
     hud_init();
-    repaint_both_buffers();
+    repaint_screen();
     moving_draw(0, g_cam_x4, g_cam_row);
-    moving_draw(1, g_cam_x4, g_cam_row);
+    cpc_wait_vsync_start();
+    crtc_set_display_start((u16)(0x3000 + g_vram_start));
 
     s_vx = 0; s_vy = 0;
     s_on_ground = 1; g_face = 0;
     s_jump_prev = 0; s_climb_prev = 0;
     s_carry_kind = 0; s_grab_prev = 0;
-    s_carry_state = 0; s_carry_drawn[0] = 0; s_carry_drawn[1] = 0;
+    s_carry_state = 0; s_carry_drawn[0] = 0;
     s_anim_idx = 0; s_anim_timer = 0;
     s_dazed_timer = 0;
     s_dying_timer = 0;
     s_invuln_timer = 0;
-    s_have_drawn[0] = 0;
-    s_have_drawn[1] = 0;
+    s_have_drawn = 0;
+    s_hflip_cur = 0xFF;
     sprite_balloon_init();
+    cpc_wait_vsync_start();
     s_mn_last_ticks = g_ticks;
 
     while (1) {
@@ -1023,16 +1176,21 @@ void main(void) {
         s_mn_jump = 0; s_mn_crouch = 0; s_mn_grab = 0;
 
         cpct_scanKeyboard_f();
-        if (cpct_isKeyPressed(Key_CursorLeft) || cpct_isKeyPressed(Key_Q) ||
-            cpct_isKeyPressed(Joy0_Left))  { s_mn_move = -1; g_face = 1; }
-        if (cpct_isKeyPressed(Key_CursorRight) || cpct_isKeyPressed(Key_S) ||
-            cpct_isKeyPressed(Joy0_Right)) { s_mn_move = +1; g_face = 0; }
-        if (cpct_isKeyPressed(Key_Space) || cpct_isKeyPressed(Key_X) ||
-            cpct_isKeyPressed(Joy0_Fire1) || cpct_isKeyPressed(Joy0_Fire2)) { s_mn_grab = 1; }
-        if (cpct_isKeyPressed(Key_CursorDown) || cpct_isKeyPressed(Key_Z) ||
-            cpct_isKeyPressed(Joy0_Down))  { s_mn_crouch = 1; }
+#define KEY_DOWN(k) ((u8)(~cpct_keyboardStatusBuffer[(u8)(k)] & (u8)((u16)(k) >> 8)))
+        if (KEY_DOWN(Key_CursorLeft) || KEY_DOWN(Key_Q) || KEY_DOWN(Joy0_Left)) {
+            s_mn_move = -1; g_face = 1;
+        }
+        if (KEY_DOWN(Key_CursorRight) || KEY_DOWN(Key_S) || KEY_DOWN(Joy0_Right)) {
+            s_mn_move = +1; g_face = 0;
+        }
+        if (KEY_DOWN(Key_Space) || KEY_DOWN(Key_X) || KEY_DOWN(Joy0_Fire1) || KEY_DOWN(Joy0_Fire2)) {
+            s_mn_grab = 1;
+        }
+        if (KEY_DOWN(Key_CursorDown) || KEY_DOWN(Key_Z) || KEY_DOWN(Joy0_Down)) {
+            s_mn_crouch = 1;
+        }
         {
-            s_mn_up_key = (cpct_isKeyPressed(Key_CursorUp) || cpct_isKeyPressed(Joy0_Up));
+            s_mn_up_key = (u8)(KEY_DOWN(Key_CursorUp) || KEY_DOWN(Joy0_Up));
             if (s_mn_up_key && !s_mn_grab) { s_mn_jump = 1; }
 
             // 1:1 DOS Door Trigger: SPACE + UP (level.c:1210)
@@ -1041,6 +1199,7 @@ void main(void) {
             }
             s_up_prev = s_mn_up_key;
         }
+#undef KEY_DOWN
 
         if (s_dazed_timer || s_dance_timer || s_dying_timer) {
             if (s_dazed_timer) s_dazed_timer--;
@@ -1073,6 +1232,8 @@ void main(void) {
         if (!s_in_room) {
             dbg_border(0x5E);
             enemy_update();
+        } else {
+            g_jake_en_near = 0;
         }
 
         // 1:1 DOS Col·lisió Jake <-> Enemics / Projectils (level.c:1583-1658)
@@ -1107,9 +1268,11 @@ void main(void) {
                     g_mus_hold = 1;
                     g_mus_ready = 0;
                     palette_black();
+                    g_split_en = 0;
+                    video_init();
+                    palette_black();
                     crtc_set_display_start(0x3000);
                     load_front_bank();
-                    s_back_page = 1;
                     g_vram_base_hi = 0x80;
                     g_map_level = 0;
                     g_front_map_only = 0;
@@ -1122,10 +1285,11 @@ void main(void) {
                 moving_respawn();
                 enemy_init();
                 if (g_checkpoint) {
-                    s_px8 = (i16)(s_lv.chk_px * SUB);
-                    s_py8 = (i16)(s_lv.chk_py * SUB);
-                    g_cam_x4 = (u16)s_lv.chk_cam_x4;
-                    g_cam_row = (u16)s_lv.chk_cam_row;
+                    // Punt real on es va tocar el checkpoint (terra valid).
+                    s_px8 = g_chk_px8;
+                    s_py8 = g_chk_py8;
+                    g_cam_x4 = g_chk_cam_x4;
+                    g_cam_row = g_chk_cam_row;
                 } else {
                     s_px8 = (i16)(s_lv.start_px * SUB);
                     s_py8 = (i16)(s_lv.start_py * SUB);
@@ -1147,15 +1311,13 @@ void main(void) {
                 s_carry_kind = 0;
                 s_carry_state = 0;
                 s_carry_drawn[0] = 0;
-                s_carry_drawn[1] = 0;
-                s_have_drawn[0] = 0;
-                s_have_drawn[1] = 0;
+                s_have_drawn = 0;
+                s_hflip_cur = 0xFF;
                 s_rep_n = 0;
                 enemy_room_exit(0, 0);
                 palette_black();
-                repaint_both_buffers();
+                repaint_screen();
                 moving_draw(0, g_cam_x4, g_cam_row);
-                moving_draw(1, g_cam_x4, g_cam_row);
                 palette_restore();
             }
         }
@@ -1226,96 +1388,30 @@ void main(void) {
             }
         }
 
-        s_mn_page_dx = (i8)(s_pending_x + s_mn_move_x);
-        s_mn_page_dy = (i8)(s_pending_y + s_mn_move_y);
+        s_mn_page_dx = s_mn_move_x;
+        s_mn_page_dy = s_mn_move_y;
+        s_mn_cur = select_player_anim(s_climb_prev, s_mn_move, s_mn_jump, (u8)(s_mn_crouch || s_crouch_hold), (i16)s_mn_dsy);
+
+        // Pre-calcular el frame d'en Jake (inclòs H-flip) ABANS del VSYNC per no gastar temps dins el VBLANK
+        {
+            const u8* fr_raw = (const u8*)(u16)(PLAYER_FRAMES_BASE + ((u16)s_mn_cur << 9) - ((u16)s_mn_cur << 5));
+            if (g_face != 0 && s_climb_prev != 3 && (s_dying_timer || !(s_invuln_timer & 2)) && s_hflip_cur != s_mn_cur) {
+                u8 prev_b = bank_set(PLAYER_FRAMES_BANK);
+                sprite_hflip(fr_raw, (u8*)0x7840);
+                bank_restore(prev_b);
+                s_hflip_cur = s_mn_cur;
+            }
+        }
+
+        // Offset MA del frame ANTERIOR per restaurar els sprites exactament on es van dibuixar
         g_vram_start = camera_ma((u16)(g_cam_x4 - s_mn_page_dx),
                                  (u16)(g_cam_row - s_mn_page_dy));
 
-        dbg_border(0x4C);
-        sprite_restore_umbrella();
-        sprite_restore_balloon();
-        if (s_have_drawn[s_back_page]) {
-            sprite_restore_player();
-            s_have_drawn[s_back_page] = 0;
-        }
-        carry_restore(s_back_page);
-        if (!s_in_room) {
-            enemy_restore(s_back_page);
-            moving_restore(s_back_page, (s_mn_move_x != 0 || s_mn_move_y != 0));
-            moving_popup_restore(s_back_page);
-            dbg_border(0x57);
-            sync_backbuffer(s_mn_page_dx, s_mn_page_dy, g_cam_x4, g_cam_row);
-            bc_a = s_back_page;
-            moving_draw_conveyor_tiles();
-        }
-        world_flush_repaints();
-        g_vram_start = camera_ma(g_cam_x4, g_cam_row);
-        dbg_border(0x47);
-        hud_render(s_back_page, (s_mn_page_dx != 0 || s_mn_page_dy != 0));
-        s_mn_cur = select_player_anim(s_climb_prev, s_mn_move, s_mn_jump, (u8)(s_mn_crouch || s_crouch_hold), (i16)s_mn_dsy);
-
-        dbg_border(0x52);
-        if (!s_in_room) {
-            moving_draw(s_back_page, g_cam_x4, g_cam_row);
-            enemy_draw(s_back_page);
-        }
-
-        carry_draw(s_back_page);
-
-        g_spr_y = (u8)s_mn_dsy;
-        g_spr_x = (u8)s_mn_dsx;
-
-        if (s_climb_prev != 3 && (s_dying_timer || !(s_invuln_timer & 2))) {
-            const u8* fr_addr = (const u8*)(u16)(PLAYER_FRAMES_BASE + ((u16)s_mn_cur << 9) - ((u16)s_mn_cur << 5));
-            u8 prev_b = bank_set(PLAYER_FRAMES_BANK);
-            if (g_face == 0) {
-                sprite_blit_player(fr_addr);
-            } else {
-                sprite_hflip(fr_addr, (u8*)0x7840);
-                sprite_blit_player((const u8*)0x7840);
-            }
-            bank_restore(prev_b);
-            s_have_drawn[s_back_page] = 1;
-        } else {
-            s_have_drawn[s_back_page] = 0;
-        }
-
-        if (s_carry_kind == 2) {
-            if (!s_carry_state) {
-                sprite_blit_balloon();
-            } else {
-                i16 bx = (i16)(( (s_carry_x >> 3) - (i16)(g_cam_x4 * 4) ) >> 1);
-                i16 by = (i16)((s_carry_y >> 3) - (i16)(g_cam_row * 8));
-                if (bx >= 0 && bx <= (80 - SPR_WB) && by >= 28 && by < 180) {
-                    g_spr_x = (u8)bx;
-                    g_spr_y = (u8)by;
-                    sprite_blit_balloon();
-                    g_spr_x = (u8)s_mn_dsx;
-                    g_spr_y = (u8)s_mn_dsy;
-                } else {
-                    s_carry_kind = 0;
-                    s_carry_state = 0;
-                }
-            }
-        }
-        else if (s_carry_kind == 8) sprite_blit_umbrella();
-
-        if (s_dying_timer && g_lives_count <= 1) {
-            draw_gameover_banner(s_back_page);
-        }
-
         dbg_border(0x54);
-        cpc_wait_vsync_start();
-        if ((u8)(g_ticks - s_mn_last_ticks) < 7) {
-            cpc_wait_vsync_start();
-        }
+        while ((u8)(g_ticks - s_mn_last_ticks) < 10) {}
+        while (g_irq_phase > 0 && g_irq_phase < 5) {}
         s_mn_last_ticks = g_ticks;
-        crtc_set_display_start((u16)((s_back_page == 1 ? 0x2000 : 0x3000) + g_vram_start));
-
-        s_back_page ^= 1;
-        g_vram_base_hi = (s_back_page == 1) ? 0x80 : 0xC0;
-        s_pending_x = s_mn_move_x;
-        s_pending_y = s_mn_move_y;
+        render_frame();
 
         // 1:1 DOS (level.c): 50 frames de celebracio i despres mapa/nivell
         // seguent; al darrer nivell es torna al primer.
@@ -1335,9 +1431,11 @@ void main(void) {
                 mus_stop();
                 g_mus_hold = 1;
                 palette_black();
+                g_split_en = 0;
+                video_init();
+                palette_black();
                 crtc_set_display_start(0x3000);
                 load_front_bank();
-                s_back_page = 1;
                 g_vram_base_hi = 0x80;
                 g_keep_counters = 1;   // el nivell seguent hereta comptadors
                 break;

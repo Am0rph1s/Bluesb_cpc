@@ -26,12 +26,9 @@ extern u8 s_dying_timer;
 extern u8 s_dazed_timer;
 
 static u8 s_hud_layout[PLAY_CHARS];
-static u8 s_hud_lives[2], s_hud_vinyls[2], s_hud_hearts[2], s_hud_inst[2];
-static u16 s_hud_vram_start[2];
-
-static u16 s_cur_off20;
-static u16 s_cur_off21;
-static u8  s_base_hi;
+static u8 s_hud_lives, s_hud_vinyls, s_hud_hearts, s_hud_inst;
+static u16 s_hud_vram_start;
+extern void ram2_hud_copy(u8 full_v);
 
 static void hud_set_vinyl_digits(u8 val) {
     u8 tens = 9;
@@ -46,31 +43,31 @@ static void hud_set_vinyl_digits(u8 val) {
 static void hud_blit_columns(void) __naked {
     __asm
         push ix
-        ; --- 1. Calcular offsets de video per a sy=20 i sy=21 ---
-        ld   hl, (_g_vram_start)
-        ld   de, #800
-        add  hl, de
-        ld   a, h
-        and  #0x03
-        ld   h, a
-        add  hl, hl
-        ; Afegeix directament la base de VRAM (0xC0 o 0x80)
-        ld   a, (_s_base_hi)
-        add  a, h
-        ld   h, a
-        ld   (_s_cur_off20), hl
-        ld   de, #80
-        add  hl, de
-        res  3, h
-        ld   (_s_cur_off21), hl
-
-        ; --- 2. Bucle de les 40 columnes ---
+        ld   hl, #0x8760    ; VRAM fixa del HUD a RAM 2 (MA = 0x23B0)
+        push hl             ; (SP) = cur20
         ld   ix, #_s_hud_layout
         ld   b, #40
     hb_col_loop$:
-        ; HL = strips + tile * 24
         ld   l, 0(ix)
         inc  ix
+        ld   c, #0x7F
+        pop  de
+        push de
+        push bc
+        call hb_draw_one$
+        pop  bc
+        pop  hl
+        inc  hl
+        inc  hl
+        push hl
+        djnz hb_col_loop$
+        pop  hl
+        pop  ix
+        ret
+
+        ; --- Dibuixa 1 columna (DE = cur20, L = tile, C = 0x7F/0xFF) ---
+    hb_draw_one$:
+        push de             ; guarda cur20
         ld   h, #0
         add  hl, hl         ; *2
         add  hl, hl         ; *4
@@ -83,68 +80,58 @@ static void hud_blit_columns(void) __naked {
         add  hl, de
 
         ; --- Row 20 (ra=0..7) ---
-        ld   de, (_s_cur_off20)
-        call hb_blit_ff2$    ; ra=0..1 (0xFF)
-        call hb_blit6$       ; ra=2..7 (6 linies grafics)
-
-        ; --- Row 21 (ra=0..7) ---
-        ld   de, (_s_cur_off21)
-        call hb_blit6$       ; ra=0..5 (6 linies grafics)
-        call hb_blit_ff$     ; ra=6 (0xFF)
-        ; ra=7 (0xFF)
-        ld   a, #0xFF
+        pop  de
+        push de             ; DE = cur20
+        bit  7, c
+        jr   nz, hb_r20_skip_ff$
+        ld   a, #0xFF       ; ra=0..1 inline
         ld   (de), a
         inc  e
         ld   (de), a
-
-        ; --- Avancar offsets +2 (wrap a 2048 / 0x0800) ---
-        ld   hl, (_s_cur_off20)
-        inc  hl
-        inc  hl
-        res  3, h
-        ld   (_s_cur_off20), hl
-
-        ld   hl, (_s_cur_off21)
-        inc  hl
-        inc  hl
-        res  3, h
-        ld   (_s_cur_off21), hl
-
-        djnz hb_col_loop$
-        pop  ix
-        ret
-
-    hb_blit_ff2$:
-        call hb_blit_ff$
-    hb_blit_ff$:
-        ld   a, #0xFF
-        ld   (de), a
-        inc  e
+        set  3, d
         ld   (de), a
         dec  e
-        ld   a, d
-        add  a, #8
-        ld   d, a
+        ld   (de), a
+    hb_r20_skip_ff$:
+        res  3, d
+        set  4, d           ; RA=2 directament
+        call hb_blit6$      ; ra=2..7 (LDI no toca B ni bit 7 de C)
+
+        ; --- Row 21 (ra=0..7) ---
+        pop  de             ; DE = cur20 (neta pila)
+        ex   de, hl         ; HL = cur20, DE = strip_ptr+12
+        push de
+        ld   de, #80
+        add  hl, de
+        res  3, h
+        ex   de, hl         ; DE = cur21
+        pop  hl             ; HL = strip_ptr+12
+        call hb_blit6$      ; ra=0..5 (deixa DE a RA=6)
+        bit  7, c
+        ret  nz
+        ld   a, #0xFF       ; ra=6..7 inline
+        ld   (de), a
+        inc  e
+        ld   (de), a
+        set  3, d
+        ld   (de), a
+        dec  e
+        ld   (de), a
         ret
 
     hb_blit6$:
-        ld   c, #3
+        ld   a, #3
     hb_blit6_loop$:
-        ; Linia A:
+        push af
+        ; Linia parella (RA+0):
+        ldi
         ld   a, (hl)
         inc  hl
         ld   (de), a
-        inc  e
-        ld   a, (hl)
-        inc  hl
-        ld   (de), a
-        dec  e
+        ; Linia imparella (RA+1):
         set  3, d
-        ; Linia B:
-        ld   a, (hl)
-        inc  hl
-        ld   (de), a
-        inc  e
+        dec  e
+        ldi
         ld   a, (hl)
         inc  hl
         ld   (de), a
@@ -152,7 +139,8 @@ static void hud_blit_columns(void) __naked {
         ld   a, d
         add  a, #8
         ld   d, a
-        dec  c
+        pop  af
+        dec  a
         jr   nz, hb_blit6_loop$
         ret
     __endasm;
@@ -168,76 +156,69 @@ void hud_init_b(void) {
     s_hud_layout[18] = 5;
     s_hud_layout[19] = 6;
     s_hud_layout[39] = 2;
-    p = s_hud_lives;
-    for (i = 0; i < 8; i++) *p++ = 0xFF;
-    s_hud_vram_start[0] = s_hud_vram_start[1] = 0xFFFF;
+    s_hud_lives = s_hud_vinyls = s_hud_hearts = s_hud_inst = 0xFF;
+    s_hud_vram_start = 0xFFFF;
 }
 
 void hud_render_b(void) {
-    u8 page = (u8)bc_a;
     u8 force = (u8)bc_b;
+    u8 full_v = (u8)bc_a;
+    u8 stats_same = (u8)(s_hud_lives == g_lives_count &&
+                         s_hud_vinyls == g_vinyls_count &&
+                         s_hud_hearts == g_hearts_count &&
+                         s_hud_inst == g_has_instrument);
+    u8 first = (u8)(s_hud_vram_start == 0xFFFF);
     u8 i;
     u8* p;
-    if (!force &&
-        s_hud_vram_start[page] == g_vram_start &&
-        s_hud_lives[page] == g_lives_count &&
-        s_hud_vinyls[page] == g_vinyls_count &&
-        s_hud_hearts[page] == g_hearts_count &&
-        s_hud_inst[page] == g_has_instrument) {
+    if (!force && !first && stats_same) {
         return;
     }
-    s_hud_vram_start[page] = g_vram_start;
-    s_hud_lives[page]  = g_lives_count;
-    s_hud_vinyls[page] = g_vinyls_count;
-    s_hud_hearts[page] = g_hearts_count;
-    s_hud_inst[page]   = g_has_instrument;
+    s_hud_vram_start = 0;
 
-    // Vides 1 digit (maxim real 8; clamp defensiu a 9).
-    { u8 lv = (g_lives_count > 9) ? 9 : g_lives_count;
-      s_hud_layout[4] = (u8)(9 + lv); }
-    hud_set_vinyl_digits(g_vinyls_count);
-    p = &s_hud_layout[7];
-    for (i = 0; i < 5; i++) {
-        u8 h0 = (i < g_hearts_count) ? 7 : 0;
-        *p++ = h0;
-        *p++ = h0 ? 8 : 0;
-    }
-    // Slots col.leccionables: slot i gris (19+4i,20+4i), color si es el del
-    // nivell i ja s'ha recollit (21+4i,22+4i).
-    p = &s_hud_layout[24];
-    for (i = 0; i < 5; i++) {
-        u8 sb = (u8)(19 + (i << 2) + ((i == s_lv.level_id && g_has_instrument) ? 2 : 0));
-        *p++ = sb;
-        *p++ = (u8)(sb + 1);
+    if (!stats_same || first) {
+        s_hud_lives  = g_lives_count;
+        s_hud_vinyls = g_vinyls_count;
+        s_hud_hearts = g_hearts_count;
+        s_hud_inst   = g_has_instrument;
+
+        // Vides 1 digit (maxim real 8; clamp defensiu a 9).
+        { u8 lv = (g_lives_count > 9) ? 9 : g_lives_count;
+          s_hud_layout[4] = (u8)(9 + lv); }
+        hud_set_vinyl_digits(g_vinyls_count);
+        p = &s_hud_layout[7];
+        for (i = 0; i < 5; i++) {
+            u8 h0 = (i < g_hearts_count) ? 7 : 0;
+            *p++ = h0;
+            *p++ = h0 ? 8 : 0;
+        }
+        // Slots col.leccionables: slot i gris (19+4i,20+4i), color si es el del
+        // nivell i ja s'ha recollit (21+4i,22+4i).
+        p = &s_hud_layout[24];
+        for (i = 0; i < 5; i++) {
+            u8 sb = (u8)(19 + (i << 2) + ((i == s_lv.level_id && g_has_instrument) ? 2 : 0));
+            *p++ = sb;
+            *p++ = (u8)(sb + 1);
+        }
+        hud_blit_columns();
+        full_v = 1;
     }
 
-    s_base_hi = (page == 0) ? 0xC0 : 0x80;
-    hud_blit_columns();
+    ram2_hud_copy(full_v);
 }
 
-// Banner GAME OVER (1:1 DOS): 34 files de 40 bytes sobre el backbuffer.
+// Banner GAME OVER (1:1 DOS): 34 files de 40 bytes sobre la pantalla 0xC000.
 void gameover_banner_b(void) {
-    u8 page = (u8)bc_a;
-    u16 vram_base = (page == 0) ? 0xC000 : 0x8000;
     const u8* src = (const u8*)(u16)s_lv.gameover_off;
-    u8 y;
+    u8 y, k;
     for (y = 0; y < 34; y++) {
-        u8 r_char = (u8)(10 + (y >> 3));
-        u16 r_line_hi = (u16)((y & 7) << 11);
-        u16 ma_row = (u16)((g_vram_start + (u16)r_char * 40) & 0x03FF);
-        u16 ma_start = (u16)((ma_row + 10) & 0x03FF);
-        if (ma_start <= 1004) {
-            u8* dst = (u8*)(vram_base | r_line_hi | (ma_start << 1));
-            cpct_memcpy(dst, src, 40);
-        } else {
-            u16 chars1 = 1024 - ma_start;
-            u16 bytes1 = chars1 << 1;
-            u8* dst1 = (u8*)(vram_base | r_line_hi | (ma_start << 1));
-            u8* dst2 = (u8*)(vram_base | r_line_hi);
-            cpct_memcpy(dst1, src, bytes1);
-            cpct_memcpy(dst2, src + bytes1, (u16)(40 - bytes1));
+        u16 ma = (u16)((g_vram_start + (u16)(10 + (y >> 3)) * 40 + 10) & 0x03FF);
+        u16 r_hi = (u16)(0xC000 | ((u16)(y & 7) << 11));
+        for (k = 0; k < 20; k++) {
+            u8* dst = (u8*)(r_hi | (ma << 1));
+            *dst++ = *src++;
+            *dst = *src++;
+            ma = (u16)((ma + 1) & 0x03FF);
         }
-        src += 40;
     }
 }
 

@@ -19,6 +19,7 @@ void sprite_blit_umbrella(void);
 void sprite_restore_umbrella(void);
 void sprite_abort_balloon(void);
 void cpc_wait_vsync_start(void);
+void cpc_wait_bottom_border(void);
 void sprite_hflip_init_lut(u8* lut_256_aligned);
 void sprite_hflip(const u8* src, u8* dst);
 

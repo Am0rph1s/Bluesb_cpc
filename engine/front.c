@@ -435,9 +435,9 @@ static void f_crtc_200(void) {
 
 // Dibuixa el mapa del nivell actual. El caller ha de tenir FMAP.ZX0 carregat
 // a fmap_zx (front_run el carrega al splash; front_map el carrega nomes).
-static void f_map_draw(void) {
+static void f_map_draw(const u8* src) {
     u8 j, lvl;
-    zx0_decompress((const void*)fmap_zx, (void*)0xC000);
+    zx0_decompress(src, (void*)0xC000);
     f_fpal(g_pal_fmap);
     lvl = g_map_level;
     if (lvl > 5) lvl = 5;
@@ -468,9 +468,9 @@ static void f_map_wait(u8 auto_exit) {
 void front_map(void) {
     f_crtc_200();
     fdc_set_stay_on(1);
-    f_load(&g_file_fmap, 0xC0, (void*)fmap_zx);
+    f_load(&g_file_fmap, 0xC0, (void*)fsplash_zx);
     fdc_motor_off();
-    f_map_draw();
+    f_map_draw((const u8*)fsplash_zx);
     f_map_wait(1);
 }
 
@@ -573,6 +573,6 @@ void front_run(void) {
     g_player_choice = f_choice;
 
     // 3. MAP
-    f_map_draw();
+    f_map_draw((const u8*)fmap_zx);
     f_map_wait(0);
 }

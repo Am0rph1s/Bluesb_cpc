@@ -106,6 +106,7 @@ void moving_bank_init(void) {
     g_has_instrument = 0;
     g_level_complete = 0;
     g_checkpoint = 0;
+    g_chk_valid = 0;
     s_dance_timer = 0;
 
     moving_bank_respawn();
@@ -421,13 +422,10 @@ static void b5_update_entities_and_spans(void) {
     }
 }
 
-static void b5_check_bonus_triggers(u8 col, u8 row, u8 crouch) {
-    const u8* tp;
+static void b5_check_bonus_triggers(u8 col, u8 row, u8 crouch, const u8* tp) {
     u8 b6, idx;
     const LevelTriggerEntry* e;
 
-    if (row >= s_lv.room_row0) return;
-    tp = b5_trig_ptr(col, row);
     if (!tp) return;
     b6 = tp[TP_B6];
     if (b6 == 255 && !crouch && row > 0) {
@@ -463,6 +461,13 @@ static void b5_check_bonus_triggers(u8 col, u8 row, u8 crouch) {
 #endif
     if (e->popup_or_chk && !g_checkpoint) {
         g_checkpoint = e->popup_or_chk;
+        // Desa el punt valid on era Jake: el restart estatic del DOS pot
+        // caure dins un mur en aquest mapa (L3 336,816).
+        g_chk_px8 = s_px8;
+        g_chk_py8 = s_py8;
+        g_chk_cam_x4 = g_cam_x4;
+        g_chk_cam_row = g_cam_row;
+        g_chk_valid = 1;
     }
     if (e->add_vinyls) {
         u8 v = (u8)(g_vinyls_count + e->add_vinyls);
@@ -536,60 +541,61 @@ void moving_bank_update(void) {
 
     col = (u8)(((s_px8 >> 3) + 8) >> 3);
     row = (u8)(((s_py8 >> 3) + PH - 1) >> 4);
-#if LEVEL_HAS_PIPE
     {
-        const u8* tp = b5_trig_ptr(col, row);
-        u8 op = tp ? tp[2] : 255;
-        if (op >= 17 && op <= 19 && s_vy < -2 * SUB) {
-            s_vy = (i16)(s_vy - 3 * SUB);
-            s_px8 = (i16)((s_px8 & ~63) +
-                           (op == 17 ? 28 : (op == 18 ? 68 : -4)));
+        const u8* tp0 = b5_trig_ptr(col, row);
+#if LEVEL_HAS_PIPE
+        {
+            u8 op = tp0 ? tp0[2] : 255;
+            if (op >= 17 && op <= 19 && s_vy < -2 * SUB) {
+                s_vy = (i16)(s_vy - 3 * SUB);
+                s_px8 = (i16)((s_px8 & ~63) +
+                               (op == 17 ? 28 : (op == 18 ? 68 : -4)));
+            }
         }
-    }
 #endif
 #if LEVEL_ID == 5
-    {
-        const u8* tp = b5_trig_ptr(col, row);
-        u8 op = tp ? tp[2] : 255;
-        g_on_ice = 0;
-        if (op == 40) {
-            static u16 s_concert_counter = 0;
-            s_dance_timer = 2;
-            s_vx = 0;
-            if (s_concert_counter < 400) {
-                s_concert_counter++;
-            } else {
-                g_level_complete = 1;
+        {
+            u8 op = tp0 ? tp0[2] : 255;
+            g_on_ice = 0;
+            if (op == 40) {
+                static u16 s_concert_counter = 0;
+                s_dance_timer = 2;
+                s_vx = 0;
+                if (s_concert_counter < 400) {
+                    s_concert_counter++;
+                } else {
+                    g_level_complete = 1;
+                }
             }
         }
-    }
 #endif
 
-    b5_check_bonus_triggers(col, row, crouch);
+        b5_check_bonus_triggers(col, row, crouch, tp0);
 
 #if LEVEL_SWITCH_COUNT > 0
-    {
-        u8 sw = 0, b6 = 255;
-        const u8* tp = b5_trig_ptr(col, row);
-        if (tp) b6 = tp[TP_B6];
-        sw = (b6 != 255) ? b5_switch_match(b6) : 0;
-        if (!sw && row > 0) {
-            tp = b5_trig_ptr(col, (u8)(row - 1));
+        {
+            u8 sw = 0, b6 = 255;
+            const u8* tp = tp0;
             if (tp) b6 = tp[TP_B6];
             sw = (b6 != 255) ? b5_switch_match(b6) : 0;
-        }
-        if (sw) {
-            if (!s_switch_lock) {
-                b5_apply_switch(sw);
-                s_switch_lock = 1;
+            if (!sw && row > 0) {
+                tp = b5_trig_ptr(col, (u8)(row - 1));
+                if (tp) b6 = tp[TP_B6];
+                sw = (b6 != 255) ? b5_switch_match(b6) : 0;
             }
-        } else {
-            s_switch_lock = 0;
+            if (sw) {
+                if (!s_switch_lock) {
+                    b5_apply_switch(sw);
+                    s_switch_lock = 1;
+                }
+            } else {
+                s_switch_lock = 0;
+            }
         }
-    }
 #endif
 
-    tt = b5_tile_type(col, row);
+        tt = tp0 ? tp0[0] : 0;
+    }
 #if LEVEL_HAS_WATER
     {
         u8 is_water = (tt >= 11 && tt <= 15);
@@ -820,6 +826,12 @@ void moving_bank_update(void) {
     }
 #endif
 
+#if LEVEL_ID == 0
+    {
+        u8 gr = (u8)(((s_py8 >> 3) + 16) >> 4);
+        if ((gr >= 39 && gr <= 41) || (gr >= 45 && gr <= 47)) g_grate_enable = 1;
+    }
+#endif
     s_climb_prev = climbing;
 }
 
@@ -827,29 +839,32 @@ void moving_bank_update(void) {
 void moving_bank_conveyor(void) {}
 #else
 void moving_bank_conveyor(void) {
-    u8 page = (u8)bc_a;
-    if (page < 2 && s_page_conveyor_phase[page] != s_conveyor_phase) {
+    u8 page = 0;
+    if (s_page_conveyor_phase[0] != s_conveyor_phase) {
         u8 s;
         const AnimSpan* sp = s_level_anim_spans;
         u8 lo = (u8)(g_cam_x4 >> 1);
         u8 hi = (u8)((g_cam_x4 + 39) >> 1);
-        s_page_conveyor_phase[page] = s_conveyor_phase;
+        u16 cam_r = g_cam_row;
+        s_page_conveyor_phase[0] = s_conveyor_phase;
         for (s = 0; s < LEVEL_ANIM_SPAN_COUNT; s++, sp++) {
-            u8 qq = sp->seq;
-            u8 p = s_anim_pos[qq];
-            u8 prev = (p == 0) ? (u8)(s_anim_len[qq] - 1) : (u8)(p - 1);
-            u8 off = s_anim_off[qq];
-            u8 tile = s_anim_data[off + p];
-            if (tile != s_anim_data[off + prev]) {
-                u8 r = sp->row;
-                if ((u16)(((u16)r << 1) - g_cam_row + 1) < 21) {
-                    u8 c = sp->col_start;
-                    u8 c1 = sp->col_end;
-                    if (c < lo) c = lo;
-                    if (c1 > hi) c1 = hi;
-                    while (c <= c1) {
-                        render_tile_world(tile, c, r, g_cam_x4, g_cam_row);
-                        c++;
+            u8 r = sp->row;
+            if ((u16)(((u16)r << 1) - cam_r + 1) < 21) {
+                u8 c = sp->col_start;
+                u8 c1 = sp->col_end;
+                if (c1 >= lo && c <= hi) {
+                    u8 qq = sp->seq;
+                    u8 p = s_anim_pos[qq];
+                    u8 prev = (p == 0) ? (u8)(s_anim_len[qq] - 1) : (u8)(p - 1);
+                    u8 off = s_anim_off[qq];
+                    u8 tile = s_anim_data[off + p];
+                    if (tile != s_anim_data[off + prev]) {
+                        if (c < lo) c = lo;
+                        if (c1 > hi) c1 = hi;
+                        while (c <= c1) {
+                            render_tile_world(tile, c, r, g_cam_x4, cam_r);
+                            c++;
+                        }
                     }
                 }
             }

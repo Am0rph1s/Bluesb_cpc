@@ -4,6 +4,32 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
 
 ---
 
+### 14/11/2026 — Batch de proves d'usuari: bazuka, bola, rata, guardià, respawn i items de sala
+
+1. **Bazuka (L3)**: el tret passa a **horitzontal** (`s_proj.vy = 0`; el DOS
+   ho fa a `unk42 == 2`) i la caixa puja a `peus-28..peus-18` (tipus 2, 10 px):
+   Jake dret el rep, ajupit passa per sota.
+2. **Bola del presidiari**: cela **13** (la 15 era buida), base a `peus-3`,
+   visible i arran de terra.
+3. **Rata boja**: eliminat el teletransport `bc_a±80` de `en2_room_exit` que la
+   deixava dins una paret.
+4. **Guardià L3 slot 27**: `ENEMY_N` 26→27 amb slots de fons empaquetats
+   (`slot_bits`); el t3 de (800,864) ja apareix a (392,832).
+5. **Respawn de checkpoint**: es desa la posició/camera reals en tocar-lo i es
+   restaura al respawn (el `restart_*` estàtic quedava dins el mur).
+6. **Items de sala**: `check_room_bonus` prova les dues columnes de Jake i la
+   fila dels peus; `pack_level.py` detecta el tile real de cada sala (L1 208,
+   L3 0xB5/+1, L4 233, L5 24/65) i el `bg_tile` de substitució. El **+50**
+   de L3 (tile 0x90, popup) queda pendent (camp únic i resident suma 1).
+7. **Capa base del bazuka**: identificat que el tile dels peus és foreground
+   (`0x9A = 0x80|0x1A`); pedaç parcial que pinta la base CK1 sota l'enemic als
+   slots 7/14/22. El blit emmascarat de la barana CK2 queda pendent.
+8. **Build/regressió**: `build.py` passa `-DLEVEL_ID` al mòdul d'enemics;
+   `smoke_test --dsk-only`, `check_dsk_banks` i `check_c6_flag` OK; L3 carrega
+   i corre 25 s amb el canari intacte.
+
+---
+
 ### 13/11/2026 — CRÍTIC: freezes/resets en carregar L2-L6 (fals `code_ready`)
 
 1. **Símptoma**: L1 arrenca, però seleccionar qualsevol altre nivell (número+espai

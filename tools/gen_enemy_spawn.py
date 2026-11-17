@@ -131,7 +131,7 @@ def generate(level_idx, out_path):
         ]
         for s in l1_spawns:
             lines.append(f"    {{ {s[0]}, {s[1]} << 3, {s[2]}, {s[3]}, {s[4]}, {s[5]}, {s[6]} }},")
-        for _ in range(len(l1_spawns), 26):
+        for _ in range(len(l1_spawns), 27):
             lines.append("    { -1000, 0, 19, 0, 5, 14, 15 }, // inactiu")
         lines.append("};")
         lines.append("#endif")
@@ -170,14 +170,12 @@ def generate(level_idx, out_path):
         rows.append((slot, t, x, y, kind, vx, base, aim, throw))
         n += 1
 
-    max_enemies = 26
+    # ENEMY_N=27: L3 te 28 objectes, pero el t23 del slot 10 es a les SALES
+    # (y=1344, row 84 > 72), on el port encara no te enemics. Amb 27 entrades
+    # hi caben tots els enemics del nivell, inclos el guardia t3 del slot 27
+    # (DOS 800,864 -> CPC 392,832) que abans quedava fora.
+    max_enemies = 27
     if level_idx == 2:
-        # L3 te 28 objectes (11 t3 + 4 t4 + 4 t5 + 7 t6 + 2 t23) i ENEMY_N=26.
-        # Prioritzem els tipus especials (t23 presidiari, t5 bazuka, t4 policia)
-        # i deixem fora els guardians/rats sobrants. A mes, l'objecte t23 del
-        # slot 10 es a les SALES (y=1344, row 84 > 72): el port encara no te
-        # enemics a les sales, aixi que el deixem fora i conservem el del slot 28
-        # (y=1120, row 70, visible al nivell).
         PRIO = {23: 0, 5: 1, 4: 2, 6: 3, 3: 4}
         rows = [r for r in rows if not (r[1] == 23 and r[3] >= 72 * 16)]
         rows.sort(key=lambda r: (PRIO.get(r[1], 9), r[0]))
@@ -197,7 +195,7 @@ def generate(level_idx, out_path):
         lines.append("    { %d, %d << 3, %d, %d, %d, %d, %d }, "
                      "// slot %d type 0x%02X" %
                      (x, y, kind, vx, base, aim, throw, slot, t))
-    # ENEMY_N es 26; la resta queden fora de pantalla i no es dibuixen.
+    # ENEMY_N es 27; la resta queden fora de pantalla i no es dibuixen.
     for i in range(n, max_enemies):
         lines.append("    { -1000, 0, 19, 0, 5, 14, 15 }, // inactiu")
     lines.append("};")

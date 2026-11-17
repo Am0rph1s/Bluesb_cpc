@@ -31,6 +31,9 @@ i16 g_en_y, g_en_nx, g_en_dx;
 i16 g_en_dy, g_en_dx_jake;
 i16 g_en_clip_x0, g_en_clip_x1, g_en_clip_y0, g_en_clip_y1;
 u8  g_en_start_byte, g_en_byte_count, g_en_start_row, g_en_row_count;
+u8  g_jake_en_near;
+u16 g_moving_sprite, g_moving_dst, g_moving_background;
+u8  g_moving_span, g_moving_rows, g_moving_spr_skip;
 
 u8 s_conveyor_phase;
 u8 s_conveyor_tick;
@@ -47,6 +50,9 @@ u8 g_lives_count;
 u8 g_has_instrument;
 u8 g_level_complete;
 u8 g_checkpoint;
+i16 g_chk_px8, g_chk_py8;
+u16 g_chk_cam_x4, g_chk_cam_row;
+u8 g_chk_valid;
 u8 g_enemy_decomp_cnt;
 u8 s_dance_timer;
 
@@ -89,11 +95,11 @@ i16 moving_conveyor_push(void) { call_banked(0xC5, BC_PUSH); return bc_r; }
 
 i8 moving_find_landing(void) { call_banked(0xC5, BC_FIND); return (i8)bc_r; }
 
-// Trampolins al modul C6 (slots engine/enemy_table.s @0x5A00+3k; el banc
+// Trampolins al modul C6 (slots engine/enemy_table.s @0x5200+3k; el banc
 // es C6 perque OUT(0x7F00,0xC2) penja la maquina i C3 reboota, 10/26).
 // Tiles via tile_flags/is_floor_solid de main.c (globals via EQU:
 // estalvia duplicar-los aqui, ~200 B de Bloc 0).
-#define EN_SLOT(n) ((void*)(0x5A00 + (n) * 3))
+#define EN_SLOT(n) ((void*)(0x5200 + (n) * 3))
 void enemy_init(void) { call_banked(0xC6, EN_SLOT(3)); }
 void enemy_update(void) { call_banked(0xC6, EN_SLOT(0)); }
 void enemy_restore(u8 page) { bc_a = page; call_banked(0xC6, EN_SLOT(1)); }

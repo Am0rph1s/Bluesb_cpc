@@ -248,6 +248,192 @@ rc_draw_loop$:
     jp      _cpc_bank_restore
 
 ;; ============================================================
+;; void render_column_to_buf(u16 cam_x4, u16 cam_row, u16 sx)
+;; __sdcccall(1): HL = cam_x4, DE = cam_row, (SP+2..3) = sx (2B callee cleanup)
+;; Pre-renderitza la columna a RAM 2 en dos buffers de 10 files x 16 B:
+;;   0x9E60 (files 0..9) i 0x9680 (files 10..19)
+;; NO escriu VRAM. Es pot cridar durant el camp net.
+;; ============================================================
+_render_column_to_buf::
+    ld      c, l
+    ld      b, h                ;; BC = cam_x4
+    pop     hl                  ;; HL = adreça de retorn
+    ex      (sp), hl            ;; HL = sx, (SP) = adreça de retorn (2B netejats!)
+
+    ld      a, h
+    or      a
+    ret     nz
+    ld      a, l
+    cp      #40
+    ret     nc
+
+    add     hl, bc              ;; HL = cam_x4 + sx = world_char_x
+    ld      (s_rc_char_x), hl
+    ld      (s_rc_subrow), de
+
+    ld      a, #0xC5
+    call    _cpc_bank_set
+
+    ;; GMAP ptr = 0x4000 + ((cam_row >> 1) << 7) + (world_char_x >> 1)
+    ld      a, (s_rc_char_x)
+    srl     a
+    ld      c, a                ;; C = map_col
+    ld      a, (s_rc_subrow)
+    ld      b, a                ;; B = cam_row_lo
+    srl     a
+    ld      l, a                ;; L = map_row
+    xor     a
+    srl     l
+    rra
+    or      c
+    ld      h, l
+    ld      l, a
+    set     6, h
+
+    ld      de, #s_tile_ids
+    ld      c, b
+    ld      b, #20
+rcb_map_loop$:
+    ld      a, (hl)
+    ld      (de), a
+    inc     de
+    bit     0, c
+    jr      z, 1$
+    ld      a, l
+    add     a, #0x80
+    ld      l, a
+    jr      nc, 1$
+    inc     h
+1$:
+    inc     c
+    djnz    rcb_map_loop$
+
+    ld      a, #0xC4
+    call    _cpc_bank_set
+
+    ;; C = ((cam_row & 1) << 5) | ((world_char_x & 1) << 1)
+    ld      a, (s_rc_subrow)
+    and     #1
+    rrca
+    rrca
+    rrca
+    ld      c, a
+    ld      a, (s_rc_char_x)
+    and     #1
+    add     a, a
+    or      c
+    ld      c, a
+
+    ld      hl, #s_tile_ids
+    ld      b, #10
+    ld      de, #0x9E60
+    call    rcb_tiles$
+    ld      b, #10
+    ld      de, #0x9680
+    call    rcb_tiles$
+
+    jp      _cpc_bank_restore
+
+;; HL = tile IDs, B = count, DE = dest, C = half; avança HL i DE
+rcb_tiles$:
+    ld      a, (hl)
+    inc     hl
+    push    hl
+    call    calc_tile_hl
+    ;; HL = tile data (4 B/fila, 2 B de la meitat triada)
+    .rept 7
+    ld      a, (hl)
+    ld      (de), a
+    inc     hl
+    inc     de
+    ld      a, (hl)
+    ld      (de), a
+    inc     hl
+    inc     de
+    inc     hl
+    inc     hl
+    .endm
+    ld      a, (hl)
+    ld      (de), a
+    inc     hl
+    inc     de
+    ld      a, (hl)
+    ld      (de), a
+    inc     hl
+    inc     de
+    pop     hl
+    djnz    rcb_tiles$
+    ret
+
+;; ============================================================
+;; void copy_column_from_buf(u16 cam_x4, u16 cam_row, u16 sx)
+;; __sdcccall(1): HL = cam_x4, DE = cam_row, (SP+2..3) = sx (2B callee cleanup)
+;; Copia els dos buffers (0x9E60/0x9680) a VRAM amb el mateix addressament
+;; que render_column. No fa bank switch: VRAM i RAM 2 són visibles sota C0.
+;; ============================================================
+_copy_column_from_buf::
+    ld      c, l
+    ld      b, h                ;; BC = cam_x4
+    pop     hl
+    ex      (sp), hl            ;; HL = sx, (SP) = retorn
+
+    ld      a, h
+    or      a
+    ret     nz
+    ld      a, l
+    cp      #40
+    ret     nc
+
+    add     hl, bc
+    ld      (s_rc_char_x), hl
+    ld      (s_rc_subrow), de
+
+    ld      hl, (s_rc_subrow)
+    ld      de, (s_rc_char_x)
+    call    calc_vram_de        ;; DE = adreça física VRAM inicial
+
+    ld      hl, #0x9E60
+    ld      b, #10
+    call    ccb_rows$
+    ld      hl, #0x9680
+    ld      b, #10
+    call    ccb_rows$
+    ret
+
+ccb_rows$:
+    push    bc
+    call    ccb_tile$
+    pop     bc
+    ld      a, e
+    add     a, #0x50
+    ld      e, a
+    jr      nc, 1$
+    inc     d
+    res     3, d
+1$:
+    djnz    ccb_rows$
+    ret
+
+ccb_tile$:
+    ;; LDI copia 2 bytes i avança HL/DE; BC no s'usa (el caller desa B).
+    ld      bc, #1
+    .rept 7
+    ldi
+    ldi
+    dec     e
+    ld      a, d
+    add     a, #8
+    ld      d, a
+    .endm
+    ldi
+    ldi
+    dec     e
+    ld      a, d
+    sub     #0x38
+    ld      d, a
+    ret
+
+;; ============================================================
 ;; void render_row(u16 cam_x4, u16 cam_row, u16 sy)
 ;; __sdcccall(1): HL = cam_x4, DE = cam_row, (SP+2..3) = sy (2B callee cleanup)
 ;; ============================================================

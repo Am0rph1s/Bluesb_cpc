@@ -26,6 +26,8 @@
 extern void video_init(void);
 extern void render_all(u16 cam_col, u16 cam_row);
 extern void render_column(u16 cam_col, u16 cam_row, u16 sx);
+extern void render_column_to_buf(u16 cam_col, u16 cam_row, u16 sx);
+extern void copy_column_from_buf(u16 cam_col, u16 cam_row, u16 sx);
 extern void render_row(u16 cam_col, u16 cam_row, u16 sy);
 extern void render_tile_world(u8 tile_index, u16 col, u16 row,
                               u16 cam_x4, u16 cam_row);
@@ -76,6 +78,13 @@ static void dbg_border(u8 col) {
 // Estat compartit resident (actualitzat des del mòdul de nivell al Banc 5):
 u16 g_cam_x4;
 u16 g_cam_row;
+
+// Caché lookahead de la columna de scroll (320 B a RAM 2: 0x9E60 + 0x9680).
+// S'omple al final del frame per a la columna que exposarà el frame següent.
+static u8  s_col_cache_valid;
+static u16 s_col_cache_x4;
+static u16 s_col_cache_row;
+static u8  s_col_cache_col;
 
 i16 s_px8, s_py8;
 i16 s_vx, s_vy;
@@ -197,6 +206,7 @@ static u16 camera_ma(u16 x4, u16 row) {
 }
 
 static void repaint_screen(void) {
+    s_col_cache_valid = 0;
     g_vram_start = camera_ma(g_cam_x4, g_cam_row);
     if (s_in_room) render_room(0);
     else render_all(g_cam_x4, g_cam_row);
@@ -248,6 +258,7 @@ static void enter_door(u8 dst_col, u8 dst_row) {
     s_hflip_cur = 0xFF;
     s_carry_drawn[0] = 0;
     s_rep_n = 0;
+    s_col_cache_valid = 0;
 
     repaint_screen();
     if (!s_in_room) {
@@ -281,9 +292,21 @@ static void check_doors(void) {
 static void sync_backbuffer(i8 dx, u16 target_x4, u16 target_row) {
     if (dx > 0) {
         if (dx > 1) render_column(target_x4, target_row, 38);
-        render_column(target_x4, target_row, 39);
+        if (s_col_cache_valid && s_col_cache_x4 == target_x4 &&
+            s_col_cache_row == target_row && s_col_cache_col == 39) {
+            copy_column_from_buf(target_x4, target_row, 39);
+            s_col_cache_valid = 0;
+        } else {
+            render_column(target_x4, target_row, 39);
+        }
     } else if (dx < 0) {
-        render_column(target_x4, target_row, 0);
+        if (s_col_cache_valid && s_col_cache_x4 == target_x4 &&
+            s_col_cache_row == target_row && s_col_cache_col == 0) {
+            copy_column_from_buf(target_x4, target_row, 0);
+            s_col_cache_valid = 0;
+        } else {
+            render_column(target_x4, target_row, 0);
+        }
         if (dx < -1) render_column(target_x4, target_row, 1);
     }
 }
@@ -993,6 +1016,22 @@ static void draw_fg_sprites(u8 jake_vis) {
     }
 }
 
+static void pre_render_next_column(void) {
+    u16 nx4;
+    u8 col;
+    if (!s_mn_page_dx || s_mn_page_dy) {
+        s_col_cache_valid = 0;
+        return;
+    }
+    nx4 = (u16)(g_cam_x4 + s_mn_page_dx);
+    col = (u8)(s_mn_page_dx > 0 ? 39 : 0);
+    render_column_to_buf(nx4, g_cam_row, col);
+    s_col_cache_x4 = nx4;
+    s_col_cache_row = g_cam_row;
+    s_col_cache_col = col;
+    s_col_cache_valid = 1;
+}
+
 static void render_frame(void) {
     u16 old_ma = g_vram_start;
     u16 new_ma = camera_ma(g_cam_x4, g_cam_row);
@@ -1092,17 +1131,20 @@ static void render_frame(void) {
         }
     }
 
-    // 3. En scroll horitzontal o amunt (dy <= 0), pintar el HUD ABANS de sync_backbuffer
-    if (do_scroll && s_mn_page_dy <= 0) {
-        hud_render((u8)(s_mn_page_dy != 0), 1);
+    // 3. Scroll vertical amunt: mantenim l'ordre original (HUD abans de
+    //    sync/early_jake) perquè el HUD no es retrasi a la part baixa.
+    if (s_mn_page_dy < 0) {
+        hud_render(1, 1);
     }
 
+    // 4. Sync de la columna nova ABANS del HUD en scroll horitzontal pur.
     if (s_mn_page_dx) {
         dbg_border(0x4C);
         sync_backbuffer(s_mn_page_dx, g_cam_x4, g_cam_row);
     }
 
-    // 4. early_jake després de sync_backbuffer quan dy <= 0
+    // 5. early_jake: restore (old_ma) i draw (new_ma) abans del HUD,
+    //    perquè el draw acabi abans que el feix arribi al sprite.
     if (early_jake && s_mn_page_dy <= 0) {
         dbg_border(0x52);
         if (!fg_restored) {
@@ -1112,6 +1154,13 @@ static void render_frame(void) {
         }
         draw_fg_sprites(jake_vis);
         fg_restored = 1;
+    }
+
+    // 6. HUD després del Jake només en scroll horitzontal pur: amb la
+    //    còpia ràpida de columna el draw acaba prou aviat perquè el HUD
+    //    (80 línies) acabi abans de la fila 20 (~160).
+    if (do_scroll && s_mn_page_dy == 0) {
+        hud_render(0, 1);
     }
 
     if (!do_scroll && !mid_jake) {
@@ -1164,6 +1213,10 @@ static void render_frame(void) {
     if (s_dying_timer && g_lives_count <= 1) {
         draw_gameover_banner();
     }
+
+    // Pre-renderitza la columna que exposarà el frame següent. Només escriu
+    // RAM 2 (0x9E60/0x9680), mai VRAM: no pot trencar el camp actual.
+    pre_render_next_column();
 
     dbg_border(0x54);
 }
@@ -1374,6 +1427,7 @@ void main(void) {
                     g_cam_x4 = (u16)s_lv.cam0_x4;
                     g_cam_row = (u16)s_lv.cam0_row;
                 }
+                s_col_cache_valid = 0;
                 s_vx = 0; s_vy = 0;
                 s_crouch_hold = 0;
                 s_jump_prev = 0;

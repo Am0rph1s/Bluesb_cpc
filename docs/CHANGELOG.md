@@ -4,6 +4,16 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
 
 ---
 
+### 18/11/2026 - Dibuix: cache de columna estable (single buffer)
+
+- **Cache lookahead de columna** a `0xBC00`/`0xBD00` (buffer FDC lliure en joc, 160 B per a 10 files) i estat a `0x9E58..0x9E5D`. El pre-render omple la columna del frame seguent i el sync la copia a VRAM.
+- **Copia byte a byte estable** a `ccb_tile$`. La variant `LDI` (2 `ldi` + 2 `dec e`) era mes rapida pero va provocar un salt salvatge/reset a `px8=1732`; queda descartada fins a validar-la de nou.
+- **Ordre horitzontal**: sync (225) -> restore Jake (277) -> draw (16) -> HUD (88..168) -> restores d'enemics diferits (169) -> enemy draw (234..265) -> pre-render. Primera columna correcta i HUD net.
+- **FPS**: 25,0 fps amb scroll (`g_ticks` delta 12), enfront de ~15-17 fps del doble buffer `master`.
+- **Verificacio**: `smoke_test` OK (`magic=0xB0`, `px8=192`), `check_c6_flag` OK, DSK 30 sectors/14.899 B CRC `0xA561`, caminada real de 25 s sense crash (px8 192..5.952), diff d'enemics old/clean = 0 pixels, salt natural `dsy=58` i captures de scroll/vertical netes.
+
+---
+
 ### 17/11/2026 — Memòria: Fase 0+1 (límit de pak i dades fredes a RAM 2)
 - **Crític**: `PAK_SCRATCH_MAX` passa de 14.208 a **13.536 B** (`0xB800 - 0x8320`). El codi resident RAM2 viu a `0xB800`; l'antic límit permetia que un pak gran el trepitgés i pengés el joc al primer scroll. El build avisa si queden menys de 512 B.
 - **C0**: `_DATA` baixa de 989 a **297 B** i `--data-loc` passa a `0x3A00`; `_CODE` queda a **13.960 B** amb **632 B** de marge (abans 77 B). Pila útil ~958 B.

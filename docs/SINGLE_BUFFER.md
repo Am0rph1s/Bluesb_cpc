@@ -1,7 +1,7 @@
 # Arquitectura Single Buffer (`single-buffer-split`) — Blues Brothers CPC
 
-> **Branca**: `single-buffer-split` · **Data**: 17/11/2026
-> **Estat**: Compilat i verificat a ZEsarUX (`smoke_test --dsk-only`, `verify_sb_l1_iaia.py`, `verify_vscroll.py`, `hud_check.py`).
+> **Branca**: `draw-opt-enemy-late` · **Data**: 18/11/2026
+> **Estat**: Build estable i verificat a ZEsarUX: **25,0 fps** amb scroll, HUD acabat a la línia **168**, Jake alt (`dsy=58`) sòlid, caminada de 25 s sense crash, `smoke_test` i `check_c6_flag` OK.
 
 ---
 
@@ -21,7 +21,7 @@ La branca `single-buffer-split` passa a **Single Buffer a `0xC000..0xFFFF`** (an
 
 | Zona | Abans (Doble Buffer) | Ara (`single-buffer-split`) |
 | :--- | :--- | :--- |
-| **RAM 0 (`0x0000..0x3FFF`)** | `_CODE` `0x0100..0x359A`, `_DATA` `0x3600`, canari `0x3Bxx` | **`_CODE` `0x0100..0x3788` (`13.960 B`, marge `632 B`)**, **`_DATA` `0x3A00..0x3B33` (`297 B`)**, **`CANARY_ADDR = 0x3C40`**, pila útil `958 B` |
+| **RAM 0 (`0x0000..0x3FFF`)** | `_CODE` `0x0100..0x359A`, `_DATA` `0x3600`, canari `0x3Bxx` | **`_CODE` `0x0100..0x38F9` (marge `263 B` fins a `_DATA`)**, **`_DATA` `0x3A00..0x3B29` (`297 B`)**, **`CANARY_ADDR = 0x3C40`**, pila útil ~`1.237 B` |
 | **RAM 2 (`0x8000..0xBFFF`)** | Pàgina VRAM 1 (`0x8000`) durant el joc; scratch FDC en càrrega | **Alliberada en joc**: cel·les d'enemics + cache H-flip (`0x8000..0xB5FF`), buffer fix del HUD (`0x8760`/`0x87B0` × 8 scanlines), `ENEMY_BBOX_ADDR` (`0xB700`), **codi resident ràpid `ram2_code.s` (`0xB800..0xBBDB`, `988 B`)** i **dades fredes als gaps** (§2.3). En càrrega de nivells segueix fent de scratch FDC (`FDC.BIN` a `0x8000..0x8311`, càrrega `.PAK` a `0x8320..0xB7FF`). |
 | **RAM 3 (`0xC000..0xFFFF`)** | Pàgina VRAM 0 (`0xC000`) | **Única pàgina VRAM (`0xC000`)** en anell circular (`0x3000..0x33FF`) |
 | **Banc `C1` (RAM 1)** | Player AKG + `hud_bank` + cançó + `LVLCHS` + `FDC.BIN` mestre | Mateix esquema, i a **`C1:0x6030`** s'hi emmagatzema la imatge de `RAM2.BIN` (`engine/ram2_code.s`), que es copia a `0xB800` al carregar el primer nivell. **Atenció: el primer pak de nivell sobreescriu `C1:0x6030`; la còpia no es pot repetir des de C1.** |
@@ -45,10 +45,13 @@ La distribució a RAM 2 aprofita l'entrellaçat de 8 blocs de `2 KB` del CPC (`+
   - `_moving_blit_box` / `_moving_restore_box`
   - `_ram2_hud_copy`
   - `_ram2_en2_clip`
-- **`0xBC00..0xBDFF` (`512 B`)**: `ASSETS_FDC_BUF` (buffer de sector FDC).
+- **`0xBC00..0xBDFF` (`512 B`)**: `ASSETS_FDC_BUF` (buffer de sector FDC). **Durant el joc és lliure** i s'hi allotja la caché de columna:
+  - `0xBC00..0xBC9F` (160 B): files 0..9 de la columna (10 tiles × 16 B).
+  - `0xBD00..0xBD9F` (160 B): files 10..19.
+  - El FDC el sobreescriu durant les càrregues; la caché s'invalida a `repaint_screen()` i després de cada càrrega de nivell/sala.
 - **`0xBE00..0xBE0F`**: work FDC; **`0xBE10..0xBE61`**: dades fredes de càrrega.
 
-### 2.3 Dades fredes reubicades als gaps de RAM 2 (17/11/2026)
+### 2.3 Dades fredes reubicades als gaps de RAM 2 (18/11/2026)
 
 Els gaps `0xX600..0xX75F` (352 B per bloc) allotgen estat fred que abans era a
 `_DATA` resident. Com que el pak de nivell (`0x8320..0xB7FF`) els trepitja, tot
@@ -62,7 +65,8 @@ això s'ha de reinicialitzar **després** de la càrrega:
 | `0x9E00` | `s_mn_*` | 19 B | `main()` |
 | `0x9E20` | `s_cd_*` | 21 B | `carry_draw()` |
 | `0x9E40` | `s_rep_*` | 13 B | `s_rep_n = 0` post-load |
-| `0x9E50` | `s_carry_drawn` + span/rows/dst | 6 B | post-load / carry |
+| `0x9E50` | `s_carry_drawn` + span/rows/dst | 8 B | post-load / carry |
+| `0x9E58` | caché de columna: valid/x4/row/col | 6 B | invalidada a cada càrrega/repaint |
 | `0xBE10` | `s_chs_buf` | 56 B | durant la càrrega (fora del pak) |
 | `0xBE48` | `s_lvl_desc` | 8 B | durant la càrrega |
 | `0xBE50` | `s_lp_*` | 17 B | `load_package()` |
@@ -93,28 +97,83 @@ El payload que el FDC escriu a memòria va de `0x8320` fins a `0xB800`:
   - `g_grate_enable = 1` s'activa a `moving_bank_update()` per a les reixes de nivell 0 (files `39..41` i `45..47`), i `moving_draw_conveyor_tiles()` s'executa també amb globus (`s_carry_kind == 2`) o reixa activa.
 
 ### 3.3 Ordre de renderitzat dins `render_frame()` per eliminar tremolors al HUD
-Com que l'àrea de joc i el HUD comparteixen l'anell `0xC000`, en desplaçar `R12/R13` el HUD antic queda desplaçat `dx` columnes / `dy` files fins que es reescriu:
-- **Scroll horitzontal o amunt (`dy <= 0`)**:
-  1. Si `dy < 0`, [`render_rows_edge(..., 0)`](../src/main.c#L1014-L1015) pinta primer les files superiors (`0 .. -dy-1`) abans de `VCC = 0` perquè no quedin restes del HUD antic a dalt.
-  2. Restores a coordenades antigues (`restore_fg_sprites`, `enemy_restore`, `moving_restore`).
-  3. **`hud_render((u8)(s_mn_page_dy != 0), 1)` abans de `sync_backbuffer()`**: el HUD queda copiat a `new_ma + 800..879` molt abans que el feix arribi a la fila `20` (`~17 ms`).
-  4. `sync_backbuffer()` (columnes `0`/`39` si `dx != 0`) i `early_jake`.
-- **Scroll vertical cap avall (`dy > 0`)**:
-  - Quan `dy = +2`, el HUD antic cau sobre les files `18..19` noves (que el feix escombra a `~16 ms`, **abans** que el HUD a `~17 ms`), i no hi solapament amb el playfield antic (`old_ma` acaba com a màxim a la fila `18` nova).
-  - Ordre: **`hud_render(1, 1)` → `early_jake` → [`render_rows_edge((u8)s_mn_page_dy, 1)`](../src/main.c#L1016-L1026)** (`rows 19..18`) → restores d'enemics/movers → `sync_backbuffer()` (columnes si `dx != 0`).
+
+Com que l'àrea de joc i el HUD comparteixen l'anell `0xC000`, en desplaçar
+`R12/R13` el HUD antic queda desplaçat `dx` columnes / `dy` files fins que es
+reescriu. L'ordre final és:
+
+- **Scroll horitzontal pur (`dx != 0`, `dy == 0`)**:
+  1. S'ometen els restores inicials d'enemics/movers (`defer_enemy = 1`).
+  2. `sync_backbuffer()`: copia la columna 39 (o 0) des de la caché; comença a
+     la línia `225`, abans del camp nou (`VCC=0` a `312`).
+  3. `restore_fg_sprites()` (Jake, línia `277`) i `draw_fg_sprites()` (línia
+     `16` del camp nou).
+  4. `hud_render(0, 1)` a la línia `88`; acaba a la línia **`168`**, abans que
+     el feix arribi a la fila 20 (`160`) / 21 (`168`).
+  5. `restore_world_scroll(wmode)` diferit a la línia `169`:
+     `enemy_restore(2)` + `moving_restore()` + `moving_popup_restore()`.
+  6. `moving_draw()` i `enemy_restore(0)` + `enemy_draw(0)` (`234..265`).
+  7. `pre_render_next_column()`: pre-renderitza a RAM 2 la columna del frame
+     següent (fora del camp visible).
+- **Scroll vertical (`dy != 0`)**: es manté l'ordre original (HUD abans de
+  `sync`/`early_jake`, `render_rows_edge` per `dy < 0`) perquè el HUD no es
+  retrasi a la part baixa. La caché de columna s'invalida quan `dy != 0`.
+
+### 3.4 Caché de columna: byte copy estable, LDI descartat
+
+La caché viu a `0xBC00`/`0xBD00` (buffer FDC lliure en joc) i el tag a
+`0x9E58..0x9E5D`. La còpia a VRAM es fa **byte a byte** (`ccb_tile$` a
+[`engine/tile_blit.s`](../engine/tile_blit.s)).
+
+La variant amb `LDI` (2 `ldi` + 2 `dec e` per línia, 40 T/línia) és més ràpida
+(46 línies de sync en comptes de 50), però a ZEsarUX va provocar un salt
+salvatge/reset a `px8≈1732` durant una caminada llarga. La còpia byte a byte
+(48 T/línia) és la versió **estable**; no reintroduir `LDI` sense repetir la
+prova de caminada de 25 s.
 
 ---
 
-## 4. Verificació Realitzada (17/11/2026)
+## 4. Verificació Realitzada (18/11/2026)
 
 - `py -3 tools/build.py`:
-  - `_CODE : 0x0100..0x3788` (**13.960 B**, **632 B** de marge fins a `_DATA` a `0x3A00`).
-  - `_DATA : 0x3A00..0x3B33` (**297 B**); pila útil ~958 B.
+  - `_CODE : 0x0100..0x38F9` (**263 B** de marge fins a `_DATA` a `0x3A00`).
+  - `_DATA : 0x3A00..0x3B29` (**297 B**); pila útil ~`1.237 B`.
   - `GAME.BIN` **14.899 B**; DSK generat amb `STARTER-JUMP-OK`.
-  - Avís de build: `L2WORLD` 13.223 B (queden 313 B fins al codi RAM2).
-- `py -3 tools/smoke_test.py --dsk-only`: **RESULTAT: OK**; `game 30 sectors, 14899 B, CRC 0x3E99`.
-- `py -3 tools/smoke_test.py --boot-only`: **RESULTAT: OK**; `magic=0xB0`, `px8=192`, `py8=8848`, `bank=0xC0`.
+- `py -3 tools/smoke_test.py --dsk-only`: **RESULTAT: OK**; `game 30 sectors, 14899 B, CRC 0xA561`.
+- `py -3 tools/smoke_test.py`: **RESULTAT: OK**; `magic=0xB0`, `px8=192`, `py8=8848` (adreces `s_px8=0x3AE2`, `s_py8=0x3AE4`).
 - `py -3 tools/check_c6_flag.py` (L3, amb `0xC3` forçat a `C6:0x5A00`):
   `magic=0xB0`, `canari=55aa55aa55aa55aa55aa55aa55aa55aa` → **OK**.
-- `py -3 tools/check_dsk_banks.py`: **RESULTAT: OK**.
-- Pendent: validació visual de globus/paraigua (el script `verify_balloon_umbrella_live.py` genera captures, però les del build actual són idèntiques i no proven res) i una prova de càrrega L1→L2/L3 enllaçada.
+- **Timeline ZEsarUX** (L1, `dx=1`, `dy=0`, Jake `dsy=114`):
+
+  | Fase | Línia inicial | Línia final |
+  |---|---:|---:|
+  | `sync_backbuffer` | 225 | — |
+  | `copy_column_from_buf` | 227 | 277 |
+  | `restore_fg_sprites` | 277 | 16 (camp nou) |
+  | `draw_fg_sprites` | 16 | 88 |
+  | `hud_render` | 88 | **168** |
+  | `restore_world_scroll` (diferit) | 169 | 218 |
+  | `enemy_draw` | 234 | 265 |
+  | `pre_render_next_column` | 265 | fora del camp visible |
+
+- **FPS amb scroll**: `g_ticks` delta `12` a 300 Hz → **25,0 fps** (constant).
+- **Jake alt natural**: salt amb `UP` (sense teleport), àpex `py8=8400`,
+  `dsy=58`; captura `jump_06` neta (Jake sencer, HUD net, sense cisalla).
+- **Scroll horitzontal**: captura `scroll_clean` neta; primera columna correcta.
+- **Vertical amunt segur** (teleport de validació): `cam_row 122→120`,
+  `dy=-2`, `dsy=36`; `render_row` a SL `224` i `62` (~150 línies/fila), frame
+  estable a 25 fps; captura neta (l'estat artificial no mostra Jake, però no
+  hi ha cisalla ni corrupció).
+- **Jake alt amb càmera horitzontal** (teleport `py8=8472`): `dsy=67`, captura
+  `highy` neta.
+- **Enemics**: diff de pantalla `old_enemies` (camp de transició) vs
+  `clean_field` (camp net) = **0 píxels** a tot el playfield i al HUD en el
+  frame mesurat; `new_enemies` vs `clean_field` també 0. Risc residual: el
+  restore diferit pot mostrar l'enemic un camp tard si es mou, no observat.
+- **Estabilitat**: caminada real de 25 s (px8 de 192 a ~5.952) sense reset ni
+  salt a VRAM; la variant `LDI` fallava a `px8≈1732` (vegeu §3.4).
+- **Doble buffer `master`** (mesura de comparació): ~15-17 fps amb scroll
+  (delta `g_ticks` 17-20); estable, però més lent que el single buffer.
+
+Pendent: prova de carry/globus/paraigua amb captura dedicada i una prova de
+canvi de sala L1→L2 enllaçada.

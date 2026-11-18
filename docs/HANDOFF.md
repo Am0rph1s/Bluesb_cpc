@@ -2,6 +2,8 @@
 
 > **Document de referència unificat** · **Branca**: `fix-c1-l3-unlock` · **Actualitzat**: 12/11/2026
 > **Repo**: `https://github.com/Am0rph1s/Bluesb_cpc`
+>
+> **Nota d'estat (18/11/2026)**: branca `draw-opt-enemy-late` (`3d51ca0`): single buffer estable a **25 fps**, cache de columna a `0xBC00`/`0xBD00`, HUD a **168**, Jake alt `dsy=58` net. `_CODE 0x0100..0x38F9`, `_DATA 0x3A00..0x3B29`. Vegeu [`SINGLE_BUFFER.md`](SINGLE_BUFFER.md) seccions 3.3/4 i [`MEMORY_MAP.md`](MEMORY_MAP.md).
 > **Target**: Amstrad CPC 6128 (128 KB RAM) — Z80 @ 4 MHz, Mode 0 (16 colors), SDCC 4.5.0 + sdasz80, build Python 3, disc únic DSK de 180 KB.
 > Per al detall cronològic de sessions anteriors, consulta [`docs/CHANGELOG.md`](CHANGELOG.md).
 
@@ -32,7 +34,7 @@ El joc complet (tots 6 nivells + selector de personatge/mapa `FRONT`) cap en **u
      `cpc_x = (dos_x - w_dos / 2) / 2 = dos_x / 2 - w_cpc / 2`, `cpc_y = dos_y - h_dos`.
    - Mai ajustar posicions a ull.
 3. **Pressupost de memòria resident (Bloc 0: `0x0000..0x3FFF`)**:
-   - Estat mesurat (17/11/2026, single buffer): `_CODE : 0x0100..0x3788` (**13.960 B**, **632 B** de marge fins a `_DATA` a `0x3A00`), `_DATA : 0x3A00..0x3B33` (**297 B**), pila útil (`SP` fins al canari `0x3C40`): **958 B**.
+   - Estat mesurat (17/11/2026, single buffer): `_CODE : 0x0100..0x38F9` (**14.585 B**, **632 B** de marge fins a `_DATA` a `0x3A00`), `_DATA : 0x3A00..0x3B29` (**297 B**), pila útil (`SP` fins al canari `0x3C40`): **958 B**.
    - Les dades fredes (`s_lv`, `g_mag_elevators`, `s_carry_bg_c0`, estat de frame i dades de càrrega) viuen als gaps de RAM 2; vegeu [`docs/MEMORY_MAP.md`](MEMORY_MAP.md).
    - Tota lògica específica de nivell o no trivial ha d'anar als bancs superiors (`C1`, `C6`), **mai** inflar el resident de `main.c`. **C5 (L1/L5) i L2WORLD no tenen marge** (236/300 B i 313 B).
 4. **Commutació de bancs de maquinari (`0x7F00`)**:
@@ -53,8 +55,8 @@ El joc complet (tots 6 nivells + selector de personatge/mapa `FRONT`) cap en **u
 +---------------------------------------------------------------------------------+
 | BLOC 0 (Resident 0x0000..0x3FFF, sempre mapejat a RAM 0)                         |
 |  - 0x0038..     : Vector ISR IM1 (300 Hz -> tick + 50 Hz _mus_play)             |
-|  - 0x0100..0x3788: _CODE resident (motor genèric, física, vídeo, FDC, blit)      |
-|  - 0x3A00..0x3B33: _DATA resident (globals, càmera, estat del jugador)          |
+|  - 0x0100..0x38F9: _CODE resident (motor genèric, física, vídeo, FDC, blit)      |
+|  - 0x3A00..0x3B29: _DATA resident (globals, càmera, estat del jugador)          |
 |  - Canari 0x3C40; fins a 0x3FFE: pila Z80 (~958 B útils)                        |
 +---------------------------------------------------------------------------------+
 | FINESTRA BANCADA (0x4000..0x7FFF) commutada via Gate Array 0x7F00               |

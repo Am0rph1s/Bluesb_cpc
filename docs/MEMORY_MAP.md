@@ -11,7 +11,7 @@ El joc no està limitat pels 128 KB totals, sinó per **set pressupostos petits*
 | Pressupost | Límit | Coll actual |
 |---|---|---:|
 | C0 `_CODE` | 14.592 B (`0x0100..0x3A00`) | ~632 B de marge |
-| C0 `_DATA` | 297 B (`0x3A00..0x3B33`) | canari a `0x3C40` |
+| C0 `_DATA` | 297 B (`0x3A00..0x3B29`) | canari a `0x3C40` |
 | RAM2 code | 1.024 B (`0xB800..0xBBFF`) | 988 B (36 B) |
 | C6 pak (`L1ENEMI`) | 8.064 B (16 sectors) | 7.988 B (76 B) |
 | L2WORLD pak | 13.536 B (`0x8320..0xB800`) | 13.223 B (313 B) |
@@ -25,8 +25,8 @@ El joc no està limitat pels 128 KB totals, sinó per **set pressupostos petits*
 | Zona | Contingut |
 |---|---|
 | `0x0038` | vector ISR IM1 (300 Hz) |
-| `0x0100..0x3788` | `_CODE` (13.960 B): `main`, física, sprite, tile blit, HUD wrapper, loader, carry |
-| `0x3A00..0x3B33` | `_DATA` (297 B): globals, càmera, estat del jugador |
+| `0x0100..0x38F9` | `_CODE` (14.585 B): `main`, física, sprite, tile blit, HUD wrapper, loader, carry |
+| `0x3A00..0x3B29` | `_DATA` (297 B): globals, càmera, estat del jugador |
 | `0x3C40` | canari de pila (8 words) |
 | `0x3C40..0x3FFE` | pila Z80 (~958 B útils) |
 
@@ -61,7 +61,7 @@ El joc no està limitat pels 128 KB totals, sinó per **set pressupostos petits*
 | `0xB740..0xB75F` | 32 B | lliure |
 | `0xB800..0xBBDB` | 988 B | codi resident RAM2 |
 | `0xBBDB..0xBBFF` | 36 B | lliure |
-| `0xBC00..0xBDFF` | 512 B | buffer de sector FDC (lliure en joc) |
+| `0xBC00..0xBDFF` | 512 B | buffer de sector FDC; en joc allotja la caché de columna (`0xBC00` files 0..9, `0xBD00` files 10..19) |
 | `0xBE00..0xBE0F` | 16 B | work FDC |
 | `0xBE10..0xBE61` | 82 B | dades de càrrega (§3) |
 | `0xBE62..0xBF5F` | 254 B | lliure |
@@ -107,6 +107,7 @@ Frames 14.400 B (`0x4000..0x7840`), hflip `0x7840`, crate `0x7A20`, paraigua
 | `0x9E20` | `s_cd_*` | 21 B | `carry_draw()` |
 | `0x9E40` | `s_rep_*` | 13 B | `s_rep_n = 0` post-load |
 | `0x9E50` | `s_carry_drawn` + span/rows/dst | 6 B | post-load / carry |
+| `0x9E58` | caché de columna (valid/x4/row/col) | 6 B | invalidada a cada càrrega/repaint |
 | `0xBE10` | `s_chs_buf` | 56 B | durant la càrrega (fora del pak) |
 | `0xBE48` | `s_lvl_desc` | 8 B | durant la càrrega |
 | `0xBE50` | `s_lp_*` | 17 B | `load_package()` |

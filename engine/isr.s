@@ -12,8 +12,6 @@
     .globl _g_mus_hold           ;; _DATA: 1 = motor FDC en lectura (pausa tick)
     .globl _mus_play           ;; stub central (mus.s): ISR-only (ja DI)
     .globl _g_mus_ready        ;; main.c: 1 = player iniciat
-    .globl _g_split_en         ;; 1 = split CRTC actiu (playfield C000 + HUD 8760)
-    .globl _g_play_ma          ;; MA del playfield (0x3000 + offset)
 
 ;; HOLD: ABANS era un absolut 0xBA10 (VRAM pag.2!). El memset(0x8000) del
 ;; GAME el posava a 0xFF i el render el trepitjava = la ISR no sonava mai
@@ -30,10 +28,6 @@ _mus_div::
     .db 0
 _g_mus_hold::
     .db 0
-_g_split_en::
-    .db 0
-_g_play_ma::
-    .dw 0x3000
 
     .area _CODE
 

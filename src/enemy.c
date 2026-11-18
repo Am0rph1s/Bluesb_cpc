@@ -85,10 +85,6 @@ static Projectile s_proj;
 static u8 s_proj_bg[1][56];
 
 #define SLOT_NONE 0x0F
-static i8 en2_slot_get(const Enemy* e, u8 page) {
-    (void)page;
-    return (i8)e->slot_bits;
-}
 
 #if LEVEL_ID == 2
 // L3: els tiles de barana/plataforma son foreground (DOS byte >= 0x80).
@@ -102,9 +98,7 @@ static u8 en2_l3_base_tile(u8 t) {
     return 0;
 }
 
-extern u8 g_vram_base_hi;
-
-static void en2_l3_draw_base(i16 x, i16 y8, u8 page) {
+static void en2_l3_draw_base(i16 x, i16 y8) {
     u16 col = (u16)((x + 8) >> 3);
     u16 row = (u16)(((y8 >> 3) + ENEMY_HT) >> 4);
     u8 prev, t, b;
@@ -115,7 +109,6 @@ static void en2_l3_draw_base(i16 x, i16 y8, u8 page) {
     bank_restore(prev);
     b = en2_l3_base_tile(t);
     if (b) {
-        g_vram_base_hi = page ? 0x80 : 0xC0;
         render_tile_world(b, col, row, g_cam_x4, g_cam_row);
     }
 }
@@ -760,7 +753,7 @@ void en2_draw_vis(void) {
     if (s < 0) return;
 
 #if LEVEL_ID == 2
-    en2_l3_draw_base(e->x, e->y8, 0);
+    en2_l3_draw_base(e->x, e->y8);
 #endif
 
     g_moving_dst = (u16)ring_address(0, g_en_clip_x0, g_en_clip_y0);

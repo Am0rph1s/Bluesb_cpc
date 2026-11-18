@@ -23,7 +23,6 @@
     .globl _s_rep_col
     .globl _s_rep_row
     .globl _s_rep_tile
-    .globl _s_rep_pages
     .globl _bc_a
     .globl _bc_b
     .globl _bc_c
@@ -251,9 +250,6 @@ b5_write_and_repaint$:
     ld      hl, #_s_rep_tile
     add     hl, de
     ld      (hl), c             ;; s_rep_tile[i] = new_tile
-    ld      hl, #_s_rep_pages
-    add     hl, de
-    ld      (hl), #3            ;; s_rep_pages[i] = 3
     ret
 
 ;; ============================================================

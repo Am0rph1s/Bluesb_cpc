@@ -32,8 +32,9 @@ El joc complet (tots 6 nivells + selector de personatge/mapa `FRONT`) cap en **u
      `cpc_x = (dos_x - w_dos / 2) / 2 = dos_x / 2 - w_cpc / 2`, `cpc_y = dos_y - h_dos`.
    - Mai ajustar posicions a ull.
 3. **Pressupost de memòria resident (Bloc 0: `0x0000..0x3FFF`)**:
-   - Estat mesurat actual: `_CODE : 0x0100..0x359A` (**13.466 B**, **102 B** de marge fins a `0x3600`), `_DATA : 0x3600..0x3B21` (**1.305 B**), pila lliure (`SP`): **1.245 B**.
-   - Tota lògica específica de nivell o no trivial ha d'anar als bancs superiors (`C1`, `C5`, `C6`), **mai** inflar el resident de `main.c`.
+   - Estat mesurat (17/11/2026, single buffer): `_CODE : 0x0100..0x3788` (**13.960 B**, **632 B** de marge fins a `_DATA` a `0x3A00`), `_DATA : 0x3A00..0x3B33` (**297 B**), pila útil (`SP` fins al canari `0x3C40`): **958 B**.
+   - Les dades fredes (`s_lv`, `g_mag_elevators`, `s_carry_bg_c0`, estat de frame i dades de càrrega) viuen als gaps de RAM 2; vegeu [`docs/MEMORY_MAP.md`](MEMORY_MAP.md).
+   - Tota lògica específica de nivell o no trivial ha d'anar als bancs superiors (`C1`, `C6`), **mai** inflar el resident de `main.c`. **C5 (L1/L5) i L2WORLD no tenen marge** (236/300 B i 313 B).
 4. **Commutació de bancs de maquinari (`0x7F00`)**:
    - Per cridar codi bancat que escriu a VRAM s'utilitza **`0xC0`**, mai `0xC1` (`0xC1` mapeja RAM 7 a `0xC000..0xFFFF` i tapa la pantalla).
    - **`0xC2` i `0xC3` prohibits** (`0xC2` penja la màquina; `0xC3` reinicia).
@@ -42,7 +43,7 @@ El joc complet (tots 6 nivells + selector de personatge/mapa `FRONT`) cap en **u
    - `MUSBANK.BIN` (`C1:0x4000..0x4C00`) allotja `player_akg.bin` (`_akg_init = 0x4009`, `_akg_play = 0x40CE`, `_akg_stop = 0x40BC`). **Mai** escriure-hi taules ni ampliar-ne els blocs AMSDOS reservats.
    - `LVLCHS` (814 B) resideix a `C1:0x5D00` i es copia a `C1:0x7C00..0x7F2D` en carregar el primer nivell (única zona lliure permanent per sobre de la còpia mestra de `FDC.BIN` a `0x7800..0x7BFF`).
 6. **Límit de paquet `.PAK`**:
-   - Màxim **28 sectors AMSDOS** = 14.336 B en disc (14.208 B de payload). El FDC llegeix a l'scratch `0x8320..0xBBFF` (14.560 B); passar-se desborda l'scratch.
+   - Màxim **13.536 B de payload** (`0x8320..0xB800`): el pak es carrega a `0x8320` i el codi resident de RAM 2 comença a `0xB800`. Els 28 sectors AMSDOS (14.336 B) són només l'allocació de disc; el payload que s'escriu a memòria no pot passar de 13.536 B. El build (`PAK_SCRATCH_MAX`) ho valida i avisa si queden menys de 512 B.
 
 ---
 
@@ -52,17 +53,18 @@ El joc complet (tots 6 nivells + selector de personatge/mapa `FRONT`) cap en **u
 +---------------------------------------------------------------------------------+
 | BLOC 0 (Resident 0x0000..0x3FFF, sempre mapejat a RAM 0)                         |
 |  - 0x0038..     : Vector ISR IM1 (300 Hz -> tick + 50 Hz _mus_play)             |
-|  - 0x0100..0x359A: _CODE resident (motor genèric, física, vídeo, FDC, blit)      |
-|  - 0x3600..0x3B21: _DATA resident (globals, s_lv, càmera, estat del jugador)    |
-|  - Fins a 0x3FFE : Pila Z80 (canari de pila actiu)                              |
+|  - 0x0100..0x3788: _CODE resident (motor genèric, física, vídeo, FDC, blit)      |
+|  - 0x3A00..0x3B33: _DATA resident (globals, càmera, estat del jugador)          |
+|  - Canari 0x3C40; fins a 0x3FFE: pila Z80 (~958 B útils)                        |
 +---------------------------------------------------------------------------------+
 | FINESTRA BANCADA (0x4000..0x7FFF) commutada via Gate Array 0x7F00               |
 |                                                                                 |
 |  Banc C1 (RAM 1): Àudio compartit + layout variable de nivell                   |
 |    - 0x4000..0x4C00: Player AKG (INTOCABLE)                                     |
-|    - 0x4C01..0x4FE1: HUD blitter ASM (src/hud_bank.c) + _DATA                   |
+|    - 0x4C01..0x4E7E: HUD blitter ASM (src/hud_bank.c); lliure 0x4E7F..0x4FC0    |
+|    - 0x4FC0..0x5000: _DATA del HUD                                              |
 |    - 0x5000..      : Cançó + HUD + GAMEOVER + portes + restore + codi excepció  |
-|    - 0x7680..0x76CC: LevelParams v3 (77 B)                                      |
+|    - 0x7680..0x76DD: LevelParams v3 + paleta (93 B)                             |
 |    - 0x7700..      : _DATA del codi d'excepcions (si n'hi ha)                   |
 |    - 0x7800..0x7BFF: Còpia mestra de FDC.BIN (PROHIBIT trepitjar)               |
 |    - 0x7C00..0x7F2D: Taula LVLCHS (sectors dels 6 nivells)                      |
@@ -72,14 +74,18 @@ El joc complet (tots 6 nivells + selector de personatge/mapa `FRONT`) cap en **u
 |    - 0x4000..      : Mapa + sales (rooms_off) + TRIG compacte (5 B/entrada)     |
 |    - Darrere TRIG  : Codi dinàmic de nivell (src/moving_bank.c) + _DATA         |
 |    - 0x7FE8..0x7FFF: Taula de salts fixa BC_* (8 slots × 3 B = 24 B)            |
+|    - Lliure real: L1 236 B, L5 300 B (coll; no hi afegir codi)                  |
 |  Banc C6 (RAM 6): Enemics                                                       |
-|    - 0x4000..0x4EFF: Taula de cel·les, blocs ZX0, taula restore i s_spawn       |
-|    - 0x5000..0x59FF: Cache de 4 cel·les + estat + _DATA d'enemics               |
-|    - 0x5A00..0x78xx: Codi compartit d'enemics (ENEMYCODE.BIN, carregat per L1)  |
+|    - 0x4000..0x4B1F: Taula de cel·les + blocs ZX0                              |
+|    - 0x4B20..0x4C1F: Taula de spawn                                            |
+|    - 0x4C20..0x4FFF: Taula de restauració de tiles                             |
+|    - 0x5000..0x51FF: _DATA d'enemics                                            |
+|    - 0x5200..0x78FF: Codi compartit d'enemics (ENEMYCODE.BIN, carregat per L1)  |
 |    - 0x7900..0x7FFF: LUT de flip (256 B) + pool de fons (6 × 256 B)             |
 |  Banc C7 (RAM 7): Frames de Jake/Elwood + buffers de fons de caixes/jugador     |
 +---------------------------------------------------------------------------------+
-| VRAM (0x8000..0xFFFF): Doble buffer hardware (pàgina 0: 0xC000 / pàgina 1: 0x8000)
+| VRAM 0xC000..0xFFFF: single buffer (ring 0x3000..0x33FF)                        |
+| RAM 2 0x8000..0xBFFF: utilitat (cel·les, HUD, codi RAM2, FDC); vegeu MEMORY_MAP  |
 +---------------------------------------------------------------------------------+
 ```
 
@@ -163,6 +169,7 @@ py -3 tools/verify_palettes.py          # ZEsarUX: paleta a la VRAM + contracte 
 
 | Document | Contingut |
 | :--- | :--- |
+| [`docs/MEMORY_MAP.md`](MEMORY_MAP.md) | Mapa canònic de bancs, RAM 2, paks i colls d'ampolla (single buffer). |
 | [`docs/CHANGELOG.md`](CHANGELOG.md) | Registre cronològic de canvis i sessions anteriors. |
 | [`docs/AUDITORIA_PALETES.md`](AUDITORIA_PALETES.md) | Diagnòstic i ajust de les paletes Mode 0 dels 6 nivells (contracte de pens, colors duplicats, coherència PNG↔binari). |
 | [`docs/ZESARUX_ZRCP.md`](ZESARUX_ZRCP.md) | Manual de connexió i depuració remota amb ZEsarUX (ZRCP). |

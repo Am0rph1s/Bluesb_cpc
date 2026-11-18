@@ -34,14 +34,12 @@ extern u16 g_moving_sprite;
 extern u8  g_moving_span;
 extern u8  g_moving_rows;
 extern u8  g_moving_spr_skip;
-extern MovingElevator g_mag_elevators[MAG_MOVER_COUNT];
 
 static u16 s_mover_dst[2][MAG_MOVER_COUNT];
 #if LEVEL_ID == 4
 static i8  s_scaffold_slot[2][MAG_MOVER_COUNT];
 static const u16 s_scaff_slot_off[4] = { 0, 528, 1056, 1584 };
 #endif
-extern LevelParams s_lv;          // parametres del nivell (RAM baixa)
 
 #if LEVEL_ID == 4
 // Nivell 5: Bastides (Scaffolds)

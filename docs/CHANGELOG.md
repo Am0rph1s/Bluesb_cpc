@@ -4,7 +4,19 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
 
 ---
 
-### 17/11/2026 — Estabilització Single Buffer (`single-buffer-split`)
+### 17/11/2026 — Memòria: Fase 0+1 (límit de pak i dades fredes a RAM 2)
+- **Crític**: `PAK_SCRATCH_MAX` passa de 14.208 a **13.536 B** (`0xB800 - 0x8320`). El codi resident RAM2 viu a `0xB800`; l'antic límit permetia que un pak gran el trepitgés i pengés el joc al primer scroll. El build avisa si queden menys de 512 B.
+- **C0**: `_DATA` baixa de 989 a **297 B** i `--data-loc` passa a `0x3A00`; `_CODE` queda a **13.960 B** amb **632 B** de marge (abans 77 B). Pila útil ~958 B.
+- Dades fredes reubicades als gaps de RAM 2: `s_carry_bg_c0` (320 B a `0x8600`), `s_lv` (93 B a `0x8E80`), `g_mag_elevators` (80 B a `0x9600`), estat `s_mn_*`/`s_cd_*`/`s_rep_*` (`0x9E00`) i dades de càrrega (`0xBE10`, fora del pak). S'han afegit els resets post-load necessaris (`s_rep_n = 0`) i s'ha mogut `level_params_load()` **després dels paks ENEMI**, que trepitjaven `s_lv`.
+- Eliminats `s_rep_pages[4]` (single buffer) i el seed `hud_try_copy`; `bank5_table.s` ja no escriu la pàgina. També s'han eliminat `g_split_en`, `g_play_ma`, `g_vram_base_hi`, `en2_slot_get` i el fast-path duplicat del HUD; `_CODE` final 13.960 B (632 B de marge) i `_DATA` 297 B.
+- **C5 és el nou coll amagat**: el codi del món deixa L1 amb **236 B** lliures i L5 amb **300 B** (abans es documentava 3,9 KB/1,6 KB). No s'hi pot afegir codi; cal optimitzar o moure'l a C6/C1.
+- Verificació: `smoke_test --dsk-only` OK; `smoke_test --boot-only` OK (`magic=0xB0`, `px8=192`); `check_c6_flag.py` OK (`magic=0xB0`, canari intacte); `check_dsk_banks.py` OK.
+- Documentació: nou [`docs/MEMORY_MAP.md`](MEMORY_MAP.md); `HANDOFF.md`, `SINGLE_BUFFER.md` i `LEVEL_PACKAGE.md` actualitzats al límit de 13.536 B i al mapa de RAM 2.
+- Pendent (Fase 2/3): moure codi de C0 a C6/C1 (C5 no té espai), replantejar la reubicació de HUD strips/GAMEOVER (C4 L1 només té 1.536 B i C5 L5 300 B), i el codi específic de L3 que no arriba al DSK.
+
+---
+
+
 - Documentació completa de l'arquitectura i del nou mapeig de RAM 2/RAM 0/C6 a [`docs/SINGLE_BUFFER.md`](SINGLE_BUFFER.md).
 - Eliminat el desdoblament/parpelleig de Jake (inclòs amb caixa/globus/paraigua) movent `crtc_set_display_start` a l'inici de `render_frame()` (`g_irq_phase == 5`), unificant `draw_fg_sprites` i ampliant la comprovació vertical `g_jake_en_near`.
 - Eliminat el tremolor del HUD en scroll horitzontal (`hud_render` abans de `sync_backbuffer`) i en scroll vertical (`dy > 0`: `hud_render` + `early_jake` + `render_rows_edge(19..18)` abans dels restores; `dy < 0`: `render_rows_edge(0..-dy-1)` primer).

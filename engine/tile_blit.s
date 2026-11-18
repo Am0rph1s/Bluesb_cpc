@@ -22,7 +22,6 @@
     .globl _tile_props_at
     .globl _walker_sense
     .globl _g_render_tile_offset
-    .globl _g_vram_base_hi
     .globl _g_bank
     .globl _g_en_clip_x0
     .globl _g_en_clip_x1
@@ -72,7 +71,7 @@ s_at_n:         .db 0
 ;; ============================================================
 _render_tile_fast::
     ld      de, (_g_render_tile_offset)
-    ld      a, (_g_vram_base_hi)
+    ld      a, #0xC0
     add     a, d
     ld      d, a                ;; DE = base page + byte offset, RA=0
 _render_tile_fast_de:
@@ -123,7 +122,7 @@ calc_tile_hl:
     ret
 
 ;; ============================================================
-;; Helper: calcula DE = (_g_vram_base_hi << 8) + ((((HL * 40) + DE) & 0x03FF) << 1)
+;; Helper: calcula DE = (0xC0 << 8) + ((((HL * 40) + DE) & 0x03FF) << 1)
 ;; IN:  HL = subrow, DE = char_x
 ;; OUT: DE = adreça física VRAM a RA=0 dins el ring de 2KB
 ;; ============================================================
@@ -141,7 +140,7 @@ calc_vram_de:
     ld      a, h
     and     #0x07
     ld      d, a
-    ld      a, (_g_vram_base_hi)
+    ld      a, #0xC0
     or      d
     ld      d, a
     ld      e, l

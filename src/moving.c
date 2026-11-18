@@ -16,7 +16,7 @@
 
 // Slots fixos de la taula de salts del Banc 5: a moving.h (font unica).
 
-MovingElevator g_mag_elevators[MAG_MOVER_COUNT];
+__at(0x9600) MovingElevator g_mag_elevators[MAG_MOVER_COUNT];
 
 // Bloc de paràmetres resident per crides bankades (CP-2.2).
 u16 bc_a, bc_b, bc_c, bc_d, bc_e;

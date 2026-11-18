@@ -46,7 +46,7 @@ typedef struct {
 #define ELEVATOR_BG_BASE 0x7200
 #define elevator_bg_ptr(idx, page) ((u8*)(ELEVATOR_BG_BASE + (((u16)(idx) << 1) + (page)) * ELEVATOR_BG_SIZE))
 
-extern MovingElevator g_mag_elevators[MAG_MOVER_COUNT];
+extern __at(0x9600) MovingElevator g_mag_elevators[MAG_MOVER_COUNT];
 
 // Estat compartit resident (llegit/escribible des del Banc 5):
 extern u8 s_conveyor_phase;
@@ -69,12 +69,14 @@ extern u8  s_grab_prev;
 extern u8  s_carry_state;
 extern i16 s_carry_x, s_carry_y;
 extern i16 s_carry_vx;
-extern u8  s_carry_drawn[2];
+extern __at(0x9E50) u8  s_carry_drawn[2];
 extern i8  s_ground_elevator;
 extern u8  g_face;
 extern u8  s_anim_idx, s_anim_timer;
-extern u8  s_rep_n;
-extern u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
+extern __at(0x9E40) u8  s_rep_n;
+extern __at(0x9E41) u8  s_rep_col[4];
+extern __at(0x9E45) u8  s_rep_row[4];
+extern __at(0x9E49) u8  s_rep_tile[4];
 
 // Estat d'ítems, bonus i malus (actualitzat al Banc 5):
 extern u8  g_vinyls_count;

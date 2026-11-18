@@ -6,7 +6,6 @@
 // Variables globals d'sprite
 extern u8 g_spr_y;
 extern u8 g_spr_x;
-extern u8 g_vram_base_hi;
 extern u16 g_vram_start;
 
 // Rutines ASM Z80

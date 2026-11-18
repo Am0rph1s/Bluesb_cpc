@@ -20,7 +20,6 @@
     .globl _sprite_abort_balloon
     .globl _g_spr_y
     .globl _g_spr_x
-    .globl _g_vram_base_hi
     .globl _g_vram_start
     .globl _g_grate_enable
     .globl _g_grate_phase_x
@@ -47,7 +46,6 @@ s_grate_buf:        .ds 16
 
 _g_spr_y::          .db 0
 _g_spr_x::          .db 0
-_g_vram_base_hi::   .db 0xC0
 _g_vram_start::     .dw 0
 
 _s_old_y_c0:        .db 0
@@ -70,7 +68,11 @@ _s_player_bg_80 = 0x7750
 
 ;; Buffer de restauració de fons per a objectes portats (globus i paraigües) a _DATA resident:
 ;; 10 bytes x 32 linies = 320 bytes (single buffer C0).
-_s_carry_bg_c0::    .ds 320
+;; Buffer de restauracio de fons per a objectes portats (globus i paraigues):
+;; viu al gap de RAM 2 0x8600..0x873F (320 B), entre la cela 0x8400..0x85FF
+;; i el HUD 0x8760. Es un scratch: s'escriu abans de cada blit. Allibera
+;; 320 B del _DATA resident (abans hi vivia).
+_s_carry_bg_c0 = 0x8600
 
 
 

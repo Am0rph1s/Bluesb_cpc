@@ -31,12 +31,10 @@ CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "15000",
 # Nomes s'aplica a enemy.c; la resta del projecte segueix amb CFLAGS.
 CFLAGS_ENEMY = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "40000",
                 "--disable-warning", "110"]
-# El _DATA comença a 0x3880. El Bloc 0 esta ple; amb el codi dels ascensors
-# fora del resident (Banc 1) el marge de codi es de 836 B.
-# La PILA no canvia: el canari (0x3E10) i el limit de la pila (SP=0x3FFE) son
-# els mateixos; el _DATA acaba per sota del canari.
+# El _DATA comença a 0x3A00 (dades fredes reubicades a RAM 2). El canari és a
+# 0x3C40 i el limit de la pila (SP=0x3FFE) es manté; _DATA acaba per sota.
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0x3800", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0x3A00", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 
@@ -472,13 +470,6 @@ def build_bank_equ(resident_map):
             continue
         lines.append(".globl %s" % name)
         lines.append("%s = 0x%04X" % (name, syms[name]))
-    # Llavor: en la 1a iteracio el mapa resident encara no te _hud_try_copy
-    # (el HUD es construeix ABANS del resident). Placeholder perque l'enllac
-    # no peti; la 2a iteracio ja hi posa l'adreca bona (mateixa mida de codi).
-    for name in ("_hud_try_copy",):
-        if name not in syms:
-            lines.append(".globl %s" % name)
-            lines.append("%s = 0x0000" % name)
     lines.append(".area _CODE")
     text = "\n".join(lines) + "\n"
     path = os.path.join(obj, "bank_equ.s")
@@ -1820,7 +1811,12 @@ PAK_MAGIC       = 0x42
 PAK_VERSION     = 1
 PAK_HDR         = 16
 PAK_DESC        = 8
-PAK_SCRATCH_MAX = (28 * 512) - 128    # 14.208 B: 28 sectors; el FDC en llegeix 14.336 B dins l'scratch de 14.560 B
+# El pak es carrega a 0x8320 i el codi resident de RAM 2 viu a 0xB800.
+# El maxim real es, per tant, 0xB800 - 0x8320 = 13.536 B. L'antic limit de
+# 14.208 B trepitjava _ring_address/_moving_blit_box i penjava el joc al
+# primer scroll. Els sectors de disc (28) son nomes la allocacio AMSDOS.
+PAK_SCRATCH_MAX = 0xB800 - 0x8320     # 13.536 B: fins al codi resident RAM 2
+PAK_WARN_MARGIN = 512                 # avis si queda menys d'aixo en un pak
 # ATENCIO: SDCC empaqueta LevelParams sense alineacio (room_row_last=68,
 # trig_off=69, code_exc_off=71; sizeof=73). Els offsets ho han de reflectir.
 LVLPARM_SIZE    = 93                   # mida de LEVELPARMn.BIN (LevelParams v3 + 16B paleta)
@@ -1852,6 +1848,28 @@ LEVELS = [
 ]
 
 
+def print_pak_budget(chs_map):
+    """Resum de pressupostos de pak: WORLD 13.536 B; ENEMI/C1 16 sectors."""
+    print("\nRESUM DE PAKS")
+    for name in sorted(chs_map):
+        if name.endswith("WORLD"):
+            cap = PAK_SCRATCH_MAX
+        elif name.endswith("ENEMI") or name.endswith("C1"):
+            cap = 16 * 512 - 128       # 16 sectors AMSDOS
+        else:
+            continue
+        obytes, secs, _chs, _crc = chs_map[name]
+        payload = obytes - 128
+        free = cap - payload
+        warn = "  [AVIS]" if free < PAK_WARN_MARGIN else ""
+        print("  %-8s %5d B / %5d B (lliure %5d, %2d sectors)%s"
+              % (name, payload, cap, free, secs, warn))
+    ram2 = os.path.join(PROJ, "obj", "RAM2.BIN")
+    if os.path.exists(ram2):
+        n = os.path.getsize(ram2)
+        print("  RAM2     %5d B /  1024 B (lliure %5d)" % (n, 1024 - n))
+
+
 def write_package(path, level_id, flags, sections):
     """Escriu un paquet amb manifest.
 
@@ -1880,6 +1898,9 @@ def write_package(path, level_id, flags, sections):
                 bank, a[0], a[1], b[0])
     assert total <= PAK_SCRATCH_MAX, \
         "paquet de %d B > scratch %d B (cal carrega en 2 passades)" % (total, PAK_SCRATCH_MAX)
+    if PAK_SCRATCH_MAX - total < PAK_WARN_MARGIN:
+        print("    [AVIS] pak %d B: nomes queden %d B fins al codi RAM 2 (0xB800)"
+              % (total, PAK_SCRATCH_MAX - total))
 
     head = struct.pack("<BBBBHHH", PAK_MAGIC, PAK_VERSION, level_id, flags,
                        total & 0xFFFF, n, 0)
@@ -2293,6 +2314,7 @@ def main():
         build_front(cur_force)  # FRONT banked (necessita el mapa resident)
         starter_path, starter_start = build_starter(cur_force)
         chs_map, gentry, game_len, game_crc = package(starter_path, starter_start, game_path)
+        print_pak_budget(chs_map)
         text = gen_header(chs_map)
         fhdr_text = gen_front_tables(chs_map)
         crt_text = crt_addrs_text(os.path.join(PROJ, "obj", PROGNAME + ".map"))

@@ -65,7 +65,7 @@ typedef struct {
     u8  palette[16];    // 16 colors Gate Array Mode 0
 } LevelParams;
 
-extern LevelParams s_lv;
+extern __at(0x8E80) LevelParams s_lv;
 
 // Llegeix el bloc de parametres del paquet (crida'l DESPRES de carregar el
 // paquet del nivell: es llegeix del Banc C1).

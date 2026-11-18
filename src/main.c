@@ -2,9 +2,7 @@
 // BLUES BROTHERS CPC - Motor Genèric Resident (Bloc 0)
 // ============================================================
 //   - video_init(): RMR Mode 0 + CRTC + paleta (protocol GA correcte)
-//   - Scroll CRTC en ring de 16 KB, amb passos horitzontals de 4 px i render
-//     incremental del caràcter/fila que entra.
-//   - Doble buffer per maquinari (0xC000 / 0x8000) a 25 Hz sense flicker.
+//   - Scroll CRTC en anell de 16 KB (single buffer a 0xC000; RAM 2 és utilitat).
 //   - Totes les dades específiques del nivell, ascensors, spans animats
 //     (cintes + peixeres), efectes de tiles i reixes de primer pla viuen
 //     al paquet del Banc 5 (src/moving_bank.c + src/level_pkg.h).
@@ -32,13 +30,11 @@ extern void render_row(u16 cam_col, u16 cam_row, u16 sy);
 extern void render_tile_world(u8 tile_index, u16 col, u16 row,
                               u16 cam_x4, u16 cam_row);
 extern void hud_init(void);
-extern void hud_render(u8 page, u8 force);
+extern void hud_render(u8 full_v, u8 force);
 extern void crtc_set_display_start(u16 ma);
 extern void cpc_install_isr(void);
 extern volatile u8 g_ticks;
 extern volatile u8 g_irq_phase;
-extern volatile u8 g_split_en;
-extern volatile u16 g_play_ma;
 
 #define MAP_PTR     ((const u8*)0x4000)
 #define TRIG_STRIDE 5
@@ -96,10 +92,20 @@ u8  s_scrolling_locked;
 u8  s_carry_state;
 i16 s_carry_x, s_carry_y;
 i16 s_carry_vx;
-u8  s_carry_drawn[2];
-static u8  s_carry_drawn_span;
-static u8  s_carry_drawn_rows;
-static u16 s_carry_dst;
+// ============================================================
+// Dades fredes residents reubicades als gaps de RAM 2.
+// Aquestes zones les trepitja el pak de nivell (0x8320..0xB7FF):
+// tot el que hi visqui s'ha de reinicialitzar DESPRES de la carrega.
+//  0x8600  s_carry_bg_c0       (320 B, scratch globus/paraigua)
+//  0x8E80  s_lv                (93 B, level_params_load)
+//  0x9600  g_mag_elevators     (80 B, moving_init; ldir de 128 B)
+//  0x9E00  s_mn_* + s_cd_* + s_rep_* + s_carry_* (estat de frame)
+//  0xBE10  s_chs_buf/s_lvl_desc/s_lp_* (carrega; FORA del scratch del pak)
+// ============================================================
+__at(0x9E50) u8 s_carry_drawn[2];
+static __at(0x9E52) u8 s_carry_drawn_span;
+static __at(0x9E53) u8 s_carry_drawn_rows;
+static __at(0x9E56) u16 s_carry_dst;
 // Buffers de fons de caixes al Banc 7 dins del gap lliure (0x7DE0..0x7EFF):
 // 64 B per pagina (0x7E00 per p=0, 0x7E40 per p=1). No col·lideix amb els frames d'en Jake!
 #define CRATE_BG_PAGE(p) ((u16)(0x7E00 + ((u16)(p) << 6)))
@@ -111,13 +117,15 @@ u8  s_dazed_timer;
 u8  s_dying_timer;
 u8  s_invuln_timer;
 
-static u8  s_have_drawn;
-static u8  s_hflip_cur = 0xFF;
-static u8  s_prev_jdsx, s_prev_jdsy;
-static u8  s_prev_jcur = 0xFF, s_prev_jface, s_prev_jgrate, s_prev_jcarry;
+static __at(0x9E54) u8 s_have_drawn;
+static u8 s_hflip_cur = 0xFF;
+static u8 s_prev_jdsx, s_prev_jdsy;
+static u8 s_prev_jcur = 0xFF, s_prev_jface, s_prev_jgrate, s_prev_jcarry;
 
-u8  s_rep_n;
-u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
+__at(0x9E40) u8 s_rep_n;
+__at(0x9E41) u8 s_rep_col[4];
+__at(0x9E45) u8 s_rep_row[4];
+__at(0x9E49) u8 s_rep_tile[4];
 
 static u8 s_complete_wait;
 
@@ -151,7 +159,7 @@ void start(void) {
 // El bloc sencer del paquet (C1:0x7680) es copia aqui i s'hi accedeix
 // amb les macros de level_params.h: cap constant del nivell 1 al Bloc 0
 // i cap cost de codi extra per llegir-los.
-LevelParams s_lv;
+__at(0x8E80) LevelParams s_lv;
 
 void level_params_load(void) {
     // El bloc de parametres del nivell es llegeix del paquet (Banc C1:0x7680)
@@ -173,16 +181,13 @@ extern u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
 static void world_flush_repaints(void) {
     u8 i = 0;
     while (i < s_rep_n) {
-        if (s_rep_pages[i] & 1) {
-            render_tile_world(s_rep_tile[i], s_rep_col[i], s_rep_row[i],
-                              g_cam_x4, g_cam_row);
-        }
+        render_tile_world(s_rep_tile[i], s_rep_col[i], s_rep_row[i],
+                          g_cam_x4, g_cam_row);
         s_rep_n--;
         if (i != s_rep_n) {
             s_rep_col[i] = s_rep_col[s_rep_n];
             s_rep_row[i] = s_rep_row[s_rep_n];
             s_rep_tile[i] = s_rep_tile[s_rep_n];
-            s_rep_pages[i] = s_rep_pages[s_rep_n];
         }
     }
 }
@@ -193,7 +198,6 @@ static u16 camera_ma(u16 x4, u16 row) {
 
 static void repaint_screen(void) {
     g_vram_start = camera_ma(g_cam_x4, g_cam_row);
-    g_vram_base_hi = 0xC0;
     if (s_in_room) render_room(0);
     else render_all(g_cam_x4, g_cam_row);
     hud_render(1, 1);
@@ -304,8 +308,19 @@ static void carry_restore(void) {
     s_carry_drawn[0] = 0;
 }
 
-static u8 s_cd_prev, s_cd_start_byte, s_cd_byte_count, s_cd_start_row, s_cd_row_count;
-static i16 s_cd_cx, s_cd_cy, s_cd_view_x, s_cd_view_y, s_cd_clip_x0, s_cd_clip_x1, s_cd_clip_y0, s_cd_clip_y1;
+static __at(0x9E20) u8 s_cd_prev;
+static __at(0x9E21) u8 s_cd_start_byte;
+static __at(0x9E22) u8 s_cd_byte_count;
+static __at(0x9E23) u8 s_cd_start_row;
+static __at(0x9E24) u8 s_cd_row_count;
+static __at(0x9E25) i16 s_cd_cx;
+static __at(0x9E27) i16 s_cd_cy;
+static __at(0x9E29) i16 s_cd_view_x;
+static __at(0x9E2B) i16 s_cd_view_y;
+static __at(0x9E2D) i16 s_cd_clip_x0;
+static __at(0x9E2F) i16 s_cd_clip_x1;
+static __at(0x9E31) i16 s_cd_clip_y0;
+static __at(0x9E33) i16 s_cd_clip_y1;
 
 static void carry_draw(void) {
     if (s_carry_kind != 1) return;
@@ -670,10 +685,17 @@ u8 g_mus_ready = 0; // 1 = player iniciat (la ISR pot sonar). 0 fins al
 // Seccio (8 B): bank, flags (bit0=ZX0), dest(u16), src_off(u16), src_len(u16).
 // Retorna 1 si el fitxer s'ha llegit, el CRC es correcte i el manifest es valid.
 // ============================================================
-static const DiskFileDesc* s_lp_f;
-static u16 s_lp_crc, s_lp_dst, s_lp_off, s_lp_len;
-static u8  s_lp_t, s_lp_ok, s_lp_n, s_lp_i, s_lp_prev;
-static const u8* s_lp_d;
+static __at(0xBE50) const DiskFileDesc* s_lp_f;
+static __at(0xBE52) u16 s_lp_crc;
+static __at(0xBE54) u16 s_lp_dst;
+static __at(0xBE56) u16 s_lp_off;
+static __at(0xBE58) u16 s_lp_len;
+static __at(0xBE5A) u8 s_lp_t;
+static __at(0xBE5B) u8 s_lp_ok;
+static __at(0xBE5C) u8 s_lp_n;
+static __at(0xBE5D) u8 s_lp_i;
+static __at(0xBE5E) u8 s_lp_prev;
+static __at(0xBE5F) const u8* s_lp_d;
 
 static u8 load_package(const DiskFileDesc* f, u16 crc) {
     const u8* pak = (const u8*)0x8320;
@@ -722,8 +744,8 @@ static u8 load_package(const DiskFileDesc* f, u16 crc) {
 #define LVLCHS_LEVEL_STRIDE (56 + 32 + 32)
 #define LVLCHS_LEN          814
 
-static u8 s_chs_buf[56];
-static DiskFileDesc s_lvl_desc;
+static __at(0xBE10) u8 s_chs_buf[56];
+static __at(0xBE48) DiskFileDesc s_lvl_desc;
 
 static u8 load_level_file(u8 lvl, u8 typ) {
     const u8* e;
@@ -787,9 +809,10 @@ static void load_level_packages(void) {
         if ((lvl == 2 || lvl == 4) && !load_level_file(lvl, 2)) {
             cpct_setBorder(0x44); while (1) { }
         }
-        // Parametres del nivell (geometria, tiles, start, checkpoint...)
-        level_params_load();
-        cpct_memcpy(palette_table, s_lv.palette, 16);
+        // Parametres del nivell (geometria, tiles, start, checkpoint...).
+        // IMPORTANT: s_lv viu a 0x8E80, dins del scratch del pak (0x8320..0xB7FF).
+        // Els ENEMI es carreguen DESPRES del WORLD i el trepitgen; per tant
+        // s'ha de recopiar AQUI, despres de totes les carregues.
         if (lvl != 0) {
             // Carrega SEMPRE el codi compartit de C6 (L1ENEMI). La
             // comprovacio "0x5A00 == 0xC3" es fragil: aquest byte pot
@@ -803,6 +826,8 @@ static void load_level_packages(void) {
         if (!load_level_file(lvl, 1)) {
             cpct_setBorder(0x43); while (1) { }
         }
+        level_params_load();
+        cpct_memcpy(palette_table, s_lv.palette, 16);
     }
 
     // Aturar motor FDC un cop acabada la carrega de tots els paquets
@@ -893,10 +918,23 @@ static void load_front_bank(void) {
     if (!ok) { cpct_setBorder(0x4C); while (1) { } }
 }
 
-static u8  s_mn_sv_lives, s_mn_sv_hearts, s_mn_sv_vinyls, s_mn_sv_keep, s_mn_last_ticks;
-static i8  s_mn_move, s_mn_move_x, s_mn_move_y, s_mn_page_dx, s_mn_page_dy;
-static u8  s_mn_jump, s_mn_crouch, s_mn_grab, s_mn_cur, s_mn_up_key;
-static u16 s_mn_dsx, s_mn_dsy;
+static __at(0x9E00) u8 s_mn_sv_lives;
+static __at(0x9E01) u8 s_mn_sv_hearts;
+static __at(0x9E02) u8 s_mn_sv_vinyls;
+static __at(0x9E03) u8 s_mn_sv_keep;
+static __at(0x9E04) u8 s_mn_last_ticks;
+static __at(0x9E05) i8 s_mn_move;
+static __at(0x9E06) i8 s_mn_move_x;
+static __at(0x9E07) i8 s_mn_move_y;
+static __at(0x9E08) i8 s_mn_page_dx;
+static __at(0x9E09) i8 s_mn_page_dy;
+static __at(0x9E0A) u8 s_mn_jump;
+static __at(0x9E0B) u8 s_mn_crouch;
+static __at(0x9E0C) u8 s_mn_grab;
+static __at(0x9E0D) u8 s_mn_cur;
+static __at(0x9E0E) u8 s_mn_up_key;
+static __at(0x9E0F) u16 s_mn_dsx;
+static __at(0x9E11) u16 s_mn_dsy;
 
 static void restore_fg_sprites(void) {
     sprite_restore_umbrella();
@@ -1167,6 +1205,11 @@ void main(void) {
 
     load_level_packages();
 
+    // El pak de nivell trepitja els gaps de RAM 2 on viu estat fred.
+    // s_rep_n viu a 0x9E40: sense aquest reset, un valor vell faria
+    // repintar tiles amb coordenades del nivell anterior.
+    s_rep_n = 0;
+
     g_mus_hold = 0;
     mus_init();
 
@@ -1305,12 +1348,10 @@ void main(void) {
                     g_mus_hold = 1;
                     g_mus_ready = 0;
                     palette_black();
-                    g_split_en = 0;
                     video_init();
                     palette_black();
                     crtc_set_display_start(0x3000);
                     load_front_bank();
-                    g_vram_base_hi = 0x80;
                     g_map_level = 0;
                     g_front_map_only = 0;
                     break;
@@ -1468,12 +1509,10 @@ void main(void) {
                 mus_stop();
                 g_mus_hold = 1;
                 palette_black();
-                g_split_en = 0;
                 video_init();
                 palette_black();
                 crtc_set_display_start(0x3000);
                 load_front_bank();
-                g_vram_base_hi = 0x80;
                 g_keep_counters = 1;   // el nivell seguent hereta comptadors
                 break;
             }

@@ -139,7 +139,7 @@ def main():
     time.sleep(10.0)
     conv2 = mem(sym["_s_conveyor_phase"], 1)[0]
     magic = mem(sym["_s_lv"], 1)[0]
-    canary = mem(0x3B40, 16)
+    canary = mem(0x3C40, 16)
     pc = re.search(r"PC=([0-9A-Fa-f]{4})", cmd("get-registers")).group(1)
     ok = (magic == 0xB0 and pxv != 0 and conv2 != conv1 and
           canary == b"\x55\xaa" * 8)

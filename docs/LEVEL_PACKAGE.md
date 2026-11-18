@@ -30,8 +30,10 @@ Canvis respecte del format actual (`L1WORLD.PAK`):
 
 ## 2. Fitxers per nivell
 
-Dos fitxers per nivell (cap dels dos no arriba a l'scratch de `0x8320-0xBBFF`
-= **14.560 B**, límit dur del carregador FDC actual):
+Dos fitxers per nivell. El límit real és la zona de memòria on el FDC escriu el
+payload: `0x8320..0xB800` = **13.536 B** (el codi resident de RAM 2 comença a
+`0xB800`). Els 28 sectors AMSDOS (14.336 B) són només l'allocació de disc;
+l'antic límit de 14.560 B trepitjava el codi RAM2 i penjava el joc.
 
 | Fitxer | Contingut | Mida actual (nivell 1) |
 |---|---|---|
@@ -236,7 +238,7 @@ pressupost de 836 B del Bloc 0 (caldrà mesurar-ho).
 1. Cap secció no surt de la finestra `0x4000-0x7FFF`.
 2. Dins de cada banc, les seccions **no se solapen** (ordenades per `dest`).
 3. Cada banc té **≥ 256 B** de marge.
-4. `LnWORLD.PAK` **≤ 14.560 B** (límit de l'scratch) o, si no, el build ha
+4. `LnWORLD.PAK` **≤ 13.536 B** (payload que s'escriu a `0x8320..0xB800`) o, si no, el build ha
    d'activar el mode de càrrega en 2 passades.
 5. `magic`/`version`/`hdr_crc` correctes i `n_sections` coherent amb el fitxer.
 6. `hud_off`, `rooms_off`, `trig_off`… dins dels límits dels blocs respectius.
@@ -262,7 +264,7 @@ pressupost de 836 B del Bloc 0 (caldrà mesurar-ho).
 
 1. **Codi del món comprimit (ZX0) o cru?** Comprimit estalvia al disc
    (~4.548 → ~2.8 KB) però obliga a un destí temporal gran a l'scratch abans de
-   copiar-lo a C1 (l'scratch té 14.560 B i el paquet ja hi és) → **cru** és més
+   copiar-lo a C1 (l'scratch útil té 13.536 B i el paquet ja hi és) → **cru** és més
    simple; el disc té marge suficient (Fase 0.5). *Recomanació: cru.*
 2. **GAMEOVER dins cada paquet** (1.360 B × 6 ≈ 8 KB de disc) o **fitxer comú**
    (`GAMEOVER.BIN`, 1.360 B una sola vegada). *Recomanació: fitxer comú carregat

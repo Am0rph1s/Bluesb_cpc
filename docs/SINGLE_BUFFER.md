@@ -174,8 +174,10 @@ prova de caminada de 25 s.
   `carry_hud` neta (Jake amb caixa, HUD net).
 - **Globus/paraigua**: estats `s_carry_kind=2/8` injectats al frame;
   captures `balloon_clean`/`umbrella_clean` netes (Jake amb globus/paraigua,
-  HUD net). És una prova de **renderitzat** de l'estat de carry, no del
-  pickup natural.
+  HUD net). És una prova de **renderitzat** de l'estat de carry. El pickup
+  natural s'ha provat a les sales 1-4 (popups `b3=19/20` de `ROOMSC0`,
+  posicions `(77..83, 82..98)`) amb `s_carry_kind` després de SPACE+UP; va
+  quedar **0**. Cal revisar el mapatge `rooms_off`/popup o provar-ho a la GUI.
 - **Ascensor**: teleport a l'ascensor 0 (`center_x=760`, `y=384`); el jugador
   hi puja i la càmera segueix `cam_row 28→30` mentre l'ascensor baixa
   (`y 384→400`); captura `elevator_ride` neta. La banda lila és art del nivell
@@ -192,7 +194,8 @@ prova de caminada de 25 s.
   segueix l'enemic i la posició de pantalla és estable. El diff stationary
   (frame fix) continua sent 0. Un retall aïllat del sprite en moviment **no
   ha estat concloent**: el teleport i els fons animats de L1 (shop/awning)
-  dominen el diff mateix-frame. El lag d'un camp del restore diferit queda
+  dominen el diff mateix-frame. El retall per slots C6 a `en2_draw` tampoc
+  va donar valors valids (banc/context); el lag d'un camp del restore diferit queda
   com a **risc residual**, no observat visualment.
 - **L2**: `check_c6_flag.py` carrega el nivell 2 (`magic=0xB0`, canari OK).
 - **Transició completa L1→L2**: forçant `g_level_complete=1` a L1, la
@@ -205,8 +208,8 @@ prova de caminada de 25 s.
 - **Doble buffer `master`** (mesura de comparació): ~15-17 fps amb scroll
   (delta `g_ticks` 17-20); estable, però més lent que el single buffer.
 
-Pendent: pickup natural de globus/paraigua. El render de l'estat de carry
-ja està verificat; al mapa principal de L1 no hi ha tiles `type 8/9` (els
-objectes surten per triggers/popups), així que caldria localitzar el trigger
-concret. La transició completa L1→L2 ja està verificada; el retall aïllat
-de l'enemic en moviment queda com a risc residual (no s'ha vist parpelleig).
+Pendent: pickup natural de globus/paraigua (les sales 1-4 provades no han
+donat carry; cal revisar el mapatge de popups/rooms o provar-ho a la GUI) i
+el lag d'un camp del restore diferit d'enemics (el retall aïllat no ha estat
+concloent; no s'ha vist parpelleig). La transició completa L1→L2 ja està
+verificada.

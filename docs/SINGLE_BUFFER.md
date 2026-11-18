@@ -170,10 +170,13 @@ prova de caminada de 25 s.
   `clean_field` (camp net) = **0 píxels** a tot el playfield i al HUD en el
   frame mesurat; `new_enemies` vs `clean_field` també 0. Risc residual: el
   restore diferit pot mostrar l'enemic un camp tard si es mou, no observat.
+- **Caixa (carry)**: `s_carry_kind=1` detectat a `px8=1462`; captura
+  `carry_hud` neta (Jake amb caixa, HUD net). Globus/paraigua: pendent de
+  captura dedicada.
 - **Estabilitat**: caminada real de 25 s (px8 de 192 a ~5.952) sense reset ni
   salt a VRAM; la variant `LDI` fallava a `px8≈1732` (vegeu §3.4).
 - **Doble buffer `master`** (mesura de comparació): ~15-17 fps amb scroll
   (delta `g_ticks` 17-20); estable, però més lent que el single buffer.
 
-Pendent: prova de carry/globus/paraigua amb captura dedicada i una prova de
-canvi de sala L1→L2 enllaçada.
+Pendent: captura dedicada de globus/paraigua i una prova de canvi de sala
+L1→L2 enllaçada.

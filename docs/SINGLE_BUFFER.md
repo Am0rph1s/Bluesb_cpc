@@ -188,11 +188,12 @@ prova de caminada de 25 s.
   La sala blanca és idèntica al baseline `single-buffer-split`: és art del
   nivell, no una regressió de la caché.
 - **Enemics en moviment**: `s_enemies[2]` (C6:`0x5018`) passa de `x=600` a
-  `632` i `s_enemies[7]` (`0x5054`) de `688` a `664`, amb `dx=1`; el diff
-  same-frame `hud_ret` vs `edraw_ret` en la regió aïllada de l'sprite és
-  **0 en 4 frames** (la càmera segueix l'enemic i la posició de pantalla és
-  estable). No s'ha observat cap lag visible del restore diferit. El diff
-  stationary (frame fix) continua sent 0.
+  `632` i `s_enemies[7]` (`0x5054`) de `688` a `664`, amb `dx=1`; la càmera
+  segueix l'enemic i la posició de pantalla és estable. El diff stationary
+  (frame fix) continua sent 0. Un retall aïllat del sprite en moviment **no
+  ha estat concloent**: el teleport i els fons animats de L1 (shop/awning)
+  dominen el diff mateix-frame. El lag d'un camp del restore diferit queda
+  com a **risc residual**, no observat visualment.
 - **L2**: `check_c6_flag.py` carrega el nivell 2 (`magic=0xB0`, canari OK).
 - **Transició completa L1→L2**: forçant `g_level_complete=1` a L1, la
   celebració de 50 frames i el front/mapa carreguen el paquet de L2
@@ -207,4 +208,5 @@ prova de caminada de 25 s.
 Pendent: pickup natural de globus/paraigua. El render de l'estat de carry
 ja està verificat; al mapa principal de L1 no hi ha tiles `type 8/9` (els
 objectes surten per triggers/popups), així que caldria localitzar el trigger
-concret. La transició completa L1→L2 ja està verificada.
+concret. La transició completa L1→L2 ja està verificada; el retall aïllat
+de l'enemic en moviment queda com a risc residual (no s'ha vist parpelleig).

@@ -13,7 +13,7 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
 - **Verificacio**: `smoke_test` OK (`magic=0xB0`, `px8=192`), `check_c6_flag` OK, DSK 30 sectors/14.899 B CRC `0xA561`, caminada real de 25 s sense crash (px8 192..5.952), diff d'enemics old/clean = 0 pixels, salt natural `dsy=58` i captures de scroll/vertical netes.
 - **Caixa/carry**: `s_carry_kind=1` a `px8=1462`; captura `carry_hud` neta (Jake amb caixa, HUD net).
 - **Verificacio funcional addicional**: globus/paraigua amb estat injectat (captures netes), ascensor 0 (camera `cam_row 28->30`, captura neta), sala L1 entrada/sortida (`in_room 1->0`, captura neta; sala blanca identica al baseline), 5 frames d'enemics en moviment sense crash, i L2 carregat per `check_c6_flag`.
-- **Enemic en moviment aillat**: `s_enemies[2]` x 600->632 i `s_enemies[7]` 688->664; diff same-frame en la regio de l'sprite = 0 en 4 frames (camera seguint l'enemic). No s'ha vist lag del restore diferit.
+- **Enemic en moviment**: `s_enemies[2]` x 600->632 i `s_enemies[7]` 688->664 (estat C6), amb camera seguint l'enemic; el diff stationary segueix sent 0. El retall aillat del sprite en moviment no es concloent (teleport/fons animats de L1 dominen el diff); el lag d'un camp del restore diferit queda com a risc residual, no observat.
 - **Transicio completa L1->L2**: `g_level_complete=1` a L1, 50 frames de celebracio, front/mapa i carrega del paquet L2 (`room_count=0`, `row0=255`) al cap de ~34,5 s; captura `l2_settled` de la fabrica L2, sense crash. Pickup natural de globus/paraigua encara pendent.
 
 ---

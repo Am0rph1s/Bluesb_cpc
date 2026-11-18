@@ -80,12 +80,12 @@ static void dbg_border(u8 col) {
 u16 g_cam_x4;
 u16 g_cam_row;
 
-// Caché lookahead de la columna de scroll (320 B a RAM 2: 0x9E60 + 0x9680).
+// Caché lookahead de la columna de scroll (320 B a RAM 2: 0xBC00 + 0xBD00).
 // S'omple al final del frame per a la columna que exposarà el frame següent.
-static u8  s_col_cache_valid;
-static u16 s_col_cache_x4;
-static u16 s_col_cache_row;
-static u8  s_col_cache_col;
+static __at(0x9E58) u8  s_col_cache_valid;
+static __at(0x9E59) u16 s_col_cache_x4;
+static __at(0x9E5B) u16 s_col_cache_row;
+static __at(0x9E5D) u8  s_col_cache_col;
 
 i16 s_px8, s_py8;
 i16 s_vx, s_vy;
@@ -1216,7 +1216,7 @@ static void render_frame(void) {
     }
 
     // Pre-renderitza la columna que exposarà el frame següent. Només escriu
-    // RAM 2 (0x9E60/0x9680), mai VRAM: no pot trencar el camp actual.
+    // RAM 2 (0xBC00/0xBD00), mai VRAM: no pot trencar el camp actual.
     pre_render_next_column();
 
     dbg_border(0x54);

@@ -260,7 +260,7 @@ rc_draw_loop$:
 ;; void render_column_to_buf(u16 cam_x4, u16 cam_row, u16 sx)
 ;; __sdcccall(1): HL = cam_x4, DE = cam_row, (SP+2..3) = sx (2B callee cleanup)
 ;; Pre-renderitza la columna a RAM 2 en dos buffers de 10 files x 16 B:
-;;   0x9E60 (files 0..9) i 0x9680 (files 10..19)
+;;   0xBC00 (files 0..9) i 0xBD00 (files 10..19)
 ;; NO escriu VRAM. Es pot cridar durant el camp net.
 ;; ============================================================
 _render_column_to_buf::
@@ -293,10 +293,10 @@ _render_column_to_buf::
 
     ld      hl, #s_tile_ids
     ld      b, #10
-    ld      de, #0x9E60
+    ld      de, #0xBC00
     call    rcb_tiles$
     ld      b, #10
-    ld      de, #0x9680
+    ld      de, #0xBD00
     call    rcb_tiles$
 
     jp      _cpc_bank_restore
@@ -335,7 +335,7 @@ rcb_tiles$:
 ;; ============================================================
 ;; void copy_column_from_buf(u16 cam_x4, u16 cam_row, u16 sx)
 ;; __sdcccall(1): HL = cam_x4, DE = cam_row, (SP+2..3) = sx (2B callee cleanup)
-;; Copia els dos buffers (0x9E60/0x9680) a VRAM amb el mateix addressament
+;; Copia els dos buffers (0xBC00/0xBD00) a VRAM amb el mateix addressament
 ;; que render_column. No fa bank switch: VRAM i RAM 2 són visibles sota C0.
 ;; ============================================================
 _copy_column_from_buf::
@@ -359,10 +359,10 @@ _copy_column_from_buf::
     ld      de, (s_rc_char_x)
     call    calc_vram_de        ;; DE = adreça física VRAM inicial
 
-    ld      hl, #0x9E60
+    ld      hl, #0xBC00
     ld      b, #10
     call    ccb_rows$
-    ld      hl, #0x9680
+    ld      hl, #0xBD00
     ld      b, #10
     call    ccb_rows$
     ret
@@ -382,18 +382,29 @@ ccb_rows$:
     ret
 
 ccb_tile$:
-    ;; LDI copia 2 bytes i avança HL/DE; BC no s'usa (el caller desa B).
-    ld      bc, #1
+    ;; Copia byte a byte (sense LDI): 2 bytes per linia i DE torna a la
+    ;; mateixa E. Es la versio estable; la variant LDI es mes rapida pero
+    ;; s'ha de validar a fons abans de tornar-hi.
     .rept 7
-    ldi
-    ldi
+    ld      a, (hl)
+    ld      (de), a
+    inc     hl
+    inc     e
+    ld      a, (hl)
+    ld      (de), a
+    inc     hl
     dec     e
     ld      a, d
     add     a, #8
     ld      d, a
     .endm
-    ldi
-    ldi
+    ld      a, (hl)
+    ld      (de), a
+    inc     hl
+    inc     e
+    ld      a, (hl)
+    ld      (de), a
+    inc     hl
     dec     e
     ld      a, d
     sub     #0x38

@@ -123,6 +123,7 @@ py -3 tools/build.py --check-boot                 # Build + DSK + arrencada
 
 - **Dreceres de test al menú (`src/main.c`)**: mantenir **`1`..`6`** en prémer `SPACE` al menú salta directament a `L1..L6`.
 - **Depuració en viu amb ZEsarUX (ZRCP port 10000)**: consulta [`docs/ZESARUX_ZRCP.md`](ZESARUX_ZRCP.md) (mode gràfic i mode silenciós `--vo null --ao null --noconsole`, lectura de memòria en decimal `%d`, resolució de símbols amb `obj/bluesb.map`).
+- **Depuració avançada amb CPCSyntaxError (API port 6128 / `cpcse-ctl`)**: [`tools/cpcse_dbg.py`](../tools/cpcse_dbg.py) exporta automàticament `obj/bluesb.sym` (des de `obj/bluesb.noi` + `obj/main.rst`), arrenca `cpcse.exe --api=6128 --symbols obj/bluesb.sym` i ofereix `boot_level(n)`, lectura/escriptura per nom de símbol, *breakpoints* condicionals, *watchpoints* de lectura/escriptura, `disasm`, avanç per `frames(n)` i captures `.png`. També es pot fer servir l'API interactiva amb `cpcse-ctl.exe` o el servidor MCP (`--mcp`, port `6129`).
 
 - **Auditoria de cel·les d'enemics** (`py -3 tools/check_enemy_cells.py`): identifica cada cel·la d'`ENEMI<n>.BIN` amb el frame DOS que li correspon (`staticres.c` → `animframes_059d`) i comprova que la taula de spawns (`tools/gen_enemy_spawn.py`) apunta a les cel·les correctes. **Executa'l després de tocar `gen_enemy_spawn.py` o `gen_enemy*_frames.py`**: ha detectat el bug de L3 (13/11/2026) en què el policia alternava el seu fotograma amb el de la rata i la rata sortia dibuixada com un projectil.
 

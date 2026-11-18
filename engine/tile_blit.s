@@ -329,6 +329,9 @@ rcb_tiles$:
     inc     hl
     inc     de
     pop     hl
+    ld      a, c
+    xor     #0x20               ;; alterna tile_half_y (0 <-> 0x20)
+    ld      c, a
     djnz    rcb_tiles$
     ret
 

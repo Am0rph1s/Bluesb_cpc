@@ -187,17 +187,24 @@ prova de caminada de 25 s.
   `(19,82)→(36,70)`; `in_room=0`, càmera `52,124`; captura `room_exit` neta.
   La sala blanca és idèntica al baseline `single-buffer-split`: és art del
   nivell, no una regressió de la caché.
-- **Enemics en moviment**: 5 frames amb `dx=1` i `dy=0..2` a la zona dels
-  walkers (`x=456/624`, `y=1088`), sense crash. El diff same-frame
-  `hud_ret` vs `edraw_ret` no és 0 perquè els movers/animacions s'actualitzen
-  entre els dos punts; les captures són netes. El diff stationary (frame fix)
-  continua sent 0.
+- **Enemics en moviment**: `s_enemies[2]` (C6:`0x5018`) passa de `x=600` a
+  `632` i `s_enemies[7]` (`0x5054`) de `688` a `664`, amb `dx=1`; el diff
+  same-frame `hud_ret` vs `edraw_ret` en la regió aïllada de l'sprite és
+  **0 en 4 frames** (la càmera segueix l'enemic i la posició de pantalla és
+  estable). No s'ha observat cap lag visible del restore diferit. El diff
+  stationary (frame fix) continua sent 0.
 - **L2**: `check_c6_flag.py` carrega el nivell 2 (`magic=0xB0`, canari OK).
+- **Transició completa L1→L2**: forçant `g_level_complete=1` a L1, la
+  celebració de 50 frames i el front/mapa carreguen el paquet de L2
+  (`s_lv.room_count=0`, `row0=255`) al cap de ~34,5 s; `l2_settled` mostra la
+  fàbrica de L2, sense crash. Cal mantenir premut `2` i prémer SPACE per
+  passar el front/mapa.
 - **Estabilitat**: caminada real de 25 s (px8 de 192 a ~5.952) sense reset ni
   salt a VRAM; la variant `LDI` fallava a `px8≈1732` (vegeu §3.4).
 - **Doble buffer `master`** (mesura de comparació): ~15-17 fps amb scroll
   (delta `g_ticks` 17-20); estable, però més lent que el single buffer.
 
-Pendent: pickup natural de globus/paraigua (ara provat per estat injectat) i
-la transició completa de final de nivell L1→L2 (la càrrega de L2 ja està
-verificada amb `check_c6_flag.py`).
+Pendent: pickup natural de globus/paraigua. El render de l'estat de carry
+ja està verificat; al mapa principal de L1 no hi ha tiles `type 8/9` (els
+objectes surten per triggers/popups), així que caldria localitzar el trigger
+concret. La transició completa L1→L2 ja està verificada.

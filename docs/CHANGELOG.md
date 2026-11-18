@@ -11,7 +11,8 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
 - **Ordre horitzontal**: sync (225) -> restore Jake (277) -> draw (16) -> HUD (88..168) -> restores d'enemics diferits (169) -> enemy draw (234..265) -> pre-render. Primera columna correcta i HUD net.
 - **FPS**: 25,0 fps amb scroll (`g_ticks` delta 12), enfront de ~15-17 fps del doble buffer `master`.
 - **Verificacio**: `smoke_test` OK (`magic=0xB0`, `px8=192`), `check_c6_flag` OK, DSK 30 sectors/14.899 B CRC `0xA561`, caminada real de 25 s sense crash (px8 192..5.952), diff d'enemics old/clean = 0 pixels, salt natural `dsy=58` i captures de scroll/vertical netes.
-- **Caixa/carry**: `s_carry_kind=1` a `px8=1462`; captura `carry_hud` neta (Jake amb caixa, HUD net). Globus/paraigua: pendent de captura dedicada.
+- **Caixa/carry**: `s_carry_kind=1` a `px8=1462`; captura `carry_hud` neta (Jake amb caixa, HUD net).
+- **Verificacio funcional addicional**: globus/paraigua amb estat injectat (captures netes), ascensor 0 (camera `cam_row 28->30`, captura neta), sala L1 entrada/sortida (`in_room 1->0`, captura neta; sala blanca identica al baseline), 5 frames d'enemics en moviment sense crash, i L2 carregat per `check_c6_flag`.
 
 ---
 

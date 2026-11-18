@@ -171,12 +171,33 @@ prova de caminada de 25 s.
   frame mesurat; `new_enemies` vs `clean_field` també 0. Risc residual: el
   restore diferit pot mostrar l'enemic un camp tard si es mou, no observat.
 - **Caixa (carry)**: `s_carry_kind=1` detectat a `px8=1462`; captura
-  `carry_hud` neta (Jake amb caixa, HUD net). Globus/paraigua: pendent de
-  captura dedicada.
+  `carry_hud` neta (Jake amb caixa, HUD net).
+- **Globus/paraigua**: estats `s_carry_kind=2/8` injectats al frame;
+  captures `balloon_clean`/`umbrella_clean` netes (Jake amb globus/paraigua,
+  HUD net). És una prova de **renderitzat** de l'estat de carry, no del
+  pickup natural.
+- **Ascensor**: teleport a l'ascensor 0 (`center_x=760`, `y=384`); el jugador
+  hi puja i la càmera segueix `cam_row 28→30` mentre l'ascensor baixa
+  (`y 384→400`); captura `elevator_ride` neta. La banda lila és art del nivell
+  (cinta), no una cisalla.
+- **Escala type 7**: provada a `(15,101)`; el jugador puja/baixa però L1 no té
+  una escala llarga (el tile 7 és un pas curt). El recorregut vertical natural
+  de L1 és l'ascensor; el codi de climb no s'ha modificat.
+- **Sala L1**: porta `(36,70)→(19,82)`; `in_room=1`, càmera `0,148`; sortida
+  `(19,82)→(36,70)`; `in_room=0`, càmera `52,124`; captura `room_exit` neta.
+  La sala blanca és idèntica al baseline `single-buffer-split`: és art del
+  nivell, no una regressió de la caché.
+- **Enemics en moviment**: 5 frames amb `dx=1` i `dy=0..2` a la zona dels
+  walkers (`x=456/624`, `y=1088`), sense crash. El diff same-frame
+  `hud_ret` vs `edraw_ret` no és 0 perquè els movers/animacions s'actualitzen
+  entre els dos punts; les captures són netes. El diff stationary (frame fix)
+  continua sent 0.
+- **L2**: `check_c6_flag.py` carrega el nivell 2 (`magic=0xB0`, canari OK).
 - **Estabilitat**: caminada real de 25 s (px8 de 192 a ~5.952) sense reset ni
   salt a VRAM; la variant `LDI` fallava a `px8≈1732` (vegeu §3.4).
 - **Doble buffer `master`** (mesura de comparació): ~15-17 fps amb scroll
   (delta `g_ticks` 17-20); estable, però més lent que el single buffer.
 
-Pendent: captura dedicada de globus/paraigua i una prova de canvi de sala
-L1→L2 enllaçada.
+Pendent: pickup natural de globus/paraigua (ara provat per estat injectat) i
+la transició completa de final de nivell L1→L2 (la càrrega de L2 ja està
+verificada amb `check_c6_flag.py`).

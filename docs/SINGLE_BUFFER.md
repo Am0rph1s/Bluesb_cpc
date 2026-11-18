@@ -172,12 +172,14 @@ prova de caminada de 25 s.
   restore diferit pot mostrar l'enemic un camp tard si es mou, no observat.
 - **Caixa (carry)**: `s_carry_kind=1` detectat a `px8=1462`; captura
   `carry_hud` neta (Jake amb caixa, HUD net).
-- **Globus/paraigua**: estats `s_carry_kind=2/8` injectats al frame;
-  captures `balloon_clean`/`umbrella_clean` netes (Jake amb globus/paraigua,
-  HUD net). És una prova de **renderitzat** de l'estat de carry. El pickup
-  natural s'ha provat a les sales 1-4 (popups `b3=19/20` de `ROOMSC0`,
-  posicions `(77..83, 82..98)`) amb `s_carry_kind` després de SPACE+UP; va
-  quedar **0**. Cal revisar el mapatge `rooms_off`/popup o provar-ho a la GUI.
+- **Globus/paraigua (pickup natural)**: el TRIG compacte té **5 B per
+  tile** (`type, flags|data5<<2, op, b6, avt`), no 4. Amb aquesta mida, L1 té
+  paraigües (tipus 9, tile 153) a `(row,col) = (8,10), (14,12), (19,17)` i
+  globus (tipus 8, tile 155) a `(35,32)` i `(55,23..25)`. Col·locant el
+  jugador sobre el tile (`col=(col*8-4)*8`, `py8=(row*16-30)*8`, `on_ground=1`),
+  el pickup és automàtic: `s_carry_kind` passa a **8** a `(8,10)` i a **2**
+  a `(35,32)`; captures `natural_umbrella_08_10` i `natural_balloon_35_32`.
+  Les proves anteriors fallaven perquè escanejaven el TRIG amb stride 4.
 - **Ascensor**: teleport a l'ascensor 0 (`center_x=760`, `y=384`); el jugador
   hi puja i la càmera segueix `cam_row 28→30` mentre l'ascensor baixa
   (`y 384→400`); captura `elevator_ride` neta. La banda lila és art del nivell
@@ -190,13 +192,16 @@ prova de caminada de 25 s.
   La sala blanca és idèntica al baseline `single-buffer-split`: és art del
   nivell, no una regressió de la caché.
 - **Enemics en moviment**: `s_enemies[2]` (C6:`0x5018`) passa de `x=600` a
-  `632` i `s_enemies[7]` (`0x5054`) de `688` a `664`, amb `dx=1`; la càmera
-  segueix l'enemic i la posició de pantalla és estable. El diff stationary
-  (frame fix) continua sent 0. Un retall aïllat del sprite en moviment **no
-  ha estat concloent**: el teleport i els fons animats de L1 (shop/awning)
-  dominen el diff mateix-frame. El retall per slots C6 a `en2_draw` tampoc
-  va donar valors valids (banc/context); el lag d'un camp del restore diferit queda
-  com a **risc residual**, no observat visualment.
+  `632` i `s_enemies[7]` (`0x5054`) de `688` a `664`. La instrumentació
+  correcta és `g_en_clip_x0/x1/y0/y1` (resident, `0x3AA3..0x3AA9`) llegida al
+  breakpoint de `moving_blit_box` (`0xB835`, RAM 2 sempre mapejada): dóna el
+  bbox exacte de cada sprite. Als frames mesurats el desplaçament de pantalla
+  va ser de **0..3 px**; dins del rectangle del sprite el diff
+  transició→final és **0** quan la posició de pantalla no canvia. El
+  `defer_enemy` deixa el sprite del frame anterior fins a la línia 169, o sigui
+  que un enemic mòbil per sobre d'aquesta línia pot mostrar un contorn de
+  **1..3 px** durant un frame. És el **risc residual** màxim; no s'ha
+  observat cap parpelleig ni corrupció, i no afecta el HUD ni el camp.
 - **L2**: `check_c6_flag.py` carrega el nivell 2 (`magic=0xB0`, canari OK).
 - **Transició completa L1→L2**: forçant `g_level_complete=1` a L1, la
   celebració de 50 frames i el front/mapa carreguen el paquet de L2
@@ -208,8 +213,8 @@ prova de caminada de 25 s.
 - **Doble buffer `master`** (mesura de comparació): ~15-17 fps amb scroll
   (delta `g_ticks` 17-20); estable, però més lent que el single buffer.
 
-Pendent: pickup natural de globus/paraigua (les sales 1-4 provades no han
-donat carry; cal revisar el mapatge de popups/rooms o provar-ho a la GUI) i
-el lag d'un camp del restore diferit d'enemics (el retall aïllat no ha estat
-concloent; no s'ha vist parpelleig). La transició completa L1→L2 ja està
-verificada.
+Pendent: res funcional. Risc residual documentat: el restore diferit
+d'enemics pot mostrar un contorn d'1..3 px en un enemic mòbil per sobre de la
+línia 169 durant un sol frame. La resta de verificacions (pickup natural de
+globus/paraigua, caixa, ascensor, sala L1, transició completa L1→L2,
+estabilitat de 25 s i 25 fps) estan cobertes.

@@ -29,6 +29,7 @@ extern void render_column(u16 cam_col, u16 cam_row, u16 sx);
 extern void render_column_to_buf(u16 cam_col, u16 cam_row, u16 sx);
 extern void copy_column_from_buf(u16 cam_col, u16 cam_row, u16 sx);
 extern void render_row(u16 cam_col, u16 cam_row, u16 sy);
+extern void restore_world_scroll(u8 mode);
 extern void render_tile_world(u8 tile_index, u16 col, u16 row,
                               u16 cam_x4, u16 cam_row);
 extern void hud_init(void);
@@ -1036,6 +1037,11 @@ static void render_frame(void) {
     u16 old_ma = g_vram_start;
     u16 new_ma = camera_ma(g_cam_x4, g_cam_row);
     u8 do_scroll = (u8)(s_mn_page_dx != 0 || s_mn_page_dy != 0);
+    // En scroll horitzontal pur, els restores d'enemics es poden fer DESPRES
+    // del Jake: aixi el draw del Jake comenca abans i cobreix Y~67. El preu
+    // es que els enemics de les files altes es veuen un camp tard.
+    u8 defer_enemy = (u8)(s_mn_page_dx != 0 && s_mn_page_dy == 0);
+    u8 wmode = (u8)((s_mn_page_dy || s_rep_n) ? 0 : (do_scroll ? 1 : 2));
     u8 jake_vis = (u8)(s_climb_prev != 3 && (s_dying_timer || !(s_invuln_timer & 2)));
     u8 elev_near = 0;
     u8 keep_jake, early_jake, mid_jake, fg_restored = 0;
@@ -1116,19 +1122,8 @@ static void render_frame(void) {
         fg_restored = 1;
     }
 
-    if (!s_in_room) {
-        if (s_mn_page_dy || s_rep_n) {
-            enemy_restore(0);
-            moving_restore(0, 0);
-            moving_popup_restore(0);
-        } else if (do_scroll) {
-            enemy_restore(2);
-            moving_restore(0, 0);
-            moving_popup_restore(0);
-        } else {
-            moving_restore(0, 0);
-            moving_popup_restore(0);
-        }
+    if (!defer_enemy && !s_in_room) {
+        restore_world_scroll(wmode);
     }
 
     // 3. Scroll vertical amunt: mantenim l'ordre original (HUD abans de
@@ -1161,6 +1156,12 @@ static void render_frame(void) {
     //    (80 línies) acabi abans de la fila 20 (~160).
     if (do_scroll && s_mn_page_dy == 0) {
         hud_render(0, 1);
+    }
+
+    // Restores d'enemics/movers diferits (nomes scroll horitzontal pur).
+    // Han d'anar abans dels enemy_draw de sota.
+    if (defer_enemy && !s_in_room) {
+        restore_world_scroll(wmode);
     }
 
     if (!do_scroll && !mid_jake) {

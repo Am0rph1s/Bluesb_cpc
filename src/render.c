@@ -8,6 +8,7 @@
 
 #include "cpctelera.h"
 #include "bank.h"
+#include "enemy.h"
 #include "moving.h"
 
 u16 g_render_tile_offset;
@@ -29,4 +30,13 @@ void hud_render(u8 full_v, u8 force) {
     bc_a = full_v;
     bc_b = force;
     call_banked(0xC0, (void*)hud_render_o);
+}
+
+// Restore del mon (enemics/movers) per al scroll. Viu fora de main.c per
+// compartir una sola copia entre el cami normal i el diferit.
+void restore_world_scroll(u8 mode) {
+    if (mode == 0) enemy_restore(0);
+    else if (mode == 1) enemy_restore(2);
+    moving_restore(0, 0);
+    moving_popup_restore(0);
 }

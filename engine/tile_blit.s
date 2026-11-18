@@ -147,6 +147,57 @@ calc_vram_de:
     ret
 
 ;; ============================================================
+;; rc_prepare_column: llegeix la columna del mapa a s_tile_ids.
+;; IN:  BC = cam_x4, DE = cam_row, HL = sx (0..39)
+;; OUT: s_rc_char_x, s_rc_subrow, banc C4 mapejat
+;; ============================================================
+rc_prepare_column:
+    add     hl, bc              ;; HL = cam_x4 + sx = world_char_x
+    ld      (s_rc_char_x), hl
+    ld      (s_rc_subrow), de
+
+    ld      a, #0xC5
+    call    _cpc_bank_set
+
+    ;; GMAP ptr = 0x4000 + ((cam_row >> 1) << 7) + (world_char_x >> 1)
+    ld      a, (s_rc_char_x)
+    srl     a
+    ld      c, a                ;; C = map_col (0..127)
+    ld      a, (s_rc_subrow)
+    ld      b, a                ;; B = cam_row_lo
+    srl     a
+    ld      l, a                ;; L = map_row (0..71)
+    xor     a
+    srl     l
+    rra                         ;; L = map_row >> 1, A = (map_row & 1) << 7
+    or      c
+    ld      h, l
+    ld      l, a
+    set     6, h                ;; HL = 0x4000 + (map_row << 7) + map_col
+
+    ld      de, #s_tile_ids
+    ld      c, b
+    ld      b, #20
+rcp_map_loop$:
+    ld      a, (hl)
+    ld      (de), a
+    inc     de
+    bit     0, c
+    jr      z, 1$
+    ld      a, l
+    add     a, #0x80
+    ld      l, a
+    jr      nc, 1$
+    inc     h
+1$:
+    inc     c
+    djnz    rcp_map_loop$
+
+    ld      a, #0xC4
+    call    _cpc_bank_set
+    ret
+
+;; ============================================================
 ;; void render_column(u16 cam_x4, u16 cam_row, u16 sx)
 ;; __sdcccall(1): HL = cam_x4, DE = cam_row, (SP+2..3) = sx (2B callee cleanup)
 ;; ============================================================
@@ -163,49 +214,7 @@ _render_column::
     cp      #40
     ret     nc
 
-    add     hl, bc              ;; HL = cam_x4 + sx = world_char_x
-    ld      (s_rc_char_x), hl
-    ld      (s_rc_subrow), de
-
-    ld      a, #0xC5
-    call    _cpc_bank_set
-
-    ;; GMAP ptr = 0x4000 + ((cam_row >> 1) << 7) + (world_char_x >> 1)
-    ld      a, (s_rc_char_x)
-    srl     a
-    ld      c, a                ;; C = map_col (0..127)
-    ld      a, (s_rc_subrow)
-    ld      b, a                ;; B = cam_row_lo
-    srl     a
-    ld      l, a                ;; L = map_row (0..62)
-    xor     a
-    srl     l
-    rra                         ;; L = map_row >> 1, A = (map_row & 1) << 7
-    or      c                   ;; A = ((map_row & 1) << 7) | map_col
-    ld      h, l
-    ld      l, a
-    set     6, h                ;; HL = 0x4000 + (map_row << 7) + map_col
-
-    ld      de, #s_tile_ids
-    ld      c, b                ;; C = cam_row_lo
-    ld      b, #20              ;; 20 files
-rc_map_loop$:
-    ld      a, (hl)
-    ld      (de), a
-    inc     de
-    bit     0, c
-    jr      z, 1$
-    ld      a, l
-    add     a, #0x80            ;; següent map_row (+128)
-    ld      l, a
-    jr      nc, 1$
-    inc     h
-1$:
-    inc     c
-    djnz    rc_map_loop$
-
-    ld      a, #0xC4
-    call    _cpc_bank_set
+    call    rc_prepare_column
 
     ld      hl, (s_rc_subrow)
     ld      de, (s_rc_char_x)
@@ -267,49 +276,7 @@ _render_column_to_buf::
     cp      #40
     ret     nc
 
-    add     hl, bc              ;; HL = cam_x4 + sx = world_char_x
-    ld      (s_rc_char_x), hl
-    ld      (s_rc_subrow), de
-
-    ld      a, #0xC5
-    call    _cpc_bank_set
-
-    ;; GMAP ptr = 0x4000 + ((cam_row >> 1) << 7) + (world_char_x >> 1)
-    ld      a, (s_rc_char_x)
-    srl     a
-    ld      c, a                ;; C = map_col
-    ld      a, (s_rc_subrow)
-    ld      b, a                ;; B = cam_row_lo
-    srl     a
-    ld      l, a                ;; L = map_row
-    xor     a
-    srl     l
-    rra
-    or      c
-    ld      h, l
-    ld      l, a
-    set     6, h
-
-    ld      de, #s_tile_ids
-    ld      c, b
-    ld      b, #20
-rcb_map_loop$:
-    ld      a, (hl)
-    ld      (de), a
-    inc     de
-    bit     0, c
-    jr      z, 1$
-    ld      a, l
-    add     a, #0x80
-    ld      l, a
-    jr      nc, 1$
-    inc     h
-1$:
-    inc     c
-    djnz    rcb_map_loop$
-
-    ld      a, #0xC4
-    call    _cpc_bank_set
+    call    rc_prepare_column
 
     ;; C = ((cam_row & 1) << 5) | ((world_char_x & 1) << 1)
     ld      a, (s_rc_subrow)

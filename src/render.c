@@ -35,8 +35,9 @@ void hud_render(u8 full_v, u8 force) {
 // Restore del mon (enemics/movers) per al scroll. Viu fora de main.c per
 // compartir una sola copia entre el cami normal i el diferit.
 void restore_world_scroll(u8 mode) {
-    if (mode == 0) enemy_restore(0);
-    else if (mode == 1) enemy_restore(2);
-    moving_restore(0, 0);
+    u8 m = (u8)(mode & 0x7F);
+    if (m == 0) enemy_restore(0);
+    else if (m == 1) enemy_restore(2);
+    if (!(mode & 0x80)) moving_restore(0, 1);
     moving_popup_restore(0);
 }

@@ -55,7 +55,8 @@ void moving_bank_respawn(void) {
 
     s_conveyor_phase = 0;
     s_conveyor_tick = 0;
-    s_page_conveyor_phase[0] = s_page_conveyor_phase[1] = 0xFF;
+    s_page_conveyor_phase[0] = 0xFF;
+    s_page_conveyor_phase[1] = 0;
 
     __asm
     ld hl, #_g_mag_elevators
@@ -113,7 +114,7 @@ void moving_bank_init(void) {
 }
 
 void moving_bank_find(void) __naked {
-#if LEVEL_SCAFFOLD_COUNT == 0 && LEVEL_ELEVATOR_COUNT == 0 && LEVEL_PRESS_COUNT == 0
+#if LEVEL_SCAFFOLD_COUNT == 0 && LEVEL_ELEVATOR_COUNT == 0
     __asm
     ld hl, #-1
     ld (_bc_r), hl
@@ -251,68 +252,6 @@ mbf_elev_next$:
     add ix, de
     inc c
     djnz mbf_elev_loop$
-    __endasm;
-#endif
-
-#if LEVEL_PRESS_COUNT > 0
-    __asm
-    ld ix, #(_g_mag_elevators + 16 * MAG_ELEVATOR_COUNT)
-    ld b, #LEVEL_PRESS_COUNT
-    ld c, #MAG_ELEVATOR_COUNT
-mbf_press_loop$:
-    ; Check X: (u16)(center_x - bc_a + 8) < 33
-    ld l, 0 (ix)
-    ld h, 1 (ix)
-    ld de, (_bc_a)
-    or a
-    sbc hl, de
-    ld de, #8
-    add hl, de
-    ld de, #33
-    or a
-    sbc hl, de
-    jr nc, mbf_press_next$
-    ; surface = e->y - 30 (PRESS_OBJECT_H)
-    ld l, 2 (ix)
-    ld h, 3 (ix)
-    ld de, #-30
-    add hl, de
-    ; check bc_b <= surface + 8  <=>  (surface + 8) - bc_b >= 0
-    push hl
-    ld de, #8
-    add hl, de
-    ld de, (_bc_b)
-    or a
-    sbc hl, de
-    pop hl
-    jp m, mbf_press_next$
-    ; check bc_c >= surface  <=>  bc_c - surface >= 0
-    ld de, (_bc_c)
-    ex de, hl
-    or a
-    sbc hl, de
-    jp m, mbf_press_next$
-    ; Found! *(i16*)bc_e = surface - 30
-    ex de, hl
-    ld de, #-30
-    add hl, de
-    ld de, (_bc_e)
-    ld a, l
-    ld (de), a
-    inc de
-    ld a, h
-    ld (de), a
-    ; bc_r = c
-    ld l, c
-    ld h, #0
-    ld (_bc_r), hl
-    pop ix
-    ret
-mbf_press_next$:
-    ld de, #16
-    add ix, de
-    inc c
-    djnz mbf_press_loop$
     __endasm;
 #endif
 
@@ -511,6 +450,14 @@ static u8 b5_solid_ceil(u8 col, u8 row) {
     return (op <= 3 || op == 20 || op == 21 || (op >= 27 && op <= 29));
 }
 
+#if LEVEL_HAS_WATER
+static u8 b5_is_water(u8 col, u8 row) {
+    const u8* p = b5_trig_ptr(col, row);
+    if (!p) return 0;
+    return (u8)(p[0] == 11 || p[0] == 12 || (p[0] == 13 && p[2] == 23));
+}
+#endif
+
 void moving_bank_update(void) {
     u8 jump = (u8)bc_b;
     u8 crouch = (u8)bc_c;
@@ -598,10 +545,9 @@ void moving_bank_update(void) {
     }
 #if LEVEL_HAS_WATER
     {
-        u8 is_water = (tt >= 11 && tt <= 15);
+        u8 is_water = b5_is_water(col, row);
         if (!is_water && s_climb_prev == 2) {
-            u8 mid_tt = b5_tile_type(col, (u8)(((s_py8 >> 3) + 16) >> 4));
-            if (mid_tt >= 11 && mid_tt <= 15) is_water = 1;
+            is_water = b5_is_water(col, (u8)(((s_py8 >> 3) + 16) >> 4));
         }
         if (tt != 6 && tt != 7 && !is_water && !s_climb_prev && (jump || crouch)) {
             if (col > 0 && b5_tile_type((u8)(col - 1), row) == 7) { col--; tt = 7; }
@@ -754,7 +700,7 @@ void moving_bank_update(void) {
                 s_py8 = (i16)((((i16)fr << 4) + yoff - PH) * SUB);
                 s_vy = 0;
                 s_on_ground = 1;
-                g_on_ice = 2;
+                g_on_ice = (sop < 36) ? 2 : 1;
                 if (sop >= 32 && sop <= 35) {
                     if (sop <= 33) {
                         if (s_vx > -30) s_vx -= 2;
@@ -829,7 +775,43 @@ void moving_bank_update(void) {
 #if LEVEL_ID == 0
     {
         u8 gr = (u8)(((s_py8 >> 3) + 16) >> 4);
-        if ((gr >= 39 && gr <= 41) || (gr >= 45 && gr <= 47)) g_grate_enable = 1;
+        if ((gr >= 39 && gr <= 41) || (gr >= 45 && gr <= 47)) {
+            u8 max_c = (gr <= 41) ? 79 : 62;
+            u16 px = (u16)(s_px8 >> 3);
+            u8 cl = (u8)(px >> 3);
+            u8 cr = (u8)((px + 15) >> 3);
+            g_grate_left = (cl >= 49 && cl <= max_c);
+            g_grate_right = (cr >= 49 && cr <= max_c);
+            if (g_grate_left || g_grate_right) {
+                g_grate_enable = 1;
+                g_grate_phase_x = (u8)((px >> 1) & 1);
+                g_grate_base_y = (u8)((s_py8 >> 3) & 7);
+            } else {
+                g_grate_enable = 0;
+            }
+        } else {
+            g_grate_enable = 0;
+        }
+    }
+#endif
+#if LEVEL_HAS_BALLOON
+    if (s_carry_kind == 2) {
+        if (s_carry_state == 1) {
+            s_carry_y = (i16)(s_carry_y - 32);
+        }
+        {
+            u16 cur_px = (u16)((s_carry_state ? s_carry_x : s_px8) >> 3);
+            i16 cur_py = (i16)((s_carry_state ? s_carry_y : s_py8) >> 3);
+            i16 b_top = (i16)(cur_py - 28);
+            u8 bcol = (u8)((cur_px + 8) >> 3);
+            u8 brow = (b_top > 0) ? (u8)(b_top >> 4) : 0;
+            const u8* tp = b5_trig_ptr(bcol, brow);
+            if (b_top <= 16 || (tp && (tp[2] == 20 || tp[2] == 21 || tp[2] == 27 || tp[2] == 28))) {
+                s_carry_kind = 0;
+                s_carry_state = 0;
+                s_vy = 0;
+            }
+        }
     }
 #endif
     s_climb_prev = climbing;
@@ -871,50 +853,11 @@ void moving_bank_conveyor(void) {
         }
     }
 
-#if LEVEL_HAS_BALLOON
-    if (s_carry_kind == 2) {
-        if (s_carry_state == 1) {
-            s_carry_y = (i16)(s_carry_y - 32);
-        }
-        {
-            u16 cur_px = (u16)((s_carry_state ? s_carry_x : s_px8) >> 3);
-            i16 cur_py = (i16)((s_carry_state ? s_carry_y : s_py8) >> 3);
-            i16 b_top = (i16)(cur_py - 28);
-            u8 bcol = (u8)((cur_px + 8) >> 3);
-            u8 brow = (b_top > 0) ? (u8)(b_top >> 4) : 0;
-            const u8* tp = b5_trig_ptr(bcol, brow);
-            if (b_top <= 16 || (tp && (tp[2] == 20 || tp[2] == 21 || tp[2] == 27 || tp[2] == 28))) {
-                s_carry_kind = 0;
-                s_carry_state = 0;
-                s_vy = 0;
-            }
-        }
-    }
-#endif
-
 #if LEVEL_ID == 0
-    {
-        u8 r = (u8)(((s_py8 >> 3) + 16) >> 4);
-        if ((r >= 39 && r <= 41) || (r >= 45 && r <= 47)) {
-            u8 max_c = (r <= 41) ? 79 : 62;
-            u16 px = (u16)(s_px8 >> 3);
-            u8 cl = (u8)(px >> 3);
-            u8 cr = (u8)((px + 15) >> 3);
-            g_grate_left = (cl >= 49 && cl <= max_c);
-            g_grate_right = (cr >= 49 && cr <= max_c);
-            if (g_grate_left || g_grate_right) {
-                g_grate_enable = 1;
-                g_grate_phase_x = (u8)((px >> 1) & 1);
-                g_grate_base_y = (u8)((s_py8 >> 3) & 7);
-            } else {
-                g_grate_enable = 0;
-            }
-        } else {
-            g_grate_enable = 0;
-        }
+    if (g_grate_enable) {
+        g_grate_phase_x = (u8)(((u16)(s_px8 >> 3) >> 1) & 1);
+        g_grate_base_y = (u8)((s_py8 >> 3) & 7);
     }
-#else
-    g_grate_enable = 0;
 #endif
 
 #if LEVEL_POPUP_COUNT > 0

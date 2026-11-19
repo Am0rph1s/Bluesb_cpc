@@ -42,6 +42,10 @@ def export_symbols(out_path=SYM_PATH):
                 if m:
                     val, name = int(m.group(1), 16), m.group(2)
                     syms.setdefault(name, val)
+                else:
+                    m2 = re.match(r"[0-9A-F]{8}\s+\d+\s+(_[A-Za-z0-9_]+)\s*=\s*0x([0-9A-Fa-f]+)$", line.strip())
+                    if m2:
+                        syms.setdefault(m2.group(1), int(m2.group(2), 16))
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path, "w") as f:

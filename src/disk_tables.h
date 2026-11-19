@@ -2,17 +2,17 @@
 #define DISK_TABLES_H
 #include "fdc.h"
 
-#define CRC_FDC 0x3472
+#define CRC_FDC 0x079D
 
 static const u8 g_front_chs[12] = {
     0x04,0xC5,0x04,0xC6,0x04,0xC7,0x04,0xC8,0x04,0xC9,0x05,0xC1,
 };
 static const DiskFileDesc g_file_front = { 2608, 6, g_front_chs };
-#define CRC_FRONT 0x9335
+#define CRC_FRONT 0xF45C
 
 #define CRC_FSPLASH 0x9E30
 
-#define CRC_MUSBANK 0x9B4E
+#define CRC_MUSBANK 0x668F
 
 #define CRC_FSELECT 0x9A85
 
@@ -30,31 +30,31 @@ static const u8 g_elwood_chs[12] = {
 static const DiskFileDesc g_file_elwood = { 2851, 6, g_elwood_chs };
 #define CRC_ELWOOD 0xD971
 
-#define CRC_L1WORLD 0xF30F
+#define CRC_L1WORLD 0x482B
 
-#define CRC_L1ENEMI 0x1D89
+#define CRC_L1ENEMI 0xB293
 
-#define CRC_L2WORLD 0xCCF4
+#define CRC_L2WORLD 0x3ADD
 
 #define CRC_L2ENEMI 0x0C24
 
-#define CRC_L3WORLD 0xF5FB
+#define CRC_L3WORLD 0x41A8
 
 #define CRC_L3ENEMI 0xE03B
 
 #define CRC_L3C1 0x3D25
 
-#define CRC_L4WORLD 0x4287
+#define CRC_L4WORLD 0x27E6
 
 #define CRC_L4ENEMI 0x92EB
 
-#define CRC_L5WORLD 0xE6D0
+#define CRC_L5WORLD 0xAEB5
 
 #define CRC_L5ENEMI 0x8985
 
-#define CRC_L5C1 0xDFC3
+#define CRC_L5C1 0x10D0
 
-#define CRC_L6WORLD 0xD291
+#define CRC_L6WORLD 0xB8BE
 
 #define CRC_L6ENEMI 0x8D13
 

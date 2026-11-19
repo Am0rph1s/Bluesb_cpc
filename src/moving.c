@@ -73,9 +73,9 @@ void moving_popup_restore(u8 page) { bc_a = page; call_banked(0xC5, BC_RESTORE);
 #define LC1_CONVEYOR ((void*)(u16)(s_lv.code_exc_off + 6))
 
 void moving_restore(u8 page, u8 force) {
-    (void)force;
     if (!s_lv.code_exc_off) return;   // nivell sense codi d'excepcions
     bc_a = page;
+    bc_b = force;
     call_banked(0xC0, LC1_RESTORE);
 }
 

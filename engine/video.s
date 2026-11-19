@@ -16,6 +16,8 @@
     .globl _palette_black
     .globl _palette_restore
     .globl _palette_table
+    .globl _g_split_en
+    .globl _g_play_ma
 
     .area _CODE
 
@@ -29,6 +31,8 @@
 ;; ============================================================
 _video_init::
     di
+    xor     a
+    ld      (_g_split_en), a
 
     ;; RMR: Mode 0 + ROMs desactivades (0x8C)
     ld      bc, #0x7F8C
@@ -109,6 +113,10 @@ pr_loop$:
 ;;   HL = adreça MA completa, incloent pàgina 0x2000/0x3000 i offset circular.
 ;; ============================================================
 _crtc_set_display_start::
+    ld      (_g_play_ma), hl
+    ld      a, (_g_split_en)
+    or      a
+    ret     nz
     ld      bc, #0xBC0D         ;; R13 = byte baix
     out     (c), c
     ld      a, l

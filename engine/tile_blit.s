@@ -36,8 +36,11 @@
     .globl _call_banked
     .globl _s_lv
     .globl _g_cam_x4
+    .globl _g_cam_row
+    .globl _g_spr_y
     .globl _s_conveyor_tick
     .globl _s_conveyor_phase
+    .globl _s_page_conveyor_phase
     .globl _s_anim_pos
     .globl _bc_a
     .globl _bc_b
@@ -75,31 +78,27 @@ _render_tile_fast::
     add     a, d
     ld      d, a                ;; DE = base page + byte offset, RA=0
 _render_tile_fast_de:
+    push    bc
+    ld      bc, #4
     .rept 7
+    ldi
     ld      a, (hl)
     ld      (de), a
-    inc     hl
-    inc     e
-    ld      a, (hl)
-    ld      (de), a
-    inc     hl
-    inc     hl
-    inc     hl
     dec     e
+    add     hl, bc
+    inc     c
     ld      a, d
     add     a, #8
     ld      d, a
     .endm
-    ld      a, (hl)
-    ld      (de), a
-    inc     hl
-    inc     e
+    ldi
     ld      a, (hl)
     ld      (de), a
     dec     e
     ld      a, d
     sub     #0x38               ;; Restaura DE a RA=0 (preserva BC i DE!)
     ld      d, a
+    pop     bc
     ret
 
 ;; ============================================================
@@ -307,27 +306,18 @@ rcb_tiles$:
     inc     hl
     push    hl
     call    calc_tile_hl
+    push    bc
+    ld      bc, #4
     ;; HL = tile data (4 B/fila, 2 B de la meitat triada)
     .rept 7
-    ld      a, (hl)
-    ld      (de), a
-    inc     hl
-    inc     de
-    ld      a, (hl)
-    ld      (de), a
-    inc     hl
-    inc     de
-    inc     hl
-    inc     hl
+    ldi
+    ldi
+    add     hl, bc
+    ld      c, #4
     .endm
-    ld      a, (hl)
-    ld      (de), a
-    inc     hl
-    inc     de
-    ld      a, (hl)
-    ld      (de), a
-    inc     hl
-    inc     de
+    ldi
+    ldi
+    pop     bc
     pop     hl
     ld      a, c
     xor     #0x20               ;; alterna tile_half_y (0 <-> 0x20)
@@ -385,14 +375,9 @@ ccb_rows$:
     ret
 
 ccb_tile$:
-    ;; Copia byte a byte (sense LDI): 2 bytes per linia i DE torna a la
-    ;; mateixa E. Es la versio estable; la variant LDI es mes rapida pero
-    ;; s'ha de validar a fons abans de tornar-hi.
+    ;; 1er byte amb LDI (E parell -> senar, MAI creua 0xFF->0x00), 2n byte directe
     .rept 7
-    ld      a, (hl)
-    ld      (de), a
-    inc     hl
-    inc     e
+    ldi
     ld      a, (hl)
     ld      (de), a
     inc     hl
@@ -401,10 +386,7 @@ ccb_tile$:
     add     a, #8
     ld      d, a
     .endm
-    ld      a, (hl)
-    ld      (de), a
-    inc     hl
-    inc     e
+    ldi
     ld      a, (hl)
     ld      (de), a
     inc     hl
@@ -985,8 +967,6 @@ _anim_tick_c5::
     cp      #4
     ret     c
     ld      (hl), #0
-    ld      hl, #_s_conveyor_phase
-    inc     (hl)
 
     ;; 1. Avançar 1 pas cada seqüència (lens té sentinella 0)
     ld      hl, (_bc_e)         ;; HL = lens
@@ -1053,6 +1033,27 @@ at_fill_loop$:
     ld      (hl), c
     inc     hl
     djnz    at_fill_loop$
+    ;; Nomes activar s_conveyor_phase (bit 7) si el span cau dins la finestra vertical de camera
+    ld      a, 0(iy)
+    add     a, a
+    ld      hl, #_g_cam_row
+    sub     (hl)
+    inc     a
+    cp      #21
+    jr      nc, at_span_next$
+    ld      hl, #_s_conveyor_tick
+    set     7, (hl)
+    ;; Marcar proximitat vertical a en Jake (s_page_conveyor_phase[1] = 1) per evitar keep_jake/erase innecessari
+    add     a, a
+    add     a, a
+    add     a, a
+    ld      hl, #_g_spr_y
+    sub     (hl)
+    add     a, #36
+    cp      #74
+    jr      nc, at_span_next$
+    ld      hl, #(_s_page_conveyor_phase + 1)
+    ld      (hl), #1
 
 at_span_next$:
     ld      hl, (s_at_sp)
@@ -1062,6 +1063,12 @@ at_span_next$:
     ld      hl, #s_at_n
     dec     (hl)
     jr      nz, at_span_loop$
+    ld      hl, #_s_conveyor_tick
+    bit     7, (hl)
+    ret     z
+    ld      (hl), #0
+    ld      hl, #_s_conveyor_phase
+    inc     (hl)
     ret
 
 ;; ============================================================

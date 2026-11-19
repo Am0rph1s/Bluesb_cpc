@@ -315,16 +315,10 @@ _moving_bank_push::
     ld      a, (de)
     ld      c, a                ;; C = op1
 
-    ;; 1. Deteccio de gel / superfície lliscant 1:1 DOS (op 29, 30, 32..39)
-    ;;    op=29: unk2D=1 (gel fort) -> g_on_ice=1
-    ;;    op=30, 36..39: unk2D=2    -> g_on_ice=1
-    ;;    op=32..35: unk2D=0 (rampa)-> g_on_ice=2 (sense acceleració ni fricció pròpia, només unk2F)
+    ;; 1. Deteccio de gel / superfície lliscant 1:1 DOS (op 29, 30, 36..39).
+    ;;    Les rampes op=32..35 activen g_on_ice=2 a moving_bank.c nomes quan el
+    ;;    centre (col) entra a la rampa, aixi caminar pel llavi no bloqueja amb vx=0.
     ld      a, b
-    cp      #32
-    jr      c, chk_ice_b$
-    cp      #36
-    jr      c, slope_on$
-chk_ice_b$:
     cp      #29
     jr      z, ice_on$
     cp      #30
@@ -335,11 +329,6 @@ chk_ice_b$:
     jr      c, ice_on$
 chk_c$:
     ld      a, c
-    cp      #32
-    jr      c, chk_ice_c$
-    cp      #36
-    jr      c, slope_on$
-chk_ice_c$:
     cp      #29
     jr      z, ice_on$
     cp      #30
@@ -350,9 +339,6 @@ chk_ice_c$:
     jr      c, ice_on$
 ice_off$:
     xor     a
-    jr      ice_set$
-slope_on$:
-    ld      a, #2
     jr      ice_set$
 ice_on$:
     ld      a, #1

@@ -38,6 +38,8 @@ extern void crtc_set_display_start(u16 ma);
 extern void cpc_install_isr(void);
 extern volatile u8 g_ticks;
 extern volatile u8 g_irq_phase;
+extern volatile u8 g_split_en;
+extern volatile u16 g_play_ma;
 
 #define MAP_PTR     ((const u8*)0x4000)
 #define TRIG_STRIDE 5
@@ -215,6 +217,8 @@ static void repaint_screen(void) {
     crtc_set_display_start((u16)(0x3000 + g_vram_start));
 }
 
+static void draw_movers_now(void);
+
 static void enter_door(u8 dst_col, u8 dst_row) {
     palette_black();
 
@@ -258,12 +262,16 @@ static void enter_door(u8 dst_col, u8 dst_row) {
     s_have_drawn = 0;
     s_hflip_cur = 0xFF;
     s_carry_drawn[0] = 0;
+    {
+        u8 m;
+        for (m = 0; m < MAG_MOVER_COUNT; m++) g_mag_elevators[m].drawn[0] = 0;
+    }
     s_rep_n = 0;
     s_col_cache_valid = 0;
 
     repaint_screen();
     if (!s_in_room) {
-        moving_draw(0, g_cam_x4, g_cam_row);
+        draw_movers_now();
     }
 
     palette_restore();
@@ -290,26 +298,23 @@ static void check_doors(void) {
 
 
 
+static void draw_movers_now(void) {
+    bc_a = 0;
+    moving_draw(0, g_cam_x4, g_cam_row);
+}
+
 static void sync_backbuffer(i8 dx, u16 target_x4, u16 target_row) {
-    if (dx > 0) {
-        if (dx > 1) render_column(target_x4, target_row, 38);
-        if (s_col_cache_valid && s_col_cache_x4 == target_x4 &&
-            s_col_cache_row == target_row && s_col_cache_col == 39) {
-            copy_column_from_buf(target_x4, target_row, 39);
-            s_col_cache_valid = 0;
-        } else {
-            render_column(target_x4, target_row, 39);
-        }
-    } else if (dx < 0) {
-        if (s_col_cache_valid && s_col_cache_x4 == target_x4 &&
-            s_col_cache_row == target_row && s_col_cache_col == 0) {
-            copy_column_from_buf(target_x4, target_row, 0);
-            s_col_cache_valid = 0;
-        } else {
-            render_column(target_x4, target_row, 0);
-        }
-        if (dx < -1) render_column(target_x4, target_row, 1);
+    u8 col = (u8)(dx > 0 ? 39 : 0);
+    dbg_border(0x4C);
+    if (dx > 1) render_column(target_x4, target_row, 38);
+    if (s_col_cache_valid && s_col_cache_x4 == target_x4 &&
+        s_col_cache_row == target_row && s_col_cache_col == col) {
+        copy_column_from_buf(target_x4, target_row, col);
+        s_col_cache_valid = 0;
+    } else {
+        render_column(target_x4, target_row, col);
     }
+    if (dx < -1) render_column(target_x4, target_row, 1);
 }
 
 static void render_rows_edge(u8 n, u8 from_bottom) {
@@ -319,74 +324,258 @@ static void render_rows_edge(u8 n, u8 from_bottom) {
     }
 }
 
-static void carry_restore(void) {
-    u8 prev;
-    if (!s_carry_drawn[0]) return;
-    prev = bank_set(0xC7);
-    g_moving_dst = s_carry_dst;
-    g_moving_background = 0x7E00;
-    g_moving_span = s_carry_drawn_span;
-    g_moving_rows = s_carry_drawn_rows;
-    moving_restore_box();
-    bank_restore(prev);
-    s_carry_drawn[0] = 0;
+static void carry_restore(void) __naked {
+    __asm
+        ld   hl, #0x9E50            ;; _s_carry_drawn
+        ld   a, (hl)
+        or   a
+        ret  z
+        ld   (hl), #0
+        ld   a, #0xC7
+        call _bank_set
+        push af
+        ld   hl, (0x9E56)           ;; _s_carry_dst
+        ld   (_g_moving_dst), hl
+        ld   hl, #0x7E00
+        ld   (_g_moving_background), hl
+        ld   hl, (0x9E52)           ;; L=_s_carry_drawn_span, H=_s_carry_drawn_rows
+        ld   (_g_moving_span), hl
+        call _moving_restore_box
+        pop  af
+        jp   _bank_restore
+    __endasm;
 }
 
-static __at(0x9E20) u8 s_cd_prev;
-static __at(0x9E21) u8 s_cd_start_byte;
-static __at(0x9E22) u8 s_cd_byte_count;
-static __at(0x9E23) u8 s_cd_start_row;
-static __at(0x9E24) u8 s_cd_row_count;
-static __at(0x9E25) i16 s_cd_cx;
-static __at(0x9E27) i16 s_cd_cy;
-static __at(0x9E29) i16 s_cd_view_x;
-static __at(0x9E2B) i16 s_cd_view_y;
-static __at(0x9E2D) i16 s_cd_clip_x0;
-static __at(0x9E2F) i16 s_cd_clip_x1;
-static __at(0x9E31) i16 s_cd_clip_y0;
-static __at(0x9E33) i16 s_cd_clip_y1;
+static void carry_draw(void) __naked {
+    __asm
+        ld   a, (_s_carry_kind)
+        dec  a
+        ret  nz
 
-static void carry_draw(void) {
-    if (s_carry_kind != 1) return;
-    if (s_carry_state == 0) {
-        if (s_invuln_timer & 2) return; // Parpelleig amb en Jake
-        // 1:1 DOS: centrat sobre el cap (px + 4) i recolzat a les mans (py - 15)
-        // Snapping horitzontal parell (& ~1) per alinear amb el byte de Mode 0 (2 px/byte)
-        s_cd_cx = (i16)(((s_px8 >> 3) + 4) & ~1);
-        s_cd_cy = (i16)((s_py8 >> 3) - 15);
-    } else {
-        s_cd_cx = (i16)((s_carry_x >> 3) & ~1);
-        s_cd_cy = (i16)(s_carry_y >> 3);
-    }
+        ld   a, (_s_carry_state)
+        or   a
+        jr   nz, cd_thrown$
+        ld   a, (_s_invuln_timer)
+        bit  1, a
+        ret  nz
+        ld   hl, (_s_px8)
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        ld   de, #4
+        add  hl, de
+        res  0, l
+        push hl                     ;; (SP) = cx
+        ld   hl, (_s_py8)
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        ld   de, #-16
+        add  hl, de                 ;; HL = cy (16 rows: py-16..py-1, disjunt de Jake)
+        jr   cd_coords_ok$
 
-    s_cd_view_x = (i16)(g_cam_x4 << 2);
-    s_cd_view_y = (i16)(g_cam_row << 3);
-    s_cd_clip_x0 = s_cd_cx > s_cd_view_x ? s_cd_cx : s_cd_view_x;
-    s_cd_clip_x1 = (i16)(s_cd_cx + 8) < (i16)(s_cd_view_x + 160) ? (i16)(s_cd_cx + 8) : (i16)(s_cd_view_x + 160);
-    s_cd_clip_y0 = s_cd_cy > s_cd_view_y ? s_cd_cy : s_cd_view_y;
-    s_cd_clip_y1 = (i16)(s_cd_cy + 16) < (i16)(s_cd_view_y + 160) ? (i16)(s_cd_cy + 16) : (i16)(s_cd_view_y + 160);
+    cd_thrown$:
+        ld   hl, (_s_carry_x)
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        res  0, l
+        push hl                     ;; (SP) = cx
+        ld   hl, (_s_carry_y)
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        sra  h
+        rr   l                      ;; HL = cy
 
-    if (s_cd_clip_x0 >= s_cd_clip_x1 || s_cd_clip_y0 >= s_cd_clip_y1) return;
+    cd_coords_ok$:
+        ;; Y clipping: view_y = g_cam_row << 3
+        ex   de, hl                 ;; DE = cy
+        ld   hl, (_g_cam_row)
+        add  hl, hl
+        add  hl, hl
+        add  hl, hl                 ;; HL = view_y
+        ld   b, h
+        ld   c, l                   ;; BC = view_y
+        ld   h, d
+        ld   l, e                   ;; HL = cy
+        or   a
+        sbc  hl, bc                 ;; HL = dy = cy - view_y
+        push hl                     ;; save dy
+        ld   de, #15
+        add  hl, de
+        ld   de, #175
+        or   a
+        sbc  hl, de
+        pop  hl                     ;; HL = dy
+        jr   c, cd_y_vis$
+        pop  hl                     ;; discard cx
+        ret
 
-    s_cd_start_byte = (u8)((s_cd_clip_x0 - s_cd_cx) >> 1);
-    s_cd_byte_count = (u8)((s_cd_clip_x1 - s_cd_clip_x0) >> 1);
-    s_cd_start_row = (u8)(s_cd_clip_y0 - s_cd_cy);
-    s_cd_row_count = (u8)(s_cd_clip_y1 - s_cd_clip_y0);
-    if (!s_cd_byte_count || !s_cd_row_count) return;
+    cd_y_vis$:
+        bit  7, h
+        jr   z, cd_y_nonneg$
+        ;; dy < 0 (-15..-1): clip_y0 = view_y (BC), start_row = -dy, row_count = 16 + dy
+        xor  a
+        sub  l
+        ld   d, a                   ;; D = start_row
+        ld   a, #16
+        add  a, l
+        ld   e, a                   ;; E = row_count
+        push bc                     ;; stack: cx, clip_y0
+        jr   cd_y_done$
 
-    s_cd_prev = bank_set(0xC7);
-    g_moving_dst = (u16)ring_address(0, s_cd_clip_x0, s_cd_clip_y0);
-    s_carry_dst = g_moving_dst;
-    s_carry_drawn_span = s_cd_byte_count;
-    s_carry_drawn_rows = s_cd_row_count;
-    g_moving_background = 0x7E00;
-    g_moving_sprite = (u16)(CRATE_FLY_FRAME + ((u16)s_cd_start_row << 3) + (s_cd_start_byte << 1));
-    g_moving_span = s_cd_byte_count;
-    g_moving_rows = s_cd_row_count;
-    g_moving_spr_skip = (u8)(8 - (s_cd_byte_count << 1));
-    moving_blit_box();
-    bank_restore(s_cd_prev);
-    s_carry_drawn[0] = 1;
+    cd_y_nonneg$:
+        ;; dy >= 0 (0..159): clip_y0 = cy (view_y + dy)
+        push hl
+        add  hl, bc                 ;; HL = clip_y0
+        ex   (sp), hl               ;; HL = dy, (SP) = clip_y0
+        ld   d, #0                  ;; D = start_row = 0
+        ld   a, l
+        cp   #145
+        jr   c, cd_y_full$
+        ld   a, #160
+        sub  l
+        ld   e, a                   ;; E = 160 - dy
+        jr   cd_y_done$
+    cd_y_full$:
+        ld   e, #16                 ;; E = row_count = 16
+
+    cd_y_done$:
+        ;; stack: cx, clip_y0; D = start_row, E = row_count
+        pop  bc                     ;; BC = clip_y0
+        pop  hl                     ;; HL = cx
+        push de                     ;; stack: D=start_row, E=row_count
+        push bc                     ;; stack: row_pair, clip_y0
+        push hl                     ;; stack: row_pair, clip_y0, cx
+
+        ;; X clipping: view_x = g_cam_x4 << 2
+        ld   de, (_g_cam_x4)
+        ex   de, hl
+        add  hl, hl
+        add  hl, hl                 ;; HL = view_x
+        ld   b, h
+        ld   c, l                   ;; BC = view_x
+        pop  hl                     ;; HL = cx
+        push hl                     ;; stack: row_pair, clip_y0, cx
+        or   a
+        sbc  hl, bc                 ;; HL = dx = cx - view_x
+        push hl
+        ld   de, #7
+        add  hl, de
+        ld   de, #167
+        or   a
+        sbc  hl, de
+        pop  hl                     ;; HL = dx
+        jr   c, cd_x_vis$
+        pop  hl
+        pop  hl
+        pop  hl
+        ret
+
+    cd_x_vis$:
+        bit  7, h
+        jr   z, cd_x_nonneg$
+        ;; dx < 0 (-6..-2): clip_x0 = view_x (BC), start_byte = (-dx)>>1, byte_count = 4 - start_byte
+        xor  a
+        sub  l
+        srl  a                      ;; A = start_byte
+        ld   h, a                   ;; H = start_byte
+        ld   a, #4
+        sub  h
+        ld   l, a                   ;; L = byte_count
+        pop  de                     ;; discard cx
+        ld   d, b
+        ld   e, c                   ;; DE = clip_x0 = view_x
+        jr   cd_x_done$
+
+    cd_x_nonneg$:
+        ;; dx >= 0 (0..158): clip_x0 = cx
+        ld   a, l
+        cp   #154
+        jr   c, cd_x_full$
+        ld   a, #160
+        sub  l
+        srl  a
+        ld   l, a                   ;; L = byte_count
+        jr   cd_x_set$
+    cd_x_full$:
+        ld   l, #4
+    cd_x_set$:
+        ld   h, #0                  ;; H = start_byte = 0
+        pop  de                     ;; DE = clip_x0 = cx
+
+    cd_x_done$:
+        ;; stack: row_pair (D=start_row, E=row_count), clip_y0
+        ;; DE = clip_x0, H = start_byte, L = byte_count
+        pop  bc                     ;; BC = clip_y0
+        ex   (sp), hl               ;; (SP) = H:start_byte, L:byte_count; HL = D:start_row, E:row_count
+        push hl                     ;; stack: byte_pair, row_pair
+
+        ;; ring_address(0, clip_x0, clip_y0): A=0, DE=clip_x0, (SP)=clip_y0
+        push bc                     ;; arg y = clip_y0 (callee-cleaned by _ring_address)
+        xor  a
+        call _ring_address          ;; DE = dst
+        ld   (_g_moving_dst), de
+        ld   (0x9E56), de           ;; _s_carry_dst
+
+        ld   a, #0xC7
+        call _bank_set
+        push af                     ;; stack: byte_pair, row_pair, prev_bank
+
+        ld   hl, #0x7E00
+        ld   (_g_moving_background), hl
+
+        pop  af                     ;; A = prev_bank
+        pop  bc                     ;; B = start_row, C = row_count
+        pop  de                     ;; D = start_byte, E = byte_count
+        push af                     ;; stack: prev_bank
+
+        ld   a, e
+        ld   (0x9E52), a            ;; _s_carry_drawn_span
+        ld   (_g_moving_span), a
+        ld   a, c
+        ld   (0x9E53), a            ;; _s_carry_drawn_rows
+        ld   (_g_moving_rows), a
+
+        ld   a, e
+        add  a, a
+        ld   c, a
+        ld   a, #8
+        sub  c
+        ld   (_g_moving_spr_skip), a
+
+        ;; sprite = 0x7A20 + (start_row << 3) + (start_byte << 1)
+        ld   l, b
+        ld   h, #0
+        add  hl, hl
+        add  hl, hl
+        add  hl, hl
+        sla  d
+        ld   e, d
+        ld   d, #0
+        add  hl, de
+        ld   de, #0x7A20
+        add  hl, de
+        ld   (_g_moving_sprite), hl
+
+        call _moving_blit_box
+        pop  af
+        call _bank_restore
+        ld   a, #1
+        ld   (0x9E50), a            ;; _s_carry_drawn[0] = 1
+        ret
+    __endasm;
 }
 
 void carry_abort(void) {
@@ -432,14 +621,7 @@ static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) 
     }
     if (climbing == 1) {
         if (jump || crouch || move != 0) {
-            s_anim_timer++;
-            if (s_anim_timer >= 4) {
-                s_anim_timer = 0;
-                // s_anim_idx pot venir de walk (p. ex. 3): XOR 1 el deixava
-                // a 2/3 i sempre es dibuixava el mateix frame. Forcem 0/1.
-                s_anim_idx = (u8)((s_anim_idx + 1) & 1);
-            }
-            return s_anim_idx ? 5 : 9;
+            return anim_step(4, 2) ? 5 : 9;
         }
         s_anim_timer = 0;
         return 5;
@@ -449,12 +631,7 @@ static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) 
             return (u8)(21 + anim_step(4, 3));
         }
         if (jump || crouch) {
-            s_anim_timer++;
-            if (s_anim_timer >= 4) {
-                s_anim_timer = 0;
-                s_anim_idx ^= 1;
-            }
-            return s_anim_idx ? 24 : 21;
+            return anim_step(4, 2) ? 24 : 21;
         }
         s_anim_timer = 0;
         return s_on_ground ? 25 : 21;
@@ -486,12 +663,7 @@ static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) 
     }
     if (crouch) {
         if (move != 0) {
-            s_anim_timer++;
-            if (s_anim_timer >= 6) {
-                s_anim_timer = 0;
-                s_anim_idx ^= 1;
-            }
-            return s_anim_idx ? 8 : 7;
+            return anim_step(6, 2) ? 8 : 7;
         }
         s_anim_timer = 0;
         return 6;
@@ -545,7 +717,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
             u8 fl;
             s_ps_col = (u16)((next_px + 11) >> 3);
             fl = tile_flags(s_ps_col, s_ps_feet_row);
-            if (!s_ps_crouch) fl |= (tile_flags(s_ps_col, s_ps_head_row) | tile_flags(s_ps_col, s_ps_top_row));
+            if (!s_ps_crouch && s_ps_climbing != 2) fl |= (tile_flags(s_ps_col, s_ps_head_row) | tile_flags(s_ps_col, s_ps_top_row));
             if (fl & 1) {
                 s_vx = 0;
             } else {
@@ -556,7 +728,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
             u8 fl;
             s_ps_col = (u16)((next_px + 4) >> 3);
             fl = tile_flags(s_ps_col, s_ps_feet_row);
-            if (!s_ps_crouch) fl |= (tile_flags(s_ps_col, s_ps_head_row) | tile_flags(s_ps_col, s_ps_top_row));
+            if (!s_ps_crouch && s_ps_climbing != 2) fl |= (tile_flags(s_ps_col, s_ps_head_row) | tile_flags(s_ps_col, s_ps_top_row));
             if (fl & 2) {
                 s_vx = 0;
             } else {
@@ -959,14 +1131,15 @@ static __at(0x9E0D) u8 s_mn_cur;
 static __at(0x9E0E) u8 s_mn_up_key;
 static __at(0x9E0F) u16 s_mn_dsx;
 static __at(0x9E11) u16 s_mn_dsy;
+static __at(0x9E13) u16 s_mn_old_ma;
+static __at(0x9E15) u16 s_mn_new_ma;
 
 static void restore_fg_sprites(void) {
-    sprite_restore_umbrella();
-    sprite_restore_balloon();
     if (s_have_drawn) {
         sprite_restore_player();
         s_have_drawn = 0;
     }
+    sprite_restore_balloon();
     carry_restore();
 }
 
@@ -992,11 +1165,12 @@ static void draw_jake_now(u8 jake_vis) {
     }
 }
 
-static void draw_fg_sprites(u8 jake_vis) {
+static void draw_carry_only(void) {
     carry_draw();
-    draw_jake_now(jake_vis);
     if (s_carry_kind == 2) {
         if (!s_carry_state) {
+            g_spr_y = (u8)s_mn_dsy;
+            g_spr_x = (u8)s_mn_dsx;
             sprite_blit_balloon();
         } else {
             i16 bx = (i16)(( (s_carry_x >> 3) - (i16)(g_cam_x4 * 4) ) >> 1);
@@ -1005,16 +1179,77 @@ static void draw_fg_sprites(u8 jake_vis) {
                 g_spr_x = (u8)bx;
                 g_spr_y = (u8)by;
                 sprite_blit_balloon();
-                g_spr_x = (u8)s_mn_dsx;
-                g_spr_y = (u8)s_mn_dsy;
             } else {
                 s_carry_kind = 0;
                 s_carry_state = 0;
             }
         }
     } else if (s_carry_kind == 8) {
+        g_spr_y = (u8)s_mn_dsy;
+        g_spr_x = (u8)s_mn_dsx;
         sprite_blit_umbrella();
     }
+}
+
+static u8 restore_fg_swap(void) {
+    g_vram_start = s_mn_old_ma;
+    restore_fg_sprites();
+    g_vram_start = s_mn_new_ma;
+    return 1;
+}
+
+static void moving_restore_swap(u8 force) {
+    g_vram_start = s_mn_old_ma;
+    moving_restore(0, force);
+    g_vram_start = s_mn_new_ma;
+}
+
+static void world_restore_swap(u8 mode) {
+    g_vram_start = s_mn_old_ma;
+    restore_world_scroll(mode);
+    g_vram_start = s_mn_new_ma;
+}
+
+static void render_rows_edge_dy(void) {
+    if (s_mn_page_dy) {
+        render_rows_edge((u8)(s_mn_page_dy < 0 ? -s_mn_page_dy : s_mn_page_dy),
+                         (u8)(s_mn_page_dy > 0));
+    }
+}
+
+static void draw_fg_sprites(u8 jake_vis) {
+    draw_carry_only();
+    draw_jake_now(jake_vis);
+}
+
+static void fg_atomic_jake(u8 jake_vis) {
+    if (s_have_drawn) {
+        g_vram_start = s_mn_old_ma;
+        sprite_restore_player();
+        s_have_drawn = 0;
+        g_vram_start = s_mn_new_ma;
+    }
+    draw_jake_now(jake_vis);
+}
+
+static void fg_restore_carry(void) {
+    g_vram_start = s_mn_old_ma;
+    sprite_restore_balloon();
+    carry_restore();
+    g_vram_start = s_mn_new_ma;
+}
+
+static void draw_fg_atomic(u8 jake_vis) {
+    u8 up = (u8)(s_mn_page_dy < 0 || (!s_mn_page_dy && (u8)s_mn_dsy < s_prev_jdsy));
+    if (s_carry_kind >= 2 && (u8)s_mn_dsy < 32) {
+        restore_fg_swap();
+        draw_fg_sprites(jake_vis);
+        return;
+    }
+    if (up) fg_restore_carry();
+    fg_atomic_jake(jake_vis);
+    if (!up) fg_restore_carry();
+    draw_carry_only();
 }
 
 static void pre_render_next_column(void) {
@@ -1033,22 +1268,26 @@ static void pre_render_next_column(void) {
     s_col_cache_valid = 1;
 }
 
+static void sync_backbuffer_now(void) {
+    sync_backbuffer(s_mn_page_dx, g_cam_x4, g_cam_row);
+}
+
 static void render_frame(void) {
-    u16 old_ma = g_vram_start;
-    u16 new_ma = camera_ma(g_cam_x4, g_cam_row);
     u8 do_scroll = (u8)(s_mn_page_dx != 0 || s_mn_page_dy != 0);
-    // En scroll horitzontal pur, els restores d'enemics es poden fer DESPRES
-    // del Jake: aixi el draw del Jake comenca abans i cobreix Y~67. El preu
-    // es que els enemics de les files altes es veuen un camp tard.
-    u8 defer_enemy = (u8)(s_mn_page_dx != 0 && s_mn_page_dy == 0);
-    u8 wmode = (u8)((s_mn_page_dy || s_rep_n) ? 0 : (do_scroll ? 1 : 2));
+    u8 wmode = (u8)(s_rep_n ? 0 : (s_mn_page_dx ? 1 : 2));
     u8 jake_vis = (u8)(s_climb_prev != 3 && (s_dying_timer || !(s_invuln_timer & 2)));
     u8 elev_near = 0;
-    u8 keep_jake, early_jake, mid_jake, fg_restored = 0;
+    u8 en_near_jake = (u8)(g_jake_en_near & 1);
+    u8 en_near_elev = (u8)(g_jake_en_near & 2);
+    u8 keep_jake, early_jake, conv_jake, early_elev, no_ov;
+    u8 fg_restored = 0, elev_done = 0;
+
+    s_mn_old_ma = g_vram_start;
+    s_mn_new_ma = camera_ma(g_cam_x4, g_cam_row);
 
     // 0. Latch R12/R13 IMMEDIATAMENT a l'inici del VBLANK (abans de la línia 312 / VCC=0)
     if (do_scroll) {
-        crtc_set_display_start((u16)(0x3000 + new_ma));
+        crtc_set_display_start((u16)(0x3000 + s_mn_new_ma));
     }
 
     if (!s_in_room) {
@@ -1064,152 +1303,114 @@ static void render_frame(void) {
         }
     }
 
+    no_ov = (u8)(!en_near_jake && !s_carry_state && !(elev_near && en_near_elev));
+    conv_jake = s_page_conveyor_phase[1];
+    s_page_conveyor_phase[1] = 0;
+    keep_jake = (u8)(!do_scroll && no_ov && !elev_near && !s_rep_n && s_have_drawn && jake_vis &&
+                     !s_invuln_timer && !g_grate_enable && !conv_jake &&
+                     s_carry_kind == s_prev_jcarry &&
+                     (u8)s_mn_dsx == s_prev_jdsx && (u8)s_mn_dsy == s_prev_jdsy &&
+                     s_mn_cur == s_prev_jcur && g_face == s_prev_jface &&
+                     g_grate_enable == s_prev_jgrate);
+
+    early_jake = (u8)(!keep_jake && no_ov && !s_rep_n && !elev_near && !conv_jake &&
+                      !g_grate_enable && (u8)s_mn_dsy < 96 &&
+                      (!s_mn_page_dx || ((u8)(s_prev_jdsx - 4) <= 64 && (u8)((u8)s_mn_dsx - 4) <= 64)));
+
+    early_elev = (u8)(!s_in_room && !s_rep_n && !en_near_elev && !s_mn_page_dy &&
+                      (early_jake || !elev_near));
+
+    // 1. Restauracions d'objectes que toquen la vora ABANS de render_rows_edge / sync_backbuffer
+    //    (al ring circular de 2KB, dibuixar noves files/columnes abans de restaurar provoca
+    //    que el restore posterior trepitgi el cel o tiles nous amb fons antic).
     {
-        u8 no_ov = (u8)(!g_jake_en_near && !elev_near && !s_carry_state);
-        u8 conv_jake = (u8)(g_belt_push && s_page_conveyor_phase[0] != s_conveyor_phase);
-        u8 top_safe = (u8)(s_carry_kind == 2 ? 44 : (s_carry_kind ? 32 : 16));
-        u8 dy_ok = (u8)(!s_mn_page_dy || (s_mn_page_dy < 0
-            ? ((u8)s_prev_jdsy >= top_safe && (u8)s_mn_dsy >= top_safe)
-            : (s_mn_page_dy == 1
-                ? ((u8)s_prev_jdsy <= 122 && (u8)s_mn_dsy <= 122)
-                : ((u8)s_prev_jdsy < 114 && (u8)s_mn_dsy < 114))));
-        keep_jake = (u8)(!do_scroll && no_ov && !s_rep_n && s_have_drawn && jake_vis &&
-                         !s_invuln_timer && !g_grate_enable && !conv_jake &&
-                         s_carry_kind == s_prev_jcarry &&
-                         (u8)s_mn_dsx == s_prev_jdsx && (u8)s_mn_dsy == s_prev_jdsy &&
-                         s_mn_cur == s_prev_jcur && g_face == s_prev_jface &&
-                         g_grate_enable == s_prev_jgrate);
-
-        early_jake = (u8)(!keep_jake && no_ov && !s_rep_n &&
-                          !g_grate_enable && !conv_jake &&
-                          (!s_mn_page_dx || ((u8)(s_prev_jdsx - 4) <= 64 && (u8)((u8)s_mn_dsx - 4) <= 64)) &&
-                          dy_ok);
-
-        mid_jake = (u8)(!keep_jake && !early_jake && no_ov);
-    }
-
-    // 1. Scroll vertical:
-    //    - dy < 0 (amunt): netejar PRIMER les files superiors abans d'early_jake.
-    //    - dy > 0 (avall): pintar HUD nou (rows 20..21), early_jake i rows 19..18
-    //      ABANS dels restores, perquè rows 18..21 són fora del playfield antic
-    //      i el feix arriba a la fila 18 a 16 ms.
-    g_vram_start = new_ma;
-    if (!s_in_room && s_mn_page_dy < 0) {
-        render_rows_edge((u8)(-s_mn_page_dy), 0);
-    } else if (s_mn_page_dy > 0) {
-        hud_render(1, 1);
-        if (early_jake) {
+        u8 world_done = 0;
+        u8 en_restored = s_rep_n;
+        if (early_jake && !s_in_room) {
+            g_vram_start = s_mn_new_ma;
+            render_rows_edge_dy();
+            if (s_mn_page_dx) {
+                g_vram_start = s_mn_old_ma;
+                enemy_restore(2);
+                g_vram_start = s_mn_new_ma;
+                sync_backbuffer_now();
+            }
             dbg_border(0x52);
-            g_vram_start = old_ma;
-            restore_fg_sprites();
-            g_vram_start = new_ma;
-            draw_fg_sprites(jake_vis);
+            draw_fg_atomic(jake_vis);
             fg_restored = 1;
+            keep_jake = 1;
+            if (do_scroll) {
+                world_restore_swap(2);
+                world_done = 1;
+            } else if (early_elev) {
+                moving_restore_swap(0);
+            }
+        } else if (do_scroll && !s_in_room) {
+            if (!keep_jake && (s_rep_n || s_carry_state ||
+                (elev_near && !early_elev) ||
+                (s_mn_page_dx && ((u8)s_prev_jdsx < 8 || (u8)s_prev_jdsx >= 68)))) {
+                fg_restored = restore_fg_swap();
+            }
+            world_restore_swap(wmode);
+            world_done = 1;
+            render_rows_edge_dy();
+            if (s_mn_page_dx) sync_backbuffer_now();
+        } else if (early_elev) {
+            moving_restore_swap((u8)(elev_near || (s_carry_kind && s_carry_state)));
+        } else {
+            g_vram_start = s_mn_new_ma;
         }
-        if (!s_in_room) render_rows_edge((u8)s_mn_page_dy, 1);
-    }
 
-    // 2. Restauracions a coordenades antigues abans de sync_backbuffer
-    if (!keep_jake && !fg_restored &&
-        ((early_jake && s_mn_page_dy < 0) ||
-         (!early_jake &&
-          (mid_jake || s_mn_page_dy || s_rep_n || elev_near || s_carry_state ||
-           (do_scroll && ((u8)s_prev_jdsx < 8 || (u8)s_prev_jdsx >= 68)))))) {
-        dbg_border(0x55);
-        g_vram_start = old_ma;
-        restore_fg_sprites();
-        g_vram_start = new_ma;
-        fg_restored = 1;
-    }
-
-    if (!defer_enemy && !s_in_room) {
-        restore_world_scroll(wmode);
-    }
-
-    // 3. Scroll vertical amunt: mantenim l'ordre original (HUD abans de
-    //    sync/early_jake) perquè el HUD no es retrasi a la part baixa.
-    if (s_mn_page_dy < 0) {
-        hud_render(1, 1);
-    }
-
-    // 4. Sync de la columna nova ABANS del HUD en scroll horitzontal pur.
-    if (s_mn_page_dx) {
-        dbg_border(0x4C);
-        sync_backbuffer(s_mn_page_dx, g_cam_x4, g_cam_row);
-    }
-
-    // 5. early_jake: restore (old_ma) i draw (new_ma) abans del HUD,
-    //    perquè el draw acabi abans que el feix arribi al sprite.
-    if (early_jake && s_mn_page_dy <= 0) {
-        dbg_border(0x52);
-        if (!fg_restored) {
-            g_vram_start = old_ma;
-            restore_fg_sprites();
-            g_vram_start = new_ma;
+        // 2. Restauracions restants i tiles animats (sense esborrar enemics per endavant!)
+        if (!keep_jake && !fg_restored &&
+            (conv_jake || s_rep_n || (!early_elev && elev_near) || s_carry_state)) {
+            dbg_border(0x55);
+            fg_restored = restore_fg_swap();
         }
-        draw_fg_sprites(jake_vis);
-        fg_restored = 1;
-    }
-
-    // 6. HUD després del Jake només en scroll horitzontal pur: amb la
-    //    còpia ràpida de columna el draw acaba prou aviat perquè el HUD
-    //    (80 línies) acabi abans de la fila 20 (~160).
-    if (do_scroll && s_mn_page_dy == 0) {
-        hud_render(0, 1);
-    }
-
-    // Restores d'enemics/movers diferits (nomes scroll horitzontal pur).
-    // Han d'anar abans dels enemy_draw de sota.
-    if (defer_enemy && !s_in_room) {
-        restore_world_scroll(wmode);
-    }
-
-    if (!do_scroll && !mid_jake) {
-        hud_render(0, 0);
-    }
-
-    if (s_rep_n) world_flush_repaints();
-
-    // 5. Cintes/reixa/globus, mid_jake i HUD (si mid_jake estava pendent)
-    dbg_border(0x4E);
-    if (!s_in_room) {
-        bc_a = 0;
-        if (s_page_conveyor_phase[0] != s_conveyor_phase || s_carry_kind == 2 || g_grate_enable) {
+        if (!s_in_room && !world_done) {
+            restore_world_scroll((u8)(wmode | (early_elev ? 0x80 : 0)));
+        }
+        if (s_rep_n) world_flush_repaints();
+        dbg_border(0x4E);
+        if (!s_in_room && (s_page_conveyor_phase[0] != s_conveyor_phase || g_grate_enable)) {
+            bc_a = 0;
             moving_draw_conveyor_tiles();
         }
-    }
-    if (mid_jake) {
-        dbg_border(0x52);
-        draw_fg_sprites(jake_vis);
-        if (!do_scroll) hud_render(0, 0);
-    }
-
-    // 6. Dibuix d'ascensors, enemics i Jake solapat (late_jake)
-    if (!s_in_room) {
-        bc_a = 0;
-        moving_draw(0, g_cam_x4, g_cam_row);
-        if (!keep_jake && !fg_restored) {
-            g_vram_start = old_ma;
-            restore_fg_sprites();
-            g_vram_start = new_ma;
-            fg_restored = 1;
+        if (early_elev) {
+            draw_movers_now();
+            elev_done = 1;
         }
-        if (!(s_mn_page_dy || s_rep_n)) enemy_restore(0);
-        enemy_draw(0);
-    } else if (!keep_jake && !fg_restored) {
-        g_vram_start = old_ma;
-        restore_fg_sprites();
-        g_vram_start = new_ma;
-        fg_restored = 1;
+        if (!keep_jake && fg_restored && no_ov && (elev_done || !elev_near)) {
+            dbg_border(0x52);
+            draw_fg_sprites(jake_vis);
+            keep_jake = 1;
+        }
+
+        // 6. Dibuix d'enemics (atomic restore->blit) i Jake a meitat inferior / solapat
+        if (!keep_jake && !fg_restored && !no_ov) {
+            fg_restored = restore_fg_swap();
+        }
+        if (!s_in_room) {
+            if (!en_restored) enemy_restore(0);
+            enemy_draw(0);
+            if (!elev_done) draw_movers_now();
+        }
     }
 
-    if (!keep_jake && !early_jake && !mid_jake) {
+    if (!keep_jake) {
         dbg_border(0x52);
-        draw_fg_sprites(jake_vis);
+        if (!fg_restored && no_ov) {
+            draw_fg_atomic(jake_vis);
+        } else {
+            if (!fg_restored) restore_fg_swap();
+            draw_fg_sprites(jake_vis);
+        }
     } else {
         g_spr_y = (u8)s_mn_dsy;
         g_spr_x = (u8)s_mn_dsx;
     }
+
+    hud_render(0, 0);
 
     if (s_dying_timer && g_lives_count <= 1) {
         draw_gameover_banner();
@@ -1282,9 +1483,11 @@ void main(void) {
     enemy_init();
     hud_init();
     repaint_screen();
-    moving_draw(0, g_cam_x4, g_cam_row);
+    draw_movers_now();
     cpc_wait_vsync_start();
     crtc_set_display_start((u16)(0x3000 + g_vram_start));
+    while (g_irq_phase != 5) {}
+    g_split_en = 1;
 
     s_vx = 0; s_vy = 0;
     s_on_ground = 1; g_face = 0;
@@ -1370,13 +1573,30 @@ void main(void) {
             g_jake_en_near = 0;
         }
 
-        // 1:1 DOS Col·lisió Jake <-> Enemics / Projectils (level.c:1583-1658)
+        // 1:1 DOS Col·lisió Jake <-> Enemics / Projectils / Premses (level.c:1583-1658)
         if (s_invuln_timer) {
             s_invuln_timer--;
         } else if (!s_in_room && !s_dying_timer) {
+            u8 hit = 0;
             s_ps_px = (i16)(s_px8 >> 3);
             s_ps_py = (i16)(s_py8 >> 3);
-            if (enemy_check_player_hit(s_ps_px, s_ps_py, s_mn_crouch)) {
+            if ((g_jake_en_near & 1) && enemy_check_player_hit(s_ps_px, s_ps_py, s_mn_crouch)) {
+                hit = 1;
+            } else if (s_lv.level_id == 1) {
+                const MovingElevator* pe = &g_mag_elevators[MAG_ELEVATOR_COUNT];
+                i16 jtop = (i16)(s_ps_py + ((s_mn_crouch || s_crouch_hold || s_climb_prev == 2) ? 16 : 4));
+                i16 jbot = (i16)(s_ps_py + PH);
+                u8 pk;
+                for (pk = s_lv.elev_count; pk; pk--, pe++) {
+                    if ((u16)(pe->center_x - s_ps_px + 2) < 21 &&
+                        jbot >= (i16)(pe->y - PRESS_OBJECT_H) &&
+                        pe->y >= jtop) {
+                        hit = 1;
+                        break;
+                    }
+                }
+            }
+            if (hit) {
                 if (g_hearts_count > 0) g_hearts_count--;
                 s_invuln_timer = 75; // 1:1 DOS blinking_counter = 75
                 if (s_carry_kind) carry_abort();
@@ -1542,7 +1762,7 @@ void main(void) {
 
         dbg_border(0x54);
         while ((u8)(g_ticks - s_mn_last_ticks) < 10) {}
-        while (g_irq_phase < 5) {}
+        while (g_irq_phase != 3) {}
         s_mn_last_ticks = g_ticks;
         render_frame();
 

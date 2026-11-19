@@ -4,6 +4,19 @@ Aquest fitxer recull el detall cronològic de les sessions i fites del projecte.
 
 ---
 
+### 19/11/2026 - Estabilitzacio completa d'enemics i Jake (0 parpelleig, 0 rastre)
+
+- **ISR de musica sincronitzada** (`engine/isr.s`): eliminat `_mus_div` dessincronitzat (que executava `_mus_play` a `g_irq_phase == 1`, congelant el blit ~2,5 ms a mitja pantalla) i fixat a `g_irq_phase == 2` (`INT2`, 50 Hz exactes).
+- **Culling d'animacio de tiles** (`engine/tile_blit.s` `_anim_tick_c5`, `src/moving_bank.c`): `_s_conveyor_phase` nomes s'incrementa si el span animat es dins les 20 files visibles, i `_s_page_conveyor_phase[1]` (`conv_jake`) nomes s'activa si el span es dins el rang vertical d'en Jake + objecte portat.
+- **Enemics atomics** (`src/enemy.c` `en2_restore`): el scroll vertical d'1-2 files i portar caixa sense enemic proper ja no forcen `full = 1`; amb `g_cam_row == s_prev_cr` els enemics s'actualitzen de forma atomica via `s_slot_pend`.
+- **Desacoblament vertical i dibuix atomic de Jake + carry** (`engine/sprite.s`, `src/main.c`):
+  - Eliminat `inc a` de `carry_calc_first` (`_sprite_blit_umbrella` amb `sub #32`) i ajustat `carry_draw` de caixa portada a `de = #-16` perque globus, paraigues i caixa quedin 100% disjunts per sobre d'en Jake (`g_spr_y - H .. g_spr_y - 1`).
+  - Eliminada la crida duplicada a `sprite_restore_umbrella()`, `wmode` ajustat per evitar esborrats massius en scroll vertical, i ampliat `early_jake` a `(u8)s_mn_dsy < 96`.
+  - Nou `draw_fg_atomic()` (`fg_atomic_jake` + `fg_restore_carry` + `draw_carry_only`) que restaura i dibuixa Jake com a parell atomic immediat i adapta l'ordre de restauracio del carry quan en Jake puja en VRAM (`s_mn_page_dy < 0 || (!s_mn_page_dy && (u8)s_mn_dsy < s_prev_jdsy)`), evitant capturar pixels vells al fons d'en Jake.
+- **Verificacio (`CPCSyntaxError`)**: `tools/build.py` (`GAME.BIN = 14901 B`), `tools/smoke_test.py --dsk-only` OK, i captura frame a frame a `isr_sp_ph1` (`0x0314`) durant ascens amb globus: `0/20` frames dolents (`j_up=37..72`, `j_dn=66..96`, `bln=84..169`, `trail=0`).
+
+---
+
 ### 18/11/2026 - Dibuix: cache de columna estable (single buffer)
 
 - **Cache lookahead de columna** a `0xBC00`/`0xBD00` (buffer FDC lliure en joc, 160 B per a 10 files) i estat a `0x9E58..0x9E5D`. El pre-render omple la columna del frame seguent i el sync la copia a VRAM.

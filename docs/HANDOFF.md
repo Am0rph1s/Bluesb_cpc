@@ -3,7 +3,7 @@
 > **Document de referència unificat** · **Branca**: `fix-c1-l3-unlock` · **Actualitzat**: 12/11/2026
 > **Repo**: `https://github.com/Am0rph1s/Bluesb_cpc`
 >
-> **Nota d'estat (18/11/2026)**: branca `draw-opt-enemy-late` (`3d51ca0`): single buffer estable a **25 fps**, cache de columna a `0xBC00`/`0xBD00`, HUD a **168**, Jake alt `dsy=58` net. `_CODE 0x0100..0x38F9`, `_DATA 0x3A00..0x3B29`. Vegeu [`SINGLE_BUFFER.md`](SINGLE_BUFFER.md) seccions 3.3/4 i [`MEMORY_MAP.md`](MEMORY_MAP.md).
+> **Nota d'estat (19/11/2026)**: branca `draw-opt-enemy-late`: single buffer estable a **25 fps**, musica sincronitzada a `INT2`, enemics i Jake (planta baixa, segona planta, caixa i ascens amb globus) verificats sense parpelleig ni rastre (`0/20` frames dolents a `isr_sp_ph1`). `GAME.BIN = 14901 B`. Vegeu [`SINGLE_BUFFER.md`](SINGLE_BUFFER.md) i [`MEMORY_MAP.md`](MEMORY_MAP.md).
 > **Target**: Amstrad CPC 6128 (128 KB RAM) — Z80 @ 4 MHz, Mode 0 (16 colors), SDCC 4.5.0 + sdasz80, build Python 3, disc únic DSK de 180 KB.
 > Per al detall cronològic de sessions anteriors, consulta [`docs/CHANGELOG.md`](CHANGELOG.md).
 

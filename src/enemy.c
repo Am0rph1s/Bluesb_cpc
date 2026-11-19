@@ -26,9 +26,6 @@
 #include "level_params.h"
 #include "bank.h"
 
-extern void render_tile_world(u8 tile_index, u16 col, u16 row,
-                              u16 cam_x4, u16 cam_row);
-
 #define ENEMY_VX 24 // 3 px/frame @SUB8 (DOS 40>>3=5 DOSpx/f @30fps = 150 px/s; 3*2*25 = 150)
 #define ENEMY_SUB 8
 #define ENEMY_GRAV 24
@@ -85,34 +82,6 @@ static Projectile s_proj;
 static u8 s_proj_bg[1][56];
 
 #define SLOT_NONE 0x0F
-
-#if LEVEL_ID == 2
-// L3: els tiles de barana/plataforma son foreground (DOS byte >= 0x80).
-// El runtime nomes te el tile CK2 (blau + barana); falta la base CK1 (terra).
-// Abans de dibuixar l'enemic, pintem la base sota els peus. Son els compact
-// IDs de L3: 0x9A->0x1A, 0x82->0x02, 0x84->0x04.
-static u8 en2_l3_base_tile(u8 t) {
-    if (t == 144) return 26;
-    if (t == 121) return 2;
-    if (t == 123) return 4;
-    return 0;
-}
-
-static void en2_l3_draw_base(i16 x, i16 y8) {
-    u16 col = (u16)((x + 8) >> 3);
-    u16 row = (u16)(((y8 >> 3) + ENEMY_HT) >> 4);
-    u8 prev, t, b;
-
-    if (col >= s_lv.map_w || row >= s_lv.map_h) return;
-    prev = bank_set(0xC5);
-    t = ((const u8*)0x4000)[(u16)(row * 128) + col];
-    bank_restore(prev);
-    b = en2_l3_base_tile(t);
-    if (b) {
-        render_tile_world(b, col, row, g_cam_x4, g_cam_row);
-    }
-}
-#endif
 
 // Pool de fons a BANC C6 0x7A00 (6x256 = 1536 B, 0x7A00..0x7FFF).
 #define BG_BASE ((u16)0x7A00)
@@ -202,7 +171,6 @@ static const u8* en2_cell(u8 cell, u8 flip) {
 
 static u16 s_prev_cx;
 static u16 s_prev_cr;
-static u8  s_prev_conv;
 
 void en2_init(void) {
     u8 i;
@@ -239,7 +207,6 @@ void en2_init(void) {
     s_cache_next = 0;
     g_enemy_decomp_cnt = 0;
     s_prev_cx = 0xFFFF;
-    s_prev_conv = 0xFF;
     for (i = 0; i < ENEMY_N; i++, e++, sp++) {
         e->x = sp->x;
         e->y8 = sp->y8;
@@ -327,6 +294,26 @@ void en2_update_vis(void) {
                 e->dead = 2;
             }
         }
+        if (e->slot_bits < BG_SLOTS &&
+            (u16)(e->x - g_en_jake_x + 18) < 37 &&
+            (u16)((i16)(e->y8 >> 3) - g_en_jake_y + 44) < 80) {
+            g_jake_en_near |= 1;
+        }
+#if (LEVEL_ELEVATOR_COUNT + LEVEL_PRESS_COUNT + LEVEL_SCAFFOLD_COUNT) > 0
+        if (e->slot_bits < BG_SLOTS) {
+            const MovingElevator* ev = g_mag_elevators;
+            u8 m;
+            i16 ey = (i16)(e->y8 >> 3);
+            for (m = MAG_MOVER_COUNT; m; m--, ev++) {
+                if (ev->drawn[0] &&
+                    (u16)(e->x - ev->center_x + 28) < 56 &&
+                    (u16)(ey - ev->y + 44) < 64) {
+                    g_jake_en_near |= 2;
+                    break;
+                }
+            }
+        }
+#endif
         return;
     }
 
@@ -490,10 +477,23 @@ void en2_update_vis(void) {
             }
         }
 
-    if ((u16)(e->x - g_en_jake_x + 22) < 44 &&
-        (u16)(g_en_y - g_en_jake_y + 58) < 104) {
-        g_jake_en_near = 1;
+    if ((u16)(e->x - g_en_jake_x + 18) < 37 &&
+        (u16)(g_en_y - g_en_jake_y + 44) < 80) {
+        g_jake_en_near |= 1;
     }
+#if (LEVEL_ELEVATOR_COUNT + LEVEL_PRESS_COUNT + LEVEL_SCAFFOLD_COUNT) > 0
+    if ((u16)(e->x - g_en_view_x + 20) < 200) {
+        const MovingElevator* ev = g_mag_elevators;
+        u8 m;
+        for (m = MAG_MOVER_COUNT; m; m--, ev++) {
+            if ((u16)(e->x - ev->center_x + 28) < 56 &&
+                (u16)(g_en_y - ev->y + 44) < 64) {
+                g_jake_en_near |= 2;
+                break;
+            }
+        }
+    }
+#endif
     e->tick++;
 }
 
@@ -579,21 +579,53 @@ void en2_update(void) {
             }
         }
     }
+#if (LEVEL_ELEVATOR_COUNT + LEVEL_PRESS_COUNT + LEVEL_SCAFFOLD_COUNT) > 0
+    if (s_proj.kind || s_proj.drawn_row_count[0]) {
+        const MovingElevator* ev = g_mag_elevators;
+        u8 m;
+        i16 py = (i16)(s_proj.y8 >> 3);
+        for (m = MAG_MOVER_COUNT; m; m--, ev++) {
+            if ((u16)(s_proj.x - ev->center_x + 24) < 48 &&
+                (u16)(py - ev->y + 40) < 64) {
+                g_jake_en_near |= 2;
+                break;
+            }
+        }
+    }
+#endif
 }
 
 // Reserva slot de fons per (enemic, pagina): existent o lliure; -1 si ple.
-static i8 en2_slot(i8 idx) {
-    u8 k;
-    i8 s = (i8)s_enemies[(u8)idx].slot_bits;
-    if (s >= 0) return s;
-    for (k = 0; k < BG_PAGESLOTS; k++) {
-        if (s_bg_owner[k] < 0) {
-            s_bg_owner[k] = idx;
-            s_enemies[(u8)idx].slot_bits = (u8)k;
-            return (i8)k;
-        }
-    }
-    return -1;
+static i8 en2_slot(i8 idx) __naked {
+    (void)idx;
+    __asm
+        ;; A = idx (__sdcccall(1)), _s_ed_e = &s_enemies[idx]
+        ld   c, a                   ;; C = idx
+        ld   hl, (_s_ed_e)
+        ld   de, #11                ;; offsetof(Enemy, slot_bits)
+        add  hl, de
+        ld   a, (hl)
+        bit  7, a
+        ret  z                      ;; ja te slot (0..2)
+        ex   de, hl                 ;; DE = &e->slot_bits
+        ld   hl, #_s_bg_owner
+        ld   b, #0
+    1$:
+        bit  7, (hl)
+        jr   nz, 2$
+        inc  hl
+        inc  b
+        ld   a, b
+        cp   #3                     ;; BG_PAGESLOTS = 3
+        jr   c, 1$
+        ld   a, #0xFF
+        ret
+    2$:
+        ld   (hl), c
+        ld   a, b
+        ld   (de), a
+        ret
+    __endasm;
 }
 
 static Enemy* s_slot_ptr[BG_PAGESLOTS];
@@ -613,25 +645,77 @@ static u8 en2_frame_key(const Enemy* e, const Spawn* sp) {
     return (u8)((cell << 1) | (e->dir < 0 ? 1 : 0));
 }
 
-static u8 en2_ov(u8 a, u8 b) {
-    if (s_bg_owner[a] < 0 || s_bg_owner[b] < 0) return 0;
-    return (u8)((u16)(s_slot_ex[a] - s_slot_ex[b] + 23) < 47 &&
-                (u16)(s_slot_ey8[a] - s_slot_ey8[b] + (39 << 3)) < (79 << 3));
+static u8 en2_ov_ex(i16 x, i16 y8, u8 b) {
+    return (u8)((u16)(x - s_slot_ex[b] + 34) < 69 &&
+                (u16)(y8 - s_slot_ey8[b] + (44 << 3)) < (89 << 3));
 }
 
-static void en2_restore_slot(u8 k) {
-    g_moving_dst = s_slot_dst[k];
-    g_moving_background = BG_SLOT(k);
-    g_moving_span = s_slot_span[k];
-    g_moving_rows = s_slot_rows[k];
-    moving_restore_box();
-    s_slot_ptr[k]->slot_bits = 0xFF;
-    s_bg_owner[k] = -1;
+static u8 en2_ov(u8 a, u8 b) {
+    if (s_bg_owner[a] < 0 || s_bg_owner[b] < 0) return 0;
+    return en2_ov_ex(s_slot_ex[a], s_slot_ey8[a], b);
+}
+
+static void en2_restore_slot(u8 k) __naked {
+    (void)k;
+    __asm
+        ;; A = k (0..2) (__sdcccall(1))
+        ld   e, a
+        ld   d, #0
+        push de
+        ld   hl, #_s_slot_dst
+        add  hl, de
+        add  hl, de
+        ld   c, (hl)
+        inc  hl
+        ld   b, (hl)
+        ld   (_g_moving_dst), bc
+        add  a, #0x7A           ;; BG_BASE = 0x7A00 -> hi = 0x7A + k
+        ld   h, a
+        ld   l, #0
+        ld   (_g_moving_background), hl
+        ld   hl, #_s_slot_span
+        add  hl, de
+        ld   a, (hl)
+        ld   (_g_moving_span), a
+        ld   hl, #_s_slot_rows
+        add  hl, de
+        ld   a, (hl)
+        ld   (_g_moving_rows), a
+        call _moving_restore_box
+        pop  de
+        ld   hl, #_s_bg_owner
+        add  hl, de
+        ld   (hl), #0xFF
+        ld   hl, #_s_slot_ptr
+        add  hl, de
+        add  hl, de
+        ld   a, (hl)
+        inc  hl
+        ld   h, (hl)
+        ld   l, a
+        ld   de, #11            ;; offsetof(Enemy, slot_bits)
+        add  hl, de
+        ld   (hl), #0xFF
+        ret
+    __endasm;
 }
 
 void en2_restore(void) {
     u8 k, b, full, keep_mask, any_dirty, was_proj, ov_mask;
     if (bc_a == 1) return;
+
+    // 1. Restaura projectil (ordre LIFO: ultim dibuixat, primer restaurat).
+    //    Tambe s'executa a bc_a==2 (abans de sync_backbuffer) per evitar que
+    //    un projectil a la vora trepitgi la columna nova en fer scroll horitzontal.
+    was_proj = s_proj.drawn_row_count[0];
+    if (was_proj) {
+        g_moving_dst = s_proj.drawn_dst[0];
+        g_moving_background = (u16)s_proj_bg[0];
+        g_moving_span = s_proj.drawn_byte_count[0];
+        g_moving_rows = was_proj;
+        moving_restore_box();
+        s_proj.drawn_row_count[0] = 0;
+    }
 
     if (bc_a == 2) {
         i16 vx = (i16)((g_cam_x4 << 2) + 8);
@@ -645,29 +729,28 @@ void en2_restore(void) {
 
     s_slot_pend = 0;
 
-    // 1. Restaura projectil (ordre LIFO: ultim dibuixat, primer restaurat):
-    was_proj = s_proj.drawn_row_count[0];
-    if (was_proj) {
-        g_moving_dst = s_proj.drawn_dst[0];
-        g_moving_background = (u16)s_proj_bg[0];
-        g_moving_span = s_proj.drawn_byte_count[0];
-        g_moving_rows = was_proj;
-        moving_restore_box();
-        s_proj.drawn_row_count[0] = 0;
-    }
-
     keep_mask = 0;
     any_dirty = 0;
     ov_mask = 0;
-    full = (u8)(was_proj || (u16)(g_cam_x4 - s_prev_cx + 1) > 2 ||
-                g_cam_row != s_prev_cr ||
-                s_rep_n || s_conveyor_phase != s_prev_conv ||
-                s_carry_drawn[0] || s_carry_state);
+    full = (u8)((u16)(g_cam_x4 - s_prev_cx + 1) > 2 ||
+                (u16)(g_cam_row - s_prev_cr + 2) > 4 ||
+                s_rep_n ||
+                s_carry_state || (s_carry_drawn[0] && (g_jake_en_near & 1)));
 #if (LEVEL_ELEVATOR_COUNT + LEVEL_PRESS_COUNT + LEVEL_SCAFFOLD_COUNT) > 0
     if (!full) {
         MovingElevator* ev = g_mag_elevators;
         for (k = MAG_MOVER_COUNT; k; k--, ev++) {
-            if (ev->drawn[0] && ev->delta_y) { full = 1; break; }
+            if (ev->drawn[0] && ev->delta_y) {
+                u8 s;
+                for (s = 0; s < BG_SLOTS; s++) {
+                    if (s_bg_owner[s] >= 0 &&
+                        (u16)(s_slot_ex[s] - ev->center_x + 24) < 48) {
+                        full = 1;
+                        break;
+                    }
+                }
+                if (full) break;
+            }
         }
     }
 #endif
@@ -677,7 +760,8 @@ void en2_restore(void) {
         for (k = 0, b = 1; k < 3; k++, b += b) {
             if (s_bg_owner[k] >= 0) {
                 const Enemy* e = s_slot_ptr[k];
-                if (!(hscroll && (u16)(s_slot_ex[k] - vx4) >= 137) &&
+                if (g_cam_row == s_prev_cr &&
+                    !(hscroll && (u16)(s_slot_ex[k] - vx4) >= 137) &&
                     e->dead != 2 &&
                     e->x == s_slot_ex[k] && e->y8 == s_slot_ey8[k] &&
                     en2_frame_key(e, s_slot_sp[k]) == s_slot_key[k]) {
@@ -713,13 +797,145 @@ static i16    s_ed_min_y8;
 extern u8 ram2_en2_clip(i16 x, i16 y);
 #define en2_clip(x, y, w, h) (g_en_byte_count = (w), g_en_row_count = (h), ram2_en2_clip((x), (y)))
 
+static void en2_blit_slot(u8 s, const u8* frame) __naked {
+    (void)s; (void)frame;
+    __asm
+        ;; __sdcccall(1): A = s (0..2), DE = frame
+        push af                     ;; (SP) = s
+        push de                     ;; (SP) = frame
+
+        ;; ring_address(0, g_en_clip_x0, g_en_clip_y0): A=0, DE=x0, (SP)=y0
+        ld   hl, (_g_en_clip_y0)
+        push hl
+        ld   de, (_g_en_clip_x0)
+        xor  a
+        call _ring_address          ;; DE = dst
+        ld   (_g_moving_dst), de
+
+        pop  bc                     ;; BC = frame
+        pop  af                     ;; A = s
+        push af                     ;; keep s on stack
+        push de                     ;; save dst
+
+        ld   e, a
+        ld   d, #0
+        ld   hl, #_s_slot_dst
+        add  hl, de
+        add  hl, de
+        pop  de                     ;; DE = dst
+        ld   (hl), e
+        inc  hl
+        ld   (hl), d
+
+        add  a, #0x7A               ;; BG_BASE = 0x7A00 -> hi = 0x7A + s
+        ld   h, a
+        ld   l, #0
+        ld   (_g_moving_background), hl
+
+        ;; g_moving_sprite = frame + (g_en_start_row << 4) + (g_en_start_byte << 1)
+        ld   a, (_g_en_start_row)
+        ld   l, a
+        ld   h, #0
+        add  hl, hl
+        add  hl, hl
+        add  hl, hl
+        add  hl, hl                 ;; *16
+        ld   a, (_g_en_start_byte)
+        add  a, a
+        ld   e, a
+        ld   d, #0
+        add  hl, de
+        add  hl, bc                 ;; + frame
+        ld   (_g_moving_sprite), hl
+
+        ld   a, (_g_en_byte_count)
+        ld   (_g_moving_span), a
+        ld   b, a
+        add  a, a
+        ld   c, a
+        ld   a, #16
+        sub  c
+        ld   (_g_moving_spr_skip), a
+        ld   a, (_g_en_row_count)
+        ld   (_g_moving_rows), a
+        ld   c, a                   ;; B = span, C = rows
+        push bc
+        call _moving_blit_box
+        pop  bc                     ;; B = span, C = rows
+        pop  af                     ;; A = s
+
+        ld   e, a
+        ld   d, #0
+        ld   hl, #_s_slot_span
+        add  hl, de
+        ld   (hl), b
+        ld   hl, #_s_slot_rows
+        add  hl, de
+        ld   (hl), c
+
+        ld   hl, #_s_slot_ptr
+        add  hl, de
+        add  hl, de
+        ld   bc, (_s_ed_e)
+        ld   (hl), c
+        inc  hl
+        ld   (hl), b
+
+        ld   hl, #_s_slot_sp
+        add  hl, de
+        add  hl, de
+        ld   de, (_s_ed_sp)
+        ld   (hl), e
+        inc  hl
+        ld   (hl), d
+
+        ld   e, a
+        ld   d, #0
+        ld   iy, (_s_ed_e)
+        ld   hl, #_s_slot_ex
+        add  hl, de
+        add  hl, de
+        ld   a, 0(iy)
+        ld   (hl), a
+        inc  hl
+        ld   a, 1(iy)
+        ld   (hl), a
+
+        ld   hl, #_s_slot_ey8
+        add  hl, de
+        add  hl, de
+        ld   a, 2(iy)
+        ld   (hl), a
+        inc  hl
+        ld   a, 3(iy)
+        ld   (hl), a
+        ret
+    __endasm;
+}
+
+static void en2_flush_pend(void) {
+    u8 k, b;
+    for (k = 0, b = 1; k < BG_SLOTS; k++, b += b) {
+        if (s_slot_pend & b) en2_restore_slot(k);
+    }
+    s_slot_pend = 0;
+}
+
+static void en2_unpend_pk(u8 pk) {
+    u8 m = (u8)(pk == 2 ? 4 : (pk + 1));
+    if (s_slot_pend & m) {
+        s_slot_pend &= (u8)~m;
+        en2_restore_slot(pk);
+    }
+}
+
 void en2_draw_vis(void) {
     Enemy* e = s_ed_e;
     const Spawn* sp = s_ed_sp;
     const u8* frame;
     const u8* bb;
     i8 s;
-    u8 key, cell, bx0, bw, by0, bh, ww;
+    u8 key, cell, bx0, bw, by0, bh, ww, pk;
     i16 wx, wy;
 
     g_en_y = (i16)(e->y8 >> 3);
@@ -733,44 +949,35 @@ void en2_draw_vis(void) {
     wx = (i16)(e->x + (bx0 << 1));
     wy = (i16)(g_en_y + by0);
     ww = (u8)(bw << 1);
+    pk = (u8)(e->slot_bits & 0x7F);
 
-    if (!en2_clip(wx, wy, ww, bh)) return;
+    if (!en2_clip(wx, wy, ww, bh)) {
+        if (pk < BG_SLOTS) en2_unpend_pk(pk);
+        return;
+    }
     g_en_start_byte += bx0;
     g_en_start_row += by0;
     frame = en2_cell(cell, (u8)(key & 1));
 
-    {
-        u8 pk = (u8)(e->slot_bits & 0x7F);
-        if (pk < BG_SLOTS) {
-            u8 m = (u8)(pk == 2 ? 4 : (pk + 1));
-            if (s_slot_pend & m) {
-                s_slot_pend &= (u8)~m;
-                en2_restore_slot(pk);
+    if (pk < BG_SLOTS) {
+        en2_unpend_pk(pk);
+    } else if (s_slot_pend) {
+        u8 k, b;
+        for (k = 0, b = 1; k < BG_SLOTS; k++, b += b) {
+            if ((s_slot_pend & b) && en2_ov_ex(e->x, e->y8, k)) {
+                s_slot_pend &= (u8)~b;
+                en2_restore_slot(k);
             }
         }
     }
     s = en2_slot((i8)s_ed_i);
+    if (s < 0 && s_slot_pend) {
+        en2_flush_pend();
+        s = en2_slot((i8)s_ed_i);
+    }
     if (s < 0) return;
 
-#if LEVEL_ID == 2
-    en2_l3_draw_base(e->x, e->y8);
-#endif
-
-    g_moving_dst = (u16)ring_address(0, g_en_clip_x0, g_en_clip_y0);
-    s_slot_dst[(u8)s] = g_moving_dst;
-    g_moving_background = BG_SLOT(s);
-    g_moving_sprite = (u16)(frame + ((u16)g_en_start_row << 4) + (g_en_start_byte << 1));
-    g_moving_span = g_en_byte_count;
-    g_moving_rows = g_en_row_count;
-    g_moving_spr_skip = (u8)(16 - (g_en_byte_count << 1));
-    moving_blit_box();
-
-    s_slot_span[(u8)s] = g_en_byte_count;
-    s_slot_rows[(u8)s] = g_en_row_count;
-    s_slot_ptr[(u8)s] = e;
-    s_slot_sp[(u8)s] = sp;
-    s_slot_ex[(u8)s] = e->x;
-    s_slot_ey8[(u8)s] = e->y8;
+    en2_blit_slot((u8)s, frame);
     s_slot_key[(u8)s] = key;
 }
 
@@ -841,13 +1048,7 @@ void en2_draw(void) {
     __endasm;
 
     // Si algun enemic pendent va sortir fora de pantalla, restaura'l ara:
-    if (s_slot_pend) {
-        u8 k, b;
-        for (k = 0, b = 1; k < BG_SLOTS; k++, b += b) {
-            if (s_slot_pend & b) en2_restore_slot(k);
-        }
-        s_slot_pend = 0;
-    }
+    if (s_slot_pend) en2_flush_pend();
 
     // 2. Dibuixa projectil si esta actiu:
     if (s_proj.kind && !s_proj.drawn_row_count[0]) {
@@ -873,7 +1074,6 @@ void en2_draw(void) {
     }
     s_prev_cx = g_cam_x4;
     s_prev_cr = g_cam_row;
-    s_prev_conv = s_conveyor_phase;
 }
 
 static u8 en2_he(u8 k) {
@@ -957,5 +1157,4 @@ void en2_room_exit(void) {
     s_proj.drawn_row_count[0] = 0;
     s_proj.kind = 0;
     s_prev_cx = 0xFFFF;
-    s_prev_conv = 0xFF;
 }

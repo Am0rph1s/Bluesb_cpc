@@ -200,10 +200,7 @@ void hud_render_b(void) {
             *p++ = (u8)(sb + 1);
         }
         hud_blit_columns();
-        full_v = 1;
     }
-
-    ram2_hud_copy(full_v);
 }
 
 // Banner GAME OVER (1:1 DOS): 34 files de 40 bytes sobre la pantalla 0xC000.

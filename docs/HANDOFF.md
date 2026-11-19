@@ -21,6 +21,14 @@ El joc complet (tots 6 nivells + selector de personatge/mapa `FRONT`) cap en **u
 | **L5** | `ville` (Ciutat / Teulades) | **Integrat** | `L5WORLD.PAK` + `L5C1.PAK`, bastides (`SCAFFOLD`), paleta Mode 0 ajustada. |
 | **L6** | `concert` (Escenari final) | **Integrat** | 2 ascensors d'escenari (`LIFT6.BIN`), spans de focus, seqüència endgame `trigger_func_op40` (ball i retorn al menú). |
 
+### 1.1 Rendiment actual (mesurat 19/11/2026, cpcse, L1 idle amb walker visible)
+- **~17 fps** (frame ~60 ms): la feina real (~30 ms) desborda just el marc de 40 ms del pacing → bucket de 60. **Retallar ~10-12 ms → 25 fps.**
+- Descomposició: `enemy_update` 3 ms ✓ (Opció A va funcionar) · `enemy_check_player_hit` 3 · `player_physics_step` 3 · **`sprite_restore_player` 4 (tiles sota Jake cada frame encara quiet)** · `moving_restore`+`popup`+`sync_backbuffer` 7 · dibuixos+HUD ~12 · espera ~25.
+- Objectius mesurats per 25 fps: dirty-flag del restore del jugador (~4), skip del `sync_backbuffer` en repòs (~3-5), fusió de probes de `player_physics_step` (~2), early-out del hit-check (~1). Detall i mètode: [`docs/CHANGELOG.md`](CHANGELOG.md) (19/11/2026).
+- Musica: `_mus_div` deriva respecte el frame (fase variable a l'anchor de render); aplicable el port "F1" (sync PPI, `_g_irq_phase`, ~+12 B) com a correcció de qualitat.
+- Mesurament: `tools/cpcse_dbg.py` (API CPCSyntaxError) + anchors de fase amb `g_ticks` 300 Hz. Entrada de prova: poke `_g_map_level` + Space. HOLD de tecles: `key <nom>=1/0`.
+- ⚠ Arrencada des de `obj/` buit: veure la recepta de llavors al CHANGELOG (19/11/2026). ⚠ `gen_enemy4_frames.py` NO reprodueix l'ENEMI4.BIN comes (casament de paletes del 12/11 no reflectit al generador): blindat via `mark_fresh`; corregir el generador abans de tornar a buidar `obj/`.
+
 ---
 
 ## 2. Regles d'Or de Disseny i Implementació

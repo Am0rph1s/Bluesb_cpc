@@ -4,6 +4,32 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 21/11/2026 - Descartada la copia de columna entre pagines: 7,0 ms vs 5,3 ms del render
+
+**Hipotesi**: amb el doble buffer, les 2 columnes noves de la pagina del darrere ja
+existeixen a la del davant (1 unitat de camera de distancia); copiar-les (320 B per
+columna, 2 bytes x 160 linies al ring) hauria de ser mes rapid que renderitzar tiles.
+
+**Mesura** (`tools/f1_colcopy.s`, RAM0:0x3C00, g_ticks, 10 còpies):
+```
+15 ticks / 10 còpies = 1,5 ticks/còpia = 7,0 ms per columna de 320 B
+Render actual d'una columna = 5,3 ms
+```
+La copia es **1,7 ms MES LENTA**. El render de tiles ja esta optimitzat per al ring
+(75 T/linia amb el salt de bloc D+=8); la copia ha de fer el salt de 78 bytes per fila
+i el comptador, i surt pitjor. **Descartada** (no es cableja).
+
+**Conclusio de sostre del doble buffer** (dades de la sessio):
+- 0-1 enemics, sense scroll: ~35-40 ms -> **25 fps**.
+- 1 enemic + scroll: ~50-60 ms -> **16,7 fps** (tier de 60 ms).
+- 5 enemics (clúster): ~80 ms -> **12,5 fps**, acceptat pel test d'usuari.
+- El tier de 40 ms amb scroll demana ~25 ms de retall; no hi ha cap tall identificat
+  que els doni (sync 10,9 + HUD 10,3 son al limit de banda/CPU).
+
+**Pendent realista**: micro-optimitzacions de player/enemy (~2-3 ms en total) per
+estabilitzar l'1-enemic+scroll dins del tier de 60 ms; no per creuar a 40.
+
+
 ### 21/11/2026 - HUD split: el redibuix de 18,4 ms en scroll passa a copia de 5,9 ms
 
 **El coll**: en moviment, `hud_render(force=1)` refer els 40 tiles del HUD a cada

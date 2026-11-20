@@ -4,6 +4,37 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 21/11/2026 - Micro-talls del doble buffer esgotats: el sostre es 16,7 amb enemics+scroll i 25 en quiet
+
+**Dedup de probes a enemy_update, mesurat al FRAME SENcer** (2 breakpoints MU/VS,
+px 24-280, 69 frames):
+```
+Sense dedup: 39 46 43 39 39 46 43 39...   (avg 63,9 ms)
+Amb dedup:   39 46 43 39 39 46 43 39...   (avg 63,9 ms)  -> CAP guany
+```
+El dedup dels probes de tile no mou el frame (el cost no es al cami critic o queda
+solapat). Revertit per preservar el marge del paquet L1ENEMI (8027/8064).
+
+**Tiers reals mesurats** (mateix protocol):
+- 1-2 enemics + scroll: treball 39-46 ms -> frame **60 ms = 16,7 fps**.
+  Els frames de 39 ms freguen el tier de 40 (25 fps), pero hi entren nomes si el
+  treball baixa a <=37 ms (calen 2-9 ms mes).
+- 0-1 enemics sense scroll / quiet: **25 fps** (mesurat a la sessio).
+- 5 enemics (clúster px 452): treball ~83 ms -> **80 ms = 12,5 fps** (acceptat).
+
+**Per que no hi ha mes micro-talls segurs**:
+- La copia de columna entre pagines es 7,0 ms vs 5,3 ms del render (descartada, e4b5620).
+- El resident te nomes 5 B de marge; el sync (10,9) i el HUD (10,3) son al limit de
+  banda/CPU; el blit d'enemics es 59 T/byte (bbox F3 no cap al paquet).
+- L'unic cami als 2-3 ms que falten es alliberar resident (moure el restore del
+  jugador a C7:0x7E80) i optimitzar sync/player; es un canvi gran i de risc, no
+  justificat pel guany (no garanteix creuar el llindar de 40 ms).
+
+**Conclusio**: el doble buffer estable te aquest sostre. 25 fps en moviment amb
+enemics+scroll no es assolible amb els talls segurs identificats; 16,7 es el resultat
+practic, 25 en quiet i 12,5 als clústers densos.
+
+
 ### 21/11/2026 - Descartada la copia de columna entre pagines: 7,0 ms vs 5,3 ms del render
 
 **Hipotesi**: amb el doble buffer, les 2 columnes noves de la pagina del darrere ja

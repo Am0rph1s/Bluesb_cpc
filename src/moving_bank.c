@@ -834,10 +834,10 @@ void moving_bank_conveyor(void) {
         u8 lo = (u8)(g_cam_x4 >> 1);
         u8 hi = (u8)((g_cam_x4 + 39) >> 1);
         s_page_conveyor_phase[page] = s_conveyor_phase;
-        // M1: els tiles repintats poden trepitjar la caixa del Jake quiet ->
-        // el draw site fa el "heal tarda" (veure main.c). Coarse: qualsevol
-        // redraw de cinta invalidata l'skip d'aquest frame (1 de cada ~4).
-        g_spr_tile_stomp = 1;
+        // M1 (fine): el stomp NOMES si un span re-dibuixat interseca la
+        // caixa del Jake (bytes dsx..dsx+8, files dsy..dsy+29). Abans era
+        // coarse (qualsevol cinta a pantalla) i el heal corria cada frame
+        // de fase encara que el Jake no toques la cinta (~4 ms/regal).
         for (s = 0; s < LEVEL_ANIM_SPAN_COUNT; s++, sp++) {
             u8 qq = sp->seq;
             u8 p = s_anim_pos[qq];
@@ -851,6 +851,18 @@ void moving_bank_conveyor(void) {
                     u8 c1 = sp->col_end;
                     if (c < lo) c = lo;
                     if (c1 > hi) c1 = hi;
+                    // interseccio amb la caixa del Jake?
+                    {
+                        u8 sy0 = (u8)((((u16)r << 1) - g_cam_row) << 3);
+                        u8 sc0 = (u8)(((u16)c << 1) - g_cam_x4);
+                        u8 sc1 = (u8)((((u16)c1 + 1) << 1) - g_cam_x4);
+                        if ((u8)(sy0 + 16) > (u8)s_mn_dsy &&
+                            sy0 < (u8)(s_mn_dsy + 30) &&
+                            sc1 > (u8)s_mn_dsx &&
+                            sc0 < (u8)(s_mn_dsx + 8)) {
+                            g_spr_tile_stomp = 1;
+                        }
+                    }
                     while (c <= c1) {
                         render_tile_world(tile, c, r, g_cam_x4, g_cam_row);
                         c++;

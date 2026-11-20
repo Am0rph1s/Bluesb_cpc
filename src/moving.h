@@ -88,6 +88,9 @@ extern u8 s_dance_timer;
 // M1 (dirty-flag del jugador): el paren la cinta i els repaints de tiles
 // quan escriuen sobre la caixa del Jake quiet (el C5 l'escriu via bank_equ).
 extern u8 g_spr_tile_stomp;
+// M1 fine: posicio de pantalla del Jake pel test d'interseccio dels spans
+// de la cinta (dsx = col byte, dsy = fila px).
+extern u16 s_mn_dsx, s_mn_dsy;
 extern u8 s_dying_timer;
 
 // Tram animat del tilemap (row, col_ini, col_fi, seq). El defineix moving.h

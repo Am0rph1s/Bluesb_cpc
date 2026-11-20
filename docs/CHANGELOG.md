@@ -4,6 +4,38 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 20/11/2026 - F1: musica 50 Hz exactes ancorada al VSYNC (port del master) + tecnica d'entrada al FRONT des de l'emu
+
+**F1 (engine/isr.s)**: eliminat `_mus_div` (divisor lliure: derivava respecte el frame amb les
+finestres DI de la carrega; mesurat 19/11: fase {1,2,3} variable a l'anchor de render) i
+sincronitzat el tick de musica a `_g_irq_phase == 2`, lligada al VSYNC via el PPI (0xF5 bit 0).
++12 B de _CODE (GAME_START 0x1211 -> 0x121D); _DATA sense canvi de layout (1 B per 1 B).
+**Verificat amb cpcse (L1 carregat)**: `_mus_play` a deltas EXACTES de 6 ticks (15/15 mostres)
+= 50,0 Hz clavades; fase constant a l'anchor de render. El mateix `hold`/`ready` guards.
+
+**Tecnica d'entrada al FRONT des de l'emulador (apresa a pells, per futures sessions)**:
+- El feed de tecles de cpcse (`press_key` i `key <nom>=<valor>`) NO alimenta la matriu PSG
+  que llegeix `f_fkey_pressed` (A=0xFF amb la tecla "premuda"); el `type_text` de l'arrencada
+  va pel buffer del firmware i si que funciona. Conclusio: NO confiar en events de tecla per
+  entrar al joc; conduir els gates per RAM.
+- El FRONT (`front_run`) carrega ELL MATEIX el MUSBANK (`f_load(musbank, C1, 0x4000)`):
+  MAI saltar-se'l amb un bypass de PC (provat: mus_init posterior -> _akg_init a C1:0x4009 =
+  brossa -> reinici a BASIC). El mapa fa auto-exit (~4 s, `f_map_wait(1)`), pero el map dins
+  `front_run` usa `f_map_wait(0)` (press-wait real).
+- **Recepta que funciona**: al bp del `call 0x4000` (0x29D3 amb aquest layout), patchejar
+  `f_fkey_pressed` (0x4006, banc C4 mapejat) amb `LD A,(0x49A0); RET; NOP` (bytes 3A A0 49
+  C9 00) = retorna `f_fkres` (0x49A0) que nosaltres pokegem. Els gates son
+  [release=0][press=1] en cadena: splash -> select -> map. Alternar f_fkres 0/1 (0=passa
+  release, 1=passa press/break del select) amb gaps de ~45 frames fins magic 0xB0.
+  Gate final vist: map press-wait (0x4627). El joc in-level no usa f_fkey (usa
+  cpct_scanKeyboard, no patchejat): el patch nomes afecta el FRONT.
+- Trajectoria del walker L1 (referencia per gates visuals): e[0]@456, patrulla amb gir a ~536.
+
+**Seguent (objectius mesurats 19/11, pendents)**: dirty-flag del `sprite_restore_player`
+(~4 ms), `moving_draw_conveyor_tiles` bimodal 3/10 ms, fusio de probes de
+`player_physics_step` (~2 ms), early-out del hit-check (~1 ms). Total ~10-12 ms -> 25 fps.
+
+
 ### 19/11/2026 - Arrencada neta d'obj/, baseline de rendiment mesurada i objectius revisats (cpcse)
 
 **Context**: sessio d'optimitzacio iniciada desde la linia `master` (port del walker_sense);
@@ -184,4 +216,5 @@ walker del carrer (e[0]@456) visible, camera assentada, invulnerable)**:
 ### 01/11/2026 â€” Trampolins L2 (`op 24`) i Comportes AutomÃ tiques L4
 - Trampolins amb rebot progressiu de 3 altures (`VY_MAX_UP = 21 * SUB`).
 - Comportes automÃ tiques L4 integrades a `DOS_ANIM_SEQS`.
+
 

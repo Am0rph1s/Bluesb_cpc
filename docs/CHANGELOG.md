@@ -4,6 +4,26 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 20/11/2026 (nit III) - Mesura final: 25,0 fps EXACTES en zones tranquil-les; els 57-60 ms in-mall NO son la cinta
+
+Correcio d'atribucio (mètode: bp al render_tile_world + comptador de cache):
+- **Zones tranquil-les (sense enemics/cinta visibles, p.e. l'spawn): periode
+  40 ms EXACTES = 25,0 fps** (el doble VSYNC clavat). Aconseguit.
+- **In-mall (enemics a pantalla): ~20 fps** amb frames 4-periòdics a 57-60 ms.
+  AQUEST cost NO es la cinta (0 crides a render_tile_world a la zona!) ni les
+  descompressions de cache (comptador pla, per verificar amb simbol fresc):
+  l'atribucio "cinta bimodal 3/10" de la sessio anterior ERA UNA HIPOTESI MEVA
+  ERRONIA. La propera sessio: capturar el cost dels frames 4-periòdics amb els
+  anchors de fase a la posicio in-mall (sospitos: el blit de l'enemic amb flip
+  al tick d'anim (>>2)&1, l'update, o el hit-check).
+
+**Protocol de mesura net (per la propera)**: teleport amb invuln + px8/py8
+correctes (compte: un teleport a l'aire o paret = mort + respawn a l'spawn i
+fa perdre la mesura); deixar SETTLEJAR la camera fins cam_x4 estable ABANS
+de perfilar (el catch-up del pending es scroll actiu ~60-127 ms/frame i
+contamina tota la finestra).
+
+
 ### 20/11/2026 (nit II) - M1 COMPLET: dirty-flag del sprite_restore_player (v4) + flip sense LUT + _spr_key_ops al pak C6
 
 **Resultat mesurat (L1 idle, cpcse)**: `sprite_restore_player` 0 crides en 30 frames

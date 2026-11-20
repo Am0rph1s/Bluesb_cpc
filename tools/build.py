@@ -1291,7 +1291,7 @@ def build_music(force):
     # Escriuen a VRAM => han de viure a la RAM 1 i cridar-se amb 0xC0. Com que
     # son comuns a tots els nivells, van a MUSBANK (0x4C10, despres del player)
     # i no al bloc de codi del nivell.
-    hb_base, hb_data = 0x4C01, 0x4FA8
+    hb_base, hb_data = 0x4C01, 0x4FCB
     hb_src = os.path.join(PROJ, "src", "hud_bank.c")
     hb_rel = os.path.join(obj, "hud_bank.rel")
     hb_headers = [os.path.join(PROJ, n) for n in
@@ -1310,8 +1310,12 @@ def build_music(force):
         [hb_rel, equ_rel, os.path.join(obj, "enemy_ext.rel")] + ["-o", hb_ihx])
     hb_map = os.path.join(obj, "hudbank.map")
     code_s, code_l = map_area(hb_map, "CODE")
+    data_s, data_l = map_area(hb_map, "DATA")
     if code_s is not None and (code_s + code_l) > hb_data:
         print("\n[FATAL] HUD (MUSBANK): el codi arriba a les dades (0x%04X)!" % hb_data)
+        sys.exit(1)
+    if data_s is not None and (data_s + data_l) > MUS_SONG_SLOT:
+        print("\n[FATAL] HUD (MUSBANK): les dades arriben a la canco (0x%04X)!" % (data_s + data_l))
         sys.exit(1)
     hb_bin = os.path.join(obj, "hud_bank.bin")
     convert_ihx(hb_ihx, hb_bin, start_addr=hb_base, max_length=code_l)

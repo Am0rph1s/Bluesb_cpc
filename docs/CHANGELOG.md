@@ -4,6 +4,44 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 21/11/2026 - HUD split: el redibuix de 18,4 ms en scroll passa a copia de 5,9 ms
+
+**El coll**: en moviment, `hud_render(force=1)` refer els 40 tiles del HUD a cada
+frame de scroll (40 columnes x 16 linies amb calcul d'adreca per tile) = **18,4 ms
+mesurats** amb 2 breakpoints (HUD 0x0FCE -> SEL 0x1959), constants 16,7-20 ms.
+
+**La solucio (recepta del single-buffer)**: el HUD de la pagina oposada ja te els
+pixels correctes; si els valors (vides/vinils/cors/instrument) no han canviat
+nomes cal COPIAR les 2 files. Implementacio:
+- C1 decideix amb una signatura de valors `s_hud_sig[2]` (0xFFFF = pagina buida) i
+  crida el banc C6 amb l'arg empaquetat (base de la pagina font | offset) en HL.
+- C6 slot 6 (`_en_room_exit`) passa a ser un dispatcher: `_bc_b == 0xA5` (valor
+  impossible per `enemy_room_exit`, que hi posa 0 o 0xFF) -> `_hud_copy`; si no,
+  `_en2_room_exit` intacte.
+- `_hud_copy` copia 8 blocs de 2 KB x 2 files de 80 B amb LDIR (16 LDIR = 1.280 B),
+  calculant src20/src21 i dst20/dst21 amb la MATEIXA formula/res 3,h que el dibuix.
+- Quan un valor canvia, la pagina que ho detecta fa el render complet i l'altra
+  tambe (les signatures no coincideixen) -> mai es copia un HUD vel.
+
+**Espai**: el `_DATA` del HUD passa de 0x4FA8 a 0x4FCB (53 B, acaba exacte a
+0x5000) i el codi cap just: **967 B / 968**. El C6 creix 103 B i acaba a 0x7932
+(206 B de marge fins al pool 0x7A00). Resident INTACTE (marge 5 B).
+
+**Mesura neta (nomes 2 breakpoints)**: HUD->SEL **5,9 ms** de mitjana (abans 18,4).
+Perfil del frame en moviment: el treball tipic baixa de ~76-83 ms a ~49-59 ms.
+Visual validat: HUD identic a les dues pagines (0 diffs de bytes en repòs), digits
+de vinils 00->05 en recollir (render complet), alineacio correcta en scroll.
+
+**Llicons**:
+- Amb C6 mapejat la VRAM de 0xC000/0x8000 SEGUEIX visible (test d'OUT 0x7F00,0xC6:
+  0xC000/0x8000 no canvien, nomes 0x4000). La regla de la RAM 1 aplica a 0xC1, que
+  mapeja RAM 7 a 0xC000; no a C4-C7.
+- `call_banked` no toca IX/IY pero si BC/HL: els arguments per registre han de
+  viatjar en IX/IY o (com aqui) arribar en HL i passar-se a IX abans del call.
+- El linker de SDCC posa els inicialitzadors a CODE (no hi ha crt0 al banc C1):
+  les dades inicialitzades NO es copien a _DATA en carregar el blob.
+
+
 ### 21/11/2026 - v5 VALIDADA pel test real: artefactes de caixes/globus/paraigues tancats
 
 **El bug**: amb el dirty-flag actiu, el `carry_draw` (1263) desava el fons DESPRES

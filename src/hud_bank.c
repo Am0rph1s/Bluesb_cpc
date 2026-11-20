@@ -25,13 +25,42 @@ extern u8 s_invuln_timer;
 extern u8 s_dying_timer;
 extern u8 s_dazed_timer;
 
+// Layout fix del HUD i signatures. S'inicialitzen a hud_init_b (la imatge
+// del banc 1 no te crt0 que copiï inicialitzadors de SDCC).
 static u8 s_hud_layout[PLAY_CHARS];
-static u8 s_hud_lives[2], s_hud_vinyls[2], s_hud_hearts[2], s_hud_inst[2];
+// Signatura dels valors que influeixen al HUD (vides 0-3, vinils 4-10,
+// cors 11-13, instrument 14). 0xFFFF = pagina sense HUD valid.
+static u16 s_hud_sig[2];
 static u16 s_hud_vram_start[2];
 
 static u16 s_cur_off20;
 static u16 s_cur_off21;
 static u8  s_base_hi;
+
+static u16 hud_sig(void) {
+    return (u16)g_lives_count
+         | ((u16)(g_vinyls_count & 0x0F) << 4)
+         | ((u16)(g_vinyls_count >> 4) << 8)
+         | ((u16)(g_hearts_count & 0x07) << 11)
+         | ((u16)(g_has_instrument ? 1 : 0) << 14);
+}
+
+// Crida la copia del HUD al banc C6 (slot 6, dispatcher _bc_b=0xA5).
+// DE = arg empaquetat (base de la pagina font | offset en paraules).
+static void hud_copy_call(u16 arg) __naked {
+    __asm
+        push ix
+        push hl
+        pop ix
+        ld   a, #0xA5
+        ld   (_bc_b), a
+        ld   a, #0xC6
+        ld   de, #0x5A12
+        call _call_banked
+        pop  ix
+        ret
+    __endasm;
+}
 
 static void hud_set_vinyl_digits(u8 val) {
     u8 tens = 9;
@@ -168,33 +197,36 @@ void hud_init_b(void) {
     s_hud_layout[18] = 5;
     s_hud_layout[19] = 6;
     s_hud_layout[39] = 2;
-    p = s_hud_lives;
-    for (i = 0; i < 8; i++) *p++ = 0xFF;
+    s_hud_sig[0] = s_hud_sig[1] = 0xFFFF;
     s_hud_vram_start[0] = s_hud_vram_start[1] = 0xFFFF;
 }
 
 void hud_render_b(void) {
     u8 page = (u8)bc_a;
     u8 force = (u8)bc_b;
+    u8 other = (u8)(page ^ 1);
+    u16 sig = hud_sig();
     u8 i;
     u8* p;
     if (!force &&
         s_hud_vram_start[page] == g_vram_start &&
-        s_hud_lives[page] == g_lives_count &&
-        s_hud_vinyls[page] == g_vinyls_count &&
-        s_hud_hearts[page] == g_hearts_count &&
-        s_hud_inst[page] == g_has_instrument) {
+        s_hud_sig[page] == sig) {
         return;
     }
     s_hud_vram_start[page] = g_vram_start;
-    s_hud_lives[page]  = g_lives_count;
-    s_hud_vinyls[page] = g_vinyls_count;
-    s_hud_hearts[page] = g_hearts_count;
-    s_hud_inst[page]   = g_has_instrument;
+    s_hud_sig[page] = sig;
+    s_base_hi = (page == 0) ? 0xC0 : 0x80;
 
-    // Vides 1 digit (maxim real 8; clamp defensiu a 9).
-    { u8 lv = (g_lives_count > 9) ? 9 : g_lives_count;
-      s_hud_layout[4] = (u8)(9 + lv); }
+    if (force && s_hud_sig[other] == sig) {
+        // HUD ja renderitzat a la pagina oposada amb els MATEIXOS valors:
+        // copia les 2 files (8 blocs) des d'alla en lloc de refer els tiles.
+        hud_copy_call((u16) ((s_base_hi ^ 0x40u) << 8) |
+                      (u16) (s_hud_vram_start[other] & 0x03FFu));
+        return;
+    }
+
+    // Vides 1 digit (maxim real 8).
+    s_hud_layout[4] = (u8)(9 + g_lives_count);
     hud_set_vinyl_digits(g_vinyls_count);
     p = &s_hud_layout[7];
     for (i = 0; i < 5; i++) {
@@ -211,7 +243,6 @@ void hud_render_b(void) {
         *p++ = (u8)(sb + 1);
     }
 
-    s_base_hi = (page == 0) ? 0xC0 : 0x80;
     hud_blit_columns();
 }
 

@@ -37,9 +37,95 @@ _en_check_player_hit::
 _en_check_crate_hit::
     jp      _en2_check_crate_hit    ;; slot 5 -> 0x5A0F
 _en_room_exit::
-    jp      _en2_room_exit          ;; slot 6 -> 0x5A12
+    jp      _en_dispatch6           ;; slot 6 -> 0x5A12 (room_exit o HUD copy)
 _en_sprkey::
     jp      _spr_key_ops            ;; slot 7 -> 0x5A15 (M1: dirty-flag)
+
+;; ============================================================
+;; M1-HUD: dispatcher del slot 6. El HUD (banc C1) crida aquest slot amb
+;; _bc_b = 0xA5 per copiar el HUD des de la pagina oposada; enemy_room_exit
+;; hi arriba amb _bc_b = part alta de la coordenada (0 o 0xFF), mai 0xA5.
+;; ============================================================
+_en_dispatch6:
+    ld      a, (_bc_b)
+    cp      #0xA5
+    jp      z, _hud_copy
+    jp      _en2_room_exit
+
+;; ============================================================
+;; _hud_copy: copia el HUD (2 files x 8 blocs de 2 KB) des de la pagina
+;; oposada. IX = base de la pagina font (0x80/0xC0) | offset en paraules
+;; (0..0x3FF). El desti es la pagina actual amb g_vram_start. S'executa
+;; amb C6 mapejat (call_banked); retorna directament a banked_ret$.
+;; ============================================================
+_hud_copy:
+    push    ix
+    pop     hl                  ;; H = base font + off>>8, L = off&0xFF
+    ld      a, h
+    and     #0xFC
+    ld      b, a                ;; B = base de la pagina font
+    ld      a, h
+    and     #0x03
+    ld      h, a                ;; HL = offset (0..0x3FF)
+    ld      de, #800
+    add     hl, de
+    ld      a, h
+    and     #0x03
+    ld      h, a
+    add     hl, hl
+    ld      a, b
+    add     a, h
+    ld      h, a                ;; HL = src20
+    push    hl                  ;; (SP) = src20
+    ;; desti: base de la pagina oposada + g_vram_start
+    ld      a, b
+    cp      #0x80
+    ld      a, #0xC0
+    jr      z, hc_dstbase$
+    ld      a, #0x80
+hc_dstbase$:
+    ld      b, a
+    ld      hl, (_g_vram_start)
+    ld      de, #800
+    add     hl, de
+    ld      a, h
+    and     #0x03
+    ld      h, a
+    add     hl, hl
+    ld      a, b
+    add     a, h
+    ld      h, a                ;; HL = dst20
+    ex      de, hl              ;; DE = dst20
+    pop     hl                  ;; HL = src20
+    push    de
+    push    hl
+    call    hc_copy8$           ;; fila 20
+    pop     hl
+    pop     de
+    ld      bc, #80
+    add     hl, bc
+    res     3, h
+    ex      de, hl
+    add     hl, bc
+    res     3, h
+    ex      de, hl
+    call    hc_copy8$           ;; fila 21
+    ret
+
+hc_copy8$:
+    ld      b, #8
+hc_c8_loop$:
+    push    bc
+    ld      bc, #80
+    ldir
+    ld      bc, #0x7B0          ;; seguent bloc (0x800 - 80)
+    add     hl, bc
+    ex      de, hl
+    add     hl, bc
+    ex      de, hl
+    pop     bc
+    djnz    hc_c8_loop$
+    ret
 
 
 ;; ============================================================
@@ -126,6 +212,8 @@ sk_flip$:
 ;; Clau: k0 = dsx.lo | dsy.lo<<8; k1 = face (u16, hi = 0)
 ;; ============================================================
     .globl _bc_a
+    .globl _bc_b
+    .globl _g_vram_start
     .globl _s_mn_move, _s_mn_jump, _s_mn_page_dx, _s_mn_page_dy, _s_back_page
     .globl _s_carry_kind
     .globl _s_mn_dsx, _s_mn_dsy, _g_face

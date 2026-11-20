@@ -95,7 +95,6 @@ extern u8 tile_flags(u16 col, u16 row);
 extern u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
 
 // Rutines rapides en ASM per flipejar una cela dins la cache (engine/enemy_table.s):
-extern void en2_init_lut(void);
 extern void en2_flip_cell(const u8* src, u8* dst);
 
 // Descompressor ZX0 resident (Bloc 0; sempre mapejat, es pot cridar des de C6).
@@ -182,7 +181,8 @@ void en2_init(void) {
     u8 i;
     Enemy* e = s_enemies;
     const Spawn* sp = s_spawn;
-    en2_init_lut();
+    // M1: en2_init_lut() eliminat (la LUT de flip ja no existeix: el gir
+    // es calcula al moment amb la mateixa formula — veure enemy_table.s).
     for (i = 0; i < ENEMY_CACHE_SLOTS; i++) s_cache_who[i] = 0xFF;
     s_cache_next = 0;
     g_enemy_decomp_cnt = 0;

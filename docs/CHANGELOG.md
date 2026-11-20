@@ -4,6 +4,35 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 21/11/2026 - v5 VALIDADA pel test real: artefactes de caixes/globus/paraigues tancats
+
+**El bug**: amb el dirty-flag actiu, el `carry_draw` (1263) desava el fons DESPRES
+del punt on el Jake hauria d'haver estat restaurat (1237): el seu save capturava el
+propi Jake i el heal capturava la caixa -> intercanvi de pixels (remanent de 9 B
+mesurat al lloc de l'throw + punts/linies al joc real, i la bala parpallejant era
+el mateix intercanvi al voltant del projectil).
+
+**El guard (v5)**: `_spr_key_ops` retorna dirty si `s_carry_kind != 0` (qualsevol
+carry actiu: caixa 1, globus 2, paraigues 8) -> flux original (l'ordre
+restore Jake -> carry save/blit -> Jake blit, i al frame seguent el restore del
+carry cobreix els solapaments). 6 B al pak C6, zero cost en repos normal.
+
+**Validat pel test real d'en usuari**: "ara si es net. Validat."
+
+**Lliçons de metode (per la propera sessio de proves)**:
+- El diff de pagines per bytes es RACY si no es pausa la maquina entre les dues
+  lectures (poden caure a frames diferents): pausar sempre abans de comparar.
+- El feed per la matriu de teclat patchejada es INTERMITENT: si un moviment no
+  respon, verificar el patch (0x177 == C9) i el buffer abans de concloure res.
+- Els guards del dirty-flag son per CLASSES d'estat que canvien l'ordre del
+  render (scroll, carry...): si apareix una classe nova amb save/restore propi
+  (p.ex. revisar el projectil si torna a fer coses rares), afegir-li guard.
+
+**Pendent**: cost 4-periodic in-mall (spans animats ~7 ms + ticks d'anim dels
+enemics), marge resident 5 B (alliberar abans de tocar-lo), i el render
+especialitzat de spans (render_tile_world a ~1,2 ms/tile = el crim).
+
+
 ### 20/11/2026 (nit III) - Mesura final: 25,0 fps EXACTES en zones tranquil-les; els 57-60 ms in-mall NO son la cinta
 
 Correcio d'atribucio (mètode: bp al render_tile_world + comptador de cache):

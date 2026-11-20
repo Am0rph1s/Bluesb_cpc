@@ -4,6 +4,39 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 20/11/2026 (nit) - Dirty-flag del sprite_restore_player: disseny verificat, BLOQUEJAT pel pressupost resident (+223 B de l'allocator)
+
+**Objectiu mesurat (19/11)**: el `sprite_restore_player` costa ~4 ms per frame en repòs
+(redibuixa el fons de sota en Jake encara que no es mogui). El dirty-flag (skip del restore
+quan aquesta passada repintara EXACTAMENT els mateixos pixels) estalviaria ~4 ms/frame.
+
+**Disseny (verificat semanticament abans de codificar)**:
+- El blit amb mascara es IDEMPOTENT per un redraw identic: dst = (dst & mask) | img
+  conserva el que ja hi ha a les zones transparents. El draw del jugador sempre repinta
+  el sprite sencer i sana sol qualsevol tropa (un enemic que hagues passat per sobre i el
+  seu restore hagues esborrat la zona de solapament).
+- Condicions de skip: repos pur (mn_move==0, mn_jump==0) + posicio de pantalla (dsx/dsy
+  + sentit) + estat (climb/crouch/carry) iguals a l'ultim draw D'AQUELLA pagina + cap
+  animacio ciclica en repòs: s_dying_timer/s_dazed_timer/s_dance_timer fan CICLAR l'anim
+  (select_player_anim els llegeix!) i el parpalleig d'invulnerabilitat amaga frames.
+- Analitzats i tancats els forats: caminar amb clamp de pantalla (dsx congelat pero
+  l'anim cicla: exclòs amb el gate mn_move==0), toggle de crouch en repòs (clau de
+  crouch), transicio d'escala (clau de climb), recollir caixa (clau de carry).
+
+**BLOQUEIG (mesurat, 3 builds)**: el resident te 119 B de marge post-F1, pero afegir el
+codi al bucle de main() dispara l'ALLOCATOR de l'SDCC: +146 B amb la versio hoist (el
+call desubicat forca spills), +223 B inline, +227 B amb helper propi + claus empaquetades
+(2 u16 per pagina). El cost NO es el codi del feature (~90-100 B) sino el re-flow global
+de l'assignacio de registres de la funcio main() de ~1.400 linies amb --max-allocs-per-node
+15000. REVERT net.
+
+**Via per la propera sessio**: implementar `spr_rest_is_clean` com a ASM a ma (~40-50 B
+en un .s: cadenes de comparacions globals sense passar per l'allocator del C) o alliberar
+200+ B de resident abans de tornar-ho a provar en C. Els altres objectius mesurats
+(conveyor bimodal 3/10 ms, probes de player_physics ~2 ms, early-out del hit-check ~1 ms)
+no tenen aquest problema: son canvis de BANC (C5/C6), no del resident.
+
+
 ### 20/11/2026 - F1: musica 50 Hz exactes ancorada al VSYNC (port del master) + tecnica d'entrada al FRONT des de l'emu
 
 **F1 (engine/isr.s)**: eliminat `_mus_div` (divisor lliure: derivava respecte el frame amb les

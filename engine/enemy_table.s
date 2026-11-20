@@ -127,6 +127,7 @@ sk_flip$:
 ;; ============================================================
     .globl _bc_a
     .globl _s_mn_move, _s_mn_jump, _s_mn_page_dx, _s_mn_page_dy, _s_back_page
+    .globl _s_carry_kind
     .globl _s_mn_dsx, _s_mn_dsy, _g_face
     .globl _s_spr_last_k0, _s_spr_last_k1, _s_spr_clean
 
@@ -152,6 +153,14 @@ _spr_key_ops::
     or      a
     ret     nz
     ld      a, (_s_mn_page_dy)
+    or      a
+    ret     nz
+    ;; M1 v5: guard de CARRY. Amb una caixa (o globus/paraigues) activa, el
+    ;; carry_draw desa el fons DESPRES del punt on Jake hauria d'haver estat
+    ;; restaurat (1237): amb l'skip, el seu save captura el propi Jake i el
+    ;; heal captura la caixa -> remanents (vist en test real: 9 B al lloc de
+    ;; l'throw). Amb carry actiu: flux original (dirty).
+    ld      a, (_s_carry_kind)
     or      a
     ret     nz
     ;; pagina -> DE = page*2

@@ -3,15 +3,15 @@
 #include "fdc.h"
 
 // Generat per tools/build.py. NO EDITAR.
-#define GAME_START 0x122C
+#define GAME_START 0x1207
 #define GAME_LEN 14893
-#define GAME_CRC 0xC0F4
+#define GAME_CRC 0xF4C4
 #define FDC_LEN 913
 #define CRC_FDC 0xBDA6
 #define FRONT_LEN 2608
-#define CRC_FRONT 0xD06F
+#define CRC_FRONT 0x60AA
 #define MUS_LEN 8366
-#define CRC_MUS 0x37A6
+#define CRC_MUS 0x7FD4
 // HOLD musica ISR (_g_mus_hold del GAME): el starter el neteja a
 // s_start (reboot calent podria dur brossa = ISR muda per sempre).
 #define MUS_HOLD_ADDR 0x360E

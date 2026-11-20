@@ -111,35 +111,7 @@ _sprite_restore_player::
     ld      (s_bg_read_ptr), hl
     call    sprite_calc_de      ;; A = y, (s_cur_y) = x -> DE = VRAM física
     ld      hl, (s_bg_read_ptr)
-    ld      b, #30              ;; 30 linies
-rst_line_loop:
-    push    bc
-    push    de
-
-    ld      a, d
-    and     #0x07
-    cp      #0x07
-    jr      nz, rst_fast_copy
-    ld      a, e
-    cp      #0xF8
-    jr      nc, rst_wrap_copy
-rst_fast_copy:
-    ld      bc, #8
-    ldir
-    jr      rst_copy_done
-rst_wrap_copy:
-    ld      b, #8
-rst_byte_loop:
-    ld      a, (hl)
-    ld      (de), a
-    inc     hl
-    call    sprite_inc_de_ring
-    djnz    rst_byte_loop
-rst_copy_done:
-    pop     de
-    call    sprite_step_de
-    pop     bc
-    djnz    rst_line_loop
+    call    0x7E80              ;; bucle de 30 linies al Banc C7 (allibera resident)
     pop     af
     call    _bank_restore       ;; restaura el banc anterior
     ret

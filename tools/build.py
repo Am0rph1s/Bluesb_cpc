@@ -1740,31 +1740,52 @@ def build_level_bundles(force=False):
     obj = os.path.join(PROJ, "obj")
     from zx0pkg.zx0 import zx0_compress
 
+    # C7: bucle de restore del jugador a 0x7E80 (self-contained, <=128 B).
+    # Allibera el bucle del resident (sprite.s) i el manté fora de la finestra
+    # bancada: s'executa amb C7 mapejat, com el restore.
+    pr_src = os.path.join(PROJ, "engine", "player_restore_c7.s")
+    pr_bin = os.path.join(obj, "player_restore_c7.bin")
+    if force or is_stale(pr_bin, [pr_src]):
+        pr_rel = os.path.join(obj, "player_restore_c7.rel")
+        pr_ihx = os.path.join(obj, "player_restore_c7.ihx")
+        run([SDASZ80, "-plosgff", "-o", pr_rel, pr_src])
+        run([SDCC, "-mz80", "--no-std-crt0", "--code-loc", "0x7E80",
+             pr_rel, "-o", pr_ihx])
+        pr_map = os.path.join(obj, "player_restore_c7.map")
+        code_s, code_l = map_area(pr_map, "CODE")
+        if code_s is None or code_l > 0x80:
+            print("\n[FATAL] restore C7: %s B > 128!" % code_l)
+            sys.exit(1)
+        convert_ihx(pr_ihx, pr_bin, start_addr=0x7E80, max_length=0x80)
+        mark_fresh(pr_bin, [pr_src])
+    pr_data = open(pr_bin, "rb").read()
+    assert len(pr_data) == 0x80, len(pr_data)
+
     # 1. JAKE.ZX0
     jake_dst = os.path.join(obj, "JAKE.ZX0")
     pf_src = os.path.join(PROJ, "assets", "bbdata", "PFRAMES.BIN")
     ex_src = os.path.join(PROJ, "assets", "bbdata", "EXTRA.BIN")
-    if force or is_stale(jake_dst, [pf_src, ex_src]):
+    if force or is_stale(jake_dst, [pf_src, ex_src, pr_bin]):
         pf_data = open(pf_src, "rb").read()
         ex_data = open(ex_src, "rb").read()
-        raw = pf_data + bytes(960) + ex_data
-        assert len(raw) == 15872, len(raw)
+        raw = pf_data + bytes(960) + ex_data + bytes(0x80) + pr_data
+        assert len(raw) == 16128, len(raw)
         out, _ = zx0_compress(bytes(raw), classic=True, quick=ZX0_QUICK)
         open(jake_dst, "wb").write(bytes(out))
-        mark_fresh(jake_dst, [pf_src, ex_src])
+        mark_fresh(jake_dst, [pf_src, ex_src, pr_bin])
         print("ZX0: JAKE %d -> %d B" % (len(raw), len(out)))
 
     # 2. ELWOOD.ZX0
     elwood_dst = os.path.join(obj, "ELWOOD.ZX0")
     el_src = os.path.join(PROJ, "assets", "bbdata", "ELWOOD.BIN")
-    if force or is_stale(elwood_dst, [el_src, ex_src]):
+    if force or is_stale(elwood_dst, [el_src, ex_src, pr_bin]):
         el_data = open(el_src, "rb").read()
         ex_data = open(ex_src, "rb").read()
-        raw = el_data + bytes(960) + ex_data
-        assert len(raw) == 15872, len(raw)
+        raw = el_data + bytes(960) + ex_data + bytes(0x80) + pr_data
+        assert len(raw) == 16128, len(raw)
         out, _ = zx0_compress(bytes(raw), classic=True, quick=ZX0_QUICK)
         open(elwood_dst, "wb").write(bytes(out))
-        mark_fresh(elwood_dst, [el_src, ex_src])
+        mark_fresh(elwood_dst, [el_src, ex_src, pr_bin])
         print("ZX0: ELWOOD %d -> %d B" % (len(raw), len(out)))
 
 

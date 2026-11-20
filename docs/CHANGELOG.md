@@ -4,6 +4,39 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 21/11/2026 - Restore del jugador mogut a C7:0x7E80: marge resident 5 -> 42 B
+
+**Canvi**: el bucle de 30 linies de `sprite_restore_player` (resident) passa a
+`engine/player_restore_c7.s`, muntat a C7:0x7E80 (75 B, area lliure de 128 B entre
+el carry bg i la LUT). El resident nomes calcula el punter de fons i la VRAM i fa
+`call 0x7E80` amb C7 mapejat. La rutina es self-contained (nomes AF/BC/DE/HL: l'ISR
+de la musica no preserva els alternatius) i s'incrusta als dos bundles de jugador
+(JAKE/ELWOOD, 16.128 B descomprimits).
+
+**Build**: `_CODE` 13.526 B (0x35D6), **marge 42 B** (abans 5); C6 intacte (7.986 B);
+L1ENEMI 7.983 B. JAKE 2.901 B / ELWOOD 2.803 B comprimits.
+
+**Validacio visual**: Jake camina de px 24 a 76; la posicio anterior queda neta
+(sense rastre ni clon). El restore funciona amb el bucle a C7.
+
+**Mesura del frame** (2 breakpoints amb les adreces NOVES: MU=0x0FCD, VS=0x03C2;
+el `obj/bluesb.sym` era vell i s'ha regenerat del mapa):
+```
+MU>VS: 46 43 39 39 (cicle de 4 frames), avg 63,1 ms  (abans 63,9)
+```
+El frame queda al tier de 60 ms; el C7 no el mou (guany teoric ~0,1 ms).
+
+**Adreces noves** (resident desplacat 37 B): moving_update 0x0FCD, wait 0x03C2,
+sprite_blit 0x03CF, hud_render 0x0FA9, enemy_restore 0x1066... Els scripts que
+tenien adreces hardcodejades (0x0FF2/0x03E7) han d'usar el sym regenerat.
+
+**Pendent per creuar el tier de 40 ms**: els frames de 39 ms necessiten <=37 ms.
+Els 42 B de marge permeten inlinar `calc_tile_hl` i el check de la reixa (~0,3 ms),
+no els ~2 ms que falten. El candidat real es fusionar els probes de tiles
+(`is_floor_solid`/`tile_type`, un canvi de banc C5 per crida) en un helper resident,
+amb risc sobre la fidelitat 1:1 de les decisions dels enemics.
+
+
 ### 21/11/2026 - Micro-talls del doble buffer esgotats: el sostre es 16,7 amb enemics+scroll i 25 en quiet
 
 **Dedup de probes a enemy_update, mesurat al FRAME SENcer** (2 breakpoints MU/VS,

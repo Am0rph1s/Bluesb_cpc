@@ -24,5 +24,9 @@ void enemy_draw(u8 page);
 u8   enemy_check_player_hit(i16 px, i16 py, u8 crouch);
 u8   enemy_check_crate_hit(i16 cx, i16 cy, i16 cvx);
 void enemy_room_exit(i16 px, i16 py);
+// M1: clau del dirty-flag del sprite_restore_player (ASM al pak C6, slot 7).
+void enemy_spr_key(u8 mode);
+// M1: el paren la cinta (C5) i els repaints quan trepitgen la caixa del Jake.
+extern u8 g_spr_tile_stomp;
 
 #endif

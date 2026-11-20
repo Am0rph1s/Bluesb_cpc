@@ -85,6 +85,9 @@ extern u8  g_level_complete;
 extern u8  g_checkpoint;
 extern u8  g_enemy_decomp_cnt;   // diagnostic: descompressions de cela d'enemic (cache miss)
 extern u8 s_dance_timer;
+// M1 (dirty-flag del jugador): el paren la cinta i els repaints de tiles
+// quan escriuen sobre la caixa del Jake quiet (el C5 l'escriu via bank_equ).
+extern u8 g_spr_tile_stomp;
 extern u8 s_dying_timer;
 
 // Tram animat del tilemap (row, col_ini, col_fi, seq). El defineix moving.h

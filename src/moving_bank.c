@@ -834,6 +834,10 @@ void moving_bank_conveyor(void) {
         u8 lo = (u8)(g_cam_x4 >> 1);
         u8 hi = (u8)((g_cam_x4 + 39) >> 1);
         s_page_conveyor_phase[page] = s_conveyor_phase;
+        // M1: els tiles repintats poden trepitjar la caixa del Jake quiet ->
+        // el draw site fa el "heal tarda" (veure main.c). Coarse: qualsevol
+        // redraw de cinta invalidata l'skip d'aquest frame (1 de cada ~4).
+        g_spr_tile_stomp = 1;
         for (s = 0; s < LEVEL_ANIM_SPAN_COUNT; s++, sp++) {
             u8 qq = sp->seq;
             u8 p = s_anim_pos[qq];

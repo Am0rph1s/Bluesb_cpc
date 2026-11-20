@@ -109,12 +109,27 @@ u8  s_dying_timer;
 u8  s_invuln_timer;
 
 static u8  s_have_drawn[2];
+// M1: clau de l'ultim draw del jugador per pagina (l'omple/llegeix
+// _spr_key_ops, ASM al pak C6 slot 7): k0 = x|y<<8,
+// k1 = face|climb<<1|crouch<<3|carry_state<<4|on_ground<<5, k2 = carry.
+// SENSE static: l'ASM del pak les resolving via bank_equ (el filtre de
+// build.py no les exclou).
+u16 s_spr_last_k0[2], s_spr_last_k1[2];
+u8  s_spr_clean;
+// M1 v3: ultim frame d'anim dibuixat per pagina (el compare d'anim el fa el
+// draw site amb s_mn_cur FRESC: al check d'abans encara no s'ha seleccionat
+// i seria stale — vegi enemy_table.s). Nomes el C: l'ASM no l'ha de llegir.
+static u8 s_spr_last_cur[2];
+// M1: el paren moving_bank_conveyor (C5) i world_flush_repaints quan escriuen
+// tiles per sobre la caixa del Jake. El draw site el llegeix per decidir el
+// "heal tarda" (mode 1) i el neteja. Sense static: l'ASM del C5 l'escriu via EQU.
+u8  g_spr_tile_stomp;
 static i8  s_pending_x, s_pending_y;
 
 u8  s_rep_n;
 u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
 
-static u8 s_back_page = 1;
+u8 s_back_page = 1;  // M1: sense static (_spr_key_ops el llegeix via EQU)
 static u8 s_complete_wait;
 
 void main(void);
@@ -173,6 +188,7 @@ static void world_flush_repaints(void) {
             render_tile_world(s_rep_tile[i], s_rep_col[i], s_rep_row[i],
                               g_cam_x4, g_cam_row);
             s_rep_pages[i] &= (u8)~((u8)1 << s_back_page);
+            g_spr_tile_stomp = 1;   // M1: tile repintat sobre la pagina -> el draw site fa el heal del Jake quiet
         }
         if (s_rep_pages[i] == 0) {
             s_rep_n--;
@@ -938,9 +954,12 @@ static void load_front_bank(void) {
 }
 
 static u8  s_mn_sv_lives, s_mn_sv_hearts, s_mn_sv_vinyls, s_mn_sv_keep, s_mn_last_ticks;
-static i8  s_mn_move, s_mn_move_x, s_mn_move_y, s_mn_page_dx, s_mn_page_dy;
-static u8  s_mn_jump, s_mn_crouch, s_mn_grab, s_mn_cur, s_mn_up_key;
-static u16 s_mn_dsx, s_mn_dsy;
+i8  s_mn_move;   // M1: sense static (l'ASM del pak C6 el llegeix: _spr_key_ops)
+static i8  s_mn_move_x, s_mn_move_y;
+i8  s_mn_page_dx, s_mn_page_dy;  // M1 v4: sense static (guard de scroll al _spr_key_ops: amb scroll les bases de restore i draw divergeixen i l'skip nomes es segur en repòs)
+u8  s_mn_jump, s_mn_crouch;  // M1: sense static (_spr_key_ops)
+static u8  s_mn_grab, s_mn_cur, s_mn_up_key;
+u16 s_mn_dsx, s_mn_dsy;      // M1: sense static (_spr_key_ops)
 
 void main(void) {
     cpct_memset((void*)CRT_DATA_START, 0, CRT_DATA_LEN);
@@ -1235,8 +1254,19 @@ void main(void) {
         sprite_restore_umbrella();
         sprite_restore_balloon();
         if (s_have_drawn[s_back_page]) {
-            sprite_restore_player();
-            s_have_drawn[s_back_page] = 0;
+            // M1 dirty-flag (ASM al pak C6, slot 7): si aquesta passada no
+            // pintara res de nou (repos pur, cap anim ciclica), la pantalla
+            // ja te els pixels correctes: skip del restore I del draw (el
+            // blit tambe desa el fons: amb la pantalla sense restaurar
+            // desaria el propi sprite al buffer C7 i enverinaria el restore
+            // del proper moviment -> "clon"; vist en test real 20/11).
+            enemy_spr_key(0);
+            if (s_spr_clean) {
+                // idempotent: skip del restore
+            } else {
+                sprite_restore_player();
+                s_have_drawn[s_back_page] = 0;
+            }
         }
         carry_restore(s_back_page);
         if (!s_in_room) {
@@ -1266,16 +1296,33 @@ void main(void) {
         g_spr_x = (u8)s_mn_dsx;
 
         if (s_climb_prev != 3 && (s_dying_timer || !(s_invuln_timer & 2))) {
-            const u8* fr_addr = (const u8*)(u16)(PLAYER_FRAMES_BASE + ((u16)s_mn_cur << 9) - ((u16)s_mn_cur << 5));
-            u8 prev_b = bank_set(PLAYER_FRAMES_BANK);
-            if (g_face == 0) {
-                sprite_blit_player(fr_addr);
-            } else {
-                sprite_hflip(fr_addr, (u8*)0x7840);
-                sprite_blit_player((const u8*)0x7840);
+            // M1 v3: 0 = skip total, 1 = heal tarda, 2 = draw normal.
+            // L'ANIM es compara AQUI (s_mn_cur fresc, despres de
+            // select_player_anim): la posicio/sentit poden ser iguals pero
+            // l'anim canviat (camina->atura amb camera tracking: dsx fixa!
+            // congelava les poses de caminar i les pagines les intercalaven
+            // — bug de test real 20/11). El heal tarda: restaura els tiles
+            // nets del buffer C7 + repinta + el save re-captura contingut
+            // net (cap enverinament).
+            u8 spr_mode = 0;
+            if (!s_spr_clean) spr_mode = 2;
+            else if (g_spr_tile_stomp || s_mn_cur != s_spr_last_cur[s_back_page]) spr_mode = 1;
+            g_spr_tile_stomp = 0;
+            if (spr_mode == 1) sprite_restore_player();
+            if (spr_mode) {
+                const u8* fr_addr = (const u8*)(u16)(PLAYER_FRAMES_BASE + ((u16)s_mn_cur << 9) - ((u16)s_mn_cur << 5));
+                u8 prev_b = bank_set(PLAYER_FRAMES_BANK);
+                if (g_face == 0) {
+                    sprite_blit_player(fr_addr);
+                } else {
+                    sprite_hflip(fr_addr, (u8*)0x7840);
+                    sprite_blit_player((const u8*)0x7840);
+                }
+                bank_restore(prev_b);
+                s_have_drawn[s_back_page] = 1;
+                enemy_spr_key(1);   // desa la clau (pos/sentit)
+                s_spr_last_cur[s_back_page] = s_mn_cur;   // i l'anim
             }
-            bank_restore(prev_b);
-            s_have_drawn[s_back_page] = 1;
         } else {
             s_have_drawn[s_back_page] = 0;
         }

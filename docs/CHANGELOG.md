@@ -4,6 +4,67 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 20/11/2026 (nit II) - M1 COMPLET: dirty-flag del sprite_restore_player (v4) + flip sense LUT + _spr_key_ops al pak C6
+
+**Resultat mesurat (L1 idle, cpcse)**: `sprite_restore_player` 0 crides en 30 frames
+en repòs (abans: cada frame). Periode idle: 60 -> 50 ms de mitjana (17 -> 20,1 fps):
+els frames de no-fase de cinta cauen al bucket de 40 ms del doble VSYNC. Els frames
+de canvi de fase de la cinta encara desborden (~57-60): la cinta es l'ultim tall
+per als 25 fps.
+
+**El cami (3 bugs trobats amb test real, un per versio)**:
+- v1 (skip nomes del restore): el blit del jugador TAMBE desa el fons -> amb la
+  pantalla sense restaurar desava el propi sprite al buffer C7 -> en moure's el
+  restore plantava un "clon" persistent. Fix: skip del restore I del draw.
+- v2 (+ stomp flag de la cinta): no arreglava res: el bug real era que CAMINANT
+  la camera fa tracking 1:1 -> la dsx es CONSTANT -> la clau de posicio coincidia
+  amb el darrer frame de caminar -> les pagines congelaven poses diferents del
+  cicle i les INTERCALAVEN (el "estat anterior parpallejant"). Fix v3: compare
+  de l'ANIM (s_mn_cur fresc) al draw site amb "heal tarda" (restore tarda + repinta).
+- v3: l'heal tarda corria DURANT el scroll amb la base del draw (g_vram_start
+  s'assigna DOS cops per frame: cam - page_dx pels restores, cam pel draw!) ->
+  restaurava a l'adreça equivocada -> artefacte congelat a l'aturar. Fix v4 (la
+  definitiva): GUARD DE SCROLL al check ASM: amb page_dx/dy != 0 -> dirty -> flux
+  original complet. L'skip nomes opera en repòs total, on totes les bases son
+  iguals i es matematicament segur.
+
+**_spr_key_ops (slot 7 del pak C6, 0x5A15)**: tota la logica del check/save en ASM
+al pak (~60 B) per no pagar l'allocator del SDCC al bucle de main() (el mateix
+disseny en C costava +223 B de re-flow mesurats). Clau: k0 = dsx|dsy<<8,
+k1 = face. Guards: mn_move/mn_jump != 0 + el guard de scroll v4. L'anim NO es a la
+clau: el compare el fa el C al draw site (al check encara no s'ha seleccionat).
+Modes del draw site: 0 = skip total, 1 = heal tarda (stomp o anim canviat:
+restore tarda + repinta + desa clau i anim), 2 = flux normal.
+
+**g_spr_tile_stomp**: el paren moving_bank_conveyor (C5, via bank_equ) i
+world_flush_repaints quan escriuen tiles sobre la caixa del Jake quiet ->
+el draw site fa l'heal (mode 1).
+
+**LUT de H-Flip ELIMINADA (en2_init_lut fora)**: el gir Mode 0 es un swap de
+pixels interleaved: flip(b) = ((b & 0x55) << 1) | ((b & 0xAA) >> 1) — EXACTAMENT
+la formula que la init_lut precomputava. La dansa directa (sk_flip$, ~48 T/byte)
+viu al cami fred de la cache i allibera els 256 B de 0x7900: el sostre del codi
+C6 passa de la LUT (0x7900) al POOL DE FONS (0x7A00) = +256 B d'habitacio.
+en2_flip_cell: .rept 8 -> loop (-75 B mes). C6: 0x78C6 (marge fins al pool: 330 B).
+
+**Metode de verificacio (apres a pells, per futures sessions)**:
+- El feed de tecles de l'API NO arriba a la matriu del joc. SOLUCIO: patchejar
+  _cpct_scanKeyboard_f (0x177, el byte di -> C9=RET) i pokejar
+  _cpct_keyboardStatusBuffer (0x3601, 10 B actiu-baix: bit A ZERO = tecla
+  premuda; CursorRight = linia 0 bit 1 = FD). Aixo condueix el Jake amb l'INPUT
+  REAL del joc (fisica, anim, camera): reproduccio dirigits completa sense
+  dependre del teclat. RESTAURAR el byte 0xF3 (di) abans de tornar el control.
+- L'evidencia grafica son DADES: la caixa del Jake llegida de la VRAM de cada
+  pagina (ring: addr = (base_hi|(y&7)<<3|hi(off))<<8 | lo(off), off =
+  (y>>3)*80+(x>>1)) i comparada byte a byte. Pagines iguals = correcte.
+- El marge resident queda a 5 B: la propera feina resident REQUEREIX alliberar
+  espais primer (portar C a banc o ASM a ma).
+
+**Pendent (per els 25 fps)**: moving_draw_conveyor_tiles (bimodal 3/10 ms, el
+darrer tall gros), probes de player_physics (~0,5 ms real en idle), early-out del
+hit-check (~1 ms).
+
+
 ### 20/11/2026 (nit) - Dirty-flag del sprite_restore_player: disseny verificat, BLOQUEJAT pel pressupost resident (+223 B de l'allocator)
 
 **Objectiu mesurat (19/11)**: el `sprite_restore_player` costa ~4 ms per frame en repòs

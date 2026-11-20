@@ -772,9 +772,14 @@ def build_enemybank(force, level_idx=None):
     en_code_s, en_code_l = map_area(map_path, "CODE")
     en_data_s, en_data_l = map_area(map_path, "DATA")
     # Layout C6 nou: frames comprimits 0x4000, cache 0x5000, estat 0x5800,
-    # dades 0x5820..<0x5A00, codi 0x5A00..<0x7900 (LUT de flip), BG pool 0x7A00.
-    if en_code_s is not None and (en_code_s + en_code_l) > 0x7900:
-        print("\n[FATAL] Banc C6 _CODE (0x%04X..0x%04X) envaeix la LUT de flip (0x7900)!" %
+    # dades 0x5800..<0x5A00, codi 0x5A00..<0x7A00, BG pool 0x7A00..0x7FFF.
+    # Layout C6: frames comprimits 0x4000 (blocs + s_spawn 0x4B20 + RESTORE
+    # 0x4C20..), cache 0x5000, dades 0x5800..<0x5A00, codi 0x5A00..<0x7A00.
+    # 0x7A00..0x7FFF = POOL DE FONS dels walkers (moving_blit_box l'escriu
+    # cada frame): INTOCABLE. (M1: la LUT de flip 0x7900 ELIMINADA: el gir
+    # es calcula al moment, mateixa formula — veure enemy_table.s.)
+    if en_code_s is not None and (en_code_s + en_code_l) > 0x7A00:
+        print("\n[FATAL] Banc C6 _CODE (0x%04X..0x%04X) envaeix el POOL DE FONS (0x7A00)!" %
               (en_code_s, en_code_s + en_code_l))
         sys.exit(1)
     if en_data_s is not None and (en_data_s + en_data_l) > ENEMY_BASE:
@@ -783,7 +788,8 @@ def build_enemybank(force, level_idx=None):
         sys.exit(1)
     syms = map_symbols(map_path)
     slot_names = {"_en_update": 0, "_en_restore": 1, "_en_draw": 2, "_en_init": 3,
-                  "_en_check_player_hit": 4, "_en_check_crate_hit": 5}
+                  "_en_check_player_hit": 4, "_en_check_crate_hit": 5,
+                  "_en_sprkey": 7}
     for name, slot in slot_names.items():
         want = ENEMY_BASE + slot * 3
         got = syms.get(name, -1)

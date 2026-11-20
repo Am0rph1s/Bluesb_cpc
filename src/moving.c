@@ -110,6 +110,11 @@ u8 enemy_check_player_hit(i16 px, i16 py, u8 crouch) {
     return (u8)bc_r;
 }
 
+// M1: clau del dirty-flag del sprite_restore_player (tot en ASM al pak
+// C6, slot 7: el cost en C al bucle de main() era +223 B d'allocator).
+// mode 0 (check) -> escriu s_spr_clean; mode 1 (save) -> desa la clau.
+void enemy_spr_key(u8 mode) { bc_a = mode; call_banked(0xC6, EN_SLOT(7)); }
+
 u8 enemy_check_crate_hit(i16 cx, i16 cy, i16 cvx) {
     bc_a = (u16)cx;
     bc_b = (u16)cy;

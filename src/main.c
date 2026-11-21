@@ -289,9 +289,9 @@ static void enter_door(u8 dst_col, u8 dst_row) {
 
 static void check_doors(void) {
     u8 j_col = (u8)(((s_px8 >> 3) + 8) >> 3);
-    // 1:1 DOS: obj->ypos16 = ypos >> 4 i ypos es la base dels peus.
-    // El port guarda s_py8 com a top; els peus son top + PH (30).
-    u8 j_row = (u8)(((s_py8 >> 3) + PH) >> 4);
+    // s_py8 es el top; la taula de portes del DOS indexa la fila de
+    // l'ultim pixel dels peus (top + PH - 1), no la base exclusiva.
+    u8 j_row = (u8)(((s_py8 >> 3) + PH - 1) >> 4);
     u8 i, prev;
     const LevelDoor* d;
     prev = bank_set(0xC1);

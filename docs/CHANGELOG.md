@@ -23,9 +23,10 @@ ENEMI4/DOORS3). Canvis:
 - **Cel.les aim/throw L4**: corregides (26/34 -> 4/5, 27 -> 6/7, 28 -> 2/3,
   29 -> 8/9, 31 -> 10/11, 33 -> 14/15). Abans apuntaven a 8/10/12/16, fora
   de les 16 cel.les d'ENEMI4 o a l'art d'un altre enemic.
-- **Portes/tuberies**: `check_doors` feia servir `+29` per calcular la fila
-  dels peus; el DOS compara `ypos >> 4` amb la base dels peus, que al port
-  es `top + PH` (30). Corregit a `+PH`.
+- **Portes/tuberies**: s'havia canviat `+29` -> `+PH` (30), pero la taula
+  DOS indexa la fila de l'**ultim pixel** dels peus (`top + PH - 1`); amb
+  `+PH` les portes deixaven de detectar-se. Revertit a `+PH - 1` (=29).
+  El problema de les tuberies del L4, si hi es, es una altra cosa.
 
 **Build**: resident 13.562 B (marge 6 B); L4WORLD **13.487 B** (tiles=4.354
 B, 165 spans), L4ENEMI 2.331 B; DSK generat. L4 arrenca (magic B0, level

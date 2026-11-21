@@ -86,7 +86,7 @@ DSKNAME8 = "BLUESB"
 # (engine/enemy_table.s, slots init/update/restore/draw); codi+dades
 # fins 0x8000 (pool de fons inclos). ENEMI.BIN = frames + imatge codi.
 ENEMY_BASE = 0x5A00
-ENEMY_DATA = 0x5800  # dins l'area alliberada pels frames comprimits (cache 0x5000..0x57FF, dades 0x5800..0x59FF)
+ENEMY_DATA = 0x5800  # dins l'area alliberada pels frames comprimits (cache 6x512: 0x4C00..0x57FF, dades 0x5800..0x59FF)
 ENEMY_FRAMES = os.path.join(PROJ, "assets", "bbdata", "ENEMI1.BIN")
 # L2-L6: ENEMI2.BIN..ENEMI6.BIN (mateix format de 16 celes); build_enemybank
 # els tria per level_idx.
@@ -771,10 +771,8 @@ def build_enemybank(force, level_idx=None):
     map_path = os.path.join(obj, "enemybank%s.map" % suffix)
     en_code_s, en_code_l = map_area(map_path, "CODE")
     en_data_s, en_data_l = map_area(map_path, "DATA")
-    # Layout C6 nou: frames comprimits 0x4000, cache 0x5000, estat 0x5800,
+    # Layout C6: blocs 0x4000, s_spawn 0x4B00, cache 6 x 512 B a 0x4C00,
     # dades 0x5800..<0x5A00, codi 0x5A00..<0x7A00, BG pool 0x7A00..0x7FFF.
-    # Layout C6: frames comprimits 0x4000 (blocs + s_spawn 0x4B20 + RESTORE
-    # 0x4C20..), cache 0x5000, dades 0x5800..<0x5A00, codi 0x5A00..<0x7A00.
     # 0x7A00..0x7FFF = POOL DE FONS dels walkers (moving_blit_box l'escriu
     # cada frame): INTOCABLE. (M1: la LUT de flip 0x7900 ELIMINADA: el gir
     # es calcula al moment, mateixa formula — veure enemy_table.s.)
@@ -836,18 +834,21 @@ def build_enemybank(force, level_idx=None):
     code = open(code_path, "rb").read()
     assert len(frames) % 512 == 0 and len(frames) // 512 >= 14, len(frames)
 
-    # --- Frames comprimits PER CELA (ZX0) + cache de 4 slots (veure enemy.c) ---
+    # --- Frames comprimits PER CELA (ZX0) + cache de 6 slots (veure enemy.c) ---
     # Layout dins C6 (imatge que es descomprimeix a 0x4000):
     #   0x4000..0x403F  taula de 16 punters absoluts (2 B/cela; 14 usades)
     #   0x4040..        blocs ZX0 per cela (1 flux independent per cela)
-    #   0x5000..0x57FF  cache de 4 slots de 512 B (scratch: no cal carregar-hi res)
-    #   0x5800..0x581F  estat de la cache (cela per slot + next + comptador)
+    #   0x4B14..0x4BFD  s_spawn (234 B)
+    #   0x4C00..0x57FF  cache de 6 slots de 512 B (scratch)
+    #   0x5800..0x59FF  dades d'enemics (s_enemies, s_proj, estat de cache)
     #   0x5A00..        codi (ENEMYCODE.BIN)
+    # La taula de restore del nivell ja NO viu aqui: esta a C1 (descriptor
+    # a C1:0x76D8), perque 0x4C00..0x4FB4 fa falta per als 6 slots.
     from zx0pkg.zx0 import zx0_compress
     EN_TABLE = 0x4000
     EN_BLOCKS = 0x4040
-    EN_CACHE = 0x5000
-    EN_CACHE_SLOTS = 4
+    EN_CACHE = 0x4C00
+    EN_CACHE_SLOTS = 6
     ncell = len(frames) // 512
     table = bytearray()
     blocks = bytearray()
@@ -863,39 +864,28 @@ def build_enemybank(force, level_idx=None):
         print("\n[FATAL] Blocs ZX0 d'enemics (fins 0x%04X) envaeixen la cache 0x%04X!",
               blocks_end, EN_CACHE)
         sys.exit(1)
-    if EN_CACHE + EN_CACHE_SLOTS * 512 > ENEMY_BASE:
-        print("\n[FATAL] Cache d'enemics passa del inici de codi (0x%04X)!" % ENEMY_BASE)
+    if EN_CACHE + EN_CACHE_SLOTS * 512 > ENEMY_DATA:
+        print("\n[FATAL] Cache d'enemics passa de les dades (0x%04X)!" % ENEMY_DATA)
         sys.exit(1)
     raw_len = ENEMY_BASE - 0x4000           # 0x4000..ENEMY_BASE-1 (codi despres)
     im = bytearray(raw_len)
     im[0:len(table)] = table
     im[EN_BLOCKS - 0x4000:EN_BLOCKS - 0x4000 + len(blocks)] = blocks
-    # Taula de restauracio de tiles (pack_level.py): [n u16][n x (col,row,tile)]
-    # 1:1 DOS: cada nivell restaura els SEUS consumibles en morir (game.c:344
-    # rellegeix el paquet del nivell). Abans sempre s'incrustava RESTORE0 (L1)
-    # i morir a L2+ corrompia el mapa amb tiles d'L1. Ara es per nivell.
+    # s_spawn (pack_level.py): 0x4B14..0x4BFD, just abans de la cache.
     rt_lvl = 0 if level_idx is None else level_idx
-    rt_path = os.path.join(PROJ, "assets", "bbdata", "RESTORE%d.BIN" % rt_lvl)
-    rt = open(rt_path, "rb").read()
-    EN_SPAWN = 0x4B20
-    EN_RESTORE = 0x4C20
+    EN_SPAWN = 0x4B14
     sp_path = os.path.join(obj, f"lvl{rt_lvl}", "enemy_spawn.h")
     sp_bin = parse_spawn_header(sp_path) if os.path.exists(sp_path) else b""
     if EN_BLOCKS + len(blocks) > EN_SPAWN:
         print("\n[FATAL] Blocs ZX0 d'enemics (fins 0x%04X) xoquen amb s_spawn (0x%04X)!"
               % (EN_BLOCKS + len(blocks), EN_SPAWN))
         sys.exit(1)
-    if EN_SPAWN + len(sp_bin) > EN_RESTORE:
-        print("\n[FATAL] s_spawn (fins 0x%04X) xoca amb restore (0x%04X)!"
-              % (EN_SPAWN + len(sp_bin), EN_RESTORE))
-        sys.exit(1)
-    if EN_RESTORE + len(rt) > EN_CACHE:
-        print("\n[FATAL] Taula de restauracio (%d B a 0x%04X) envaeix la cache (0x%04X)!"
-              % (len(rt), EN_RESTORE, EN_CACHE))
+    if EN_SPAWN + len(sp_bin) > EN_CACHE:
+        print("\n[FATAL] s_spawn (fins 0x%04X) xoca amb la cache (0x%04X)!"
+              % (EN_SPAWN + len(sp_bin), EN_CACHE))
         sys.exit(1)
     if sp_bin:
         im[EN_SPAWN - 0x4000:EN_SPAWN - 0x4000 + len(sp_bin)] = sp_bin
-    im[EN_RESTORE - 0x4000:EN_RESTORE - 0x4000 + len(rt)] = rt
     if level_idx in (None, 0):
         im = bytes(im) + code
     else:
@@ -903,8 +893,6 @@ def build_enemybank(force, level_idx=None):
     total = len(im)
     print("ENEMY cells: %d B ZX0 (de %d B en cru) en %d blocs; cache %d x 512 B a 0x%04X"
           % (len(blocks), len(frames), ncell, EN_CACHE_SLOTS, EN_CACHE))
-    print("ENEMY restore: %d B a 0x%04X (%d posicions)"
-          % (len(rt), EN_RESTORE, rt[0] | (rt[1] << 8)))
     out_path = os.path.join(obj, "ENEMI%s.BIN" % suffix)
     if not os.path.exists(out_path) or open(out_path, "rb").read() != im:
         open(out_path, "wb").write(im)
@@ -1825,7 +1813,7 @@ LEVELS = [
     dict(id=3, tag="L4", song="main", doors=20, has_code=False, has_elev=False,
          has_rooms=True),
     dict(id=4, tag="L5", song="theme1", doors=2, has_code=True, has_elev=True,
-         has_rooms=True, frames_base=0x6B00),
+         has_rooms=True, frames_base=0x6B80),
     dict(id=5, tag="L6", song="theme2", doors=6, has_code=True, has_elev=True,
          has_rooms=False, frames_base=0x7000),
 ]
@@ -1906,7 +1894,8 @@ def build_level_packages(force=False):
         en_dst = os.path.join(obj, tag + "ENEMI.ZX0")
         c1_dst = os.path.join(obj, tag + "C1.PAK")
         srcs = [tiles_src, map_src, trig_src, rooms_src, bank5_src, mus_src,
-                lay_src, en_src, parm_src]
+                lay_src, en_src, parm_src,
+                os.path.join(PROJ, "assets", "bbdata", "RESTORE%d.BIN" % lid)]
         if lv["has_code"]:
             srcs += [code_src, code_data_src]
         if lv["has_elev"]:
@@ -1955,15 +1944,33 @@ def build_level_packages(force=False):
             if lv["has_code"]:
                 m_data += bytes(c1_code_base - 0x5000 - len(m_data))
                 m_data += open(code_src, "rb").read()
-                if lv["has_elev"]:
-                    fb = lv.get("frames_base", LC1_FRAMES_BASE)
-                    assert len(m_data) <= (fb - 0x5000), (len(m_data), hex(fb))
-                    m_data += bytes(fb - 0x5000 - len(m_data))
-                    m_data += open(elev_src, "rb").read()
-                else:
-                    # Sense frames de mecanismes: el codi pot arribar fins als
-                    # parametres (p. ex. L3, Theme2 + codi a 0x6BA0).
-                    assert len(m_data) <= (LC1_PARAMS_BASE - 0x5000), len(m_data)
+
+            # M1 v7: taula de restore de tiles a C1, al forat abans dels
+            # frames/parametres. Descriptor a C1:0x76D8 = [ptr][0].
+            # VILLE te els frames a 0x6B80 (BG a 0x6E00) perque la seva
+            # taula de 638 B hi càpiga sencera.
+            rt_src = os.path.join(PROJ, "assets", "bbdata", "RESTORE%d.BIN" % lid)
+            rt_raw = open(rt_src, "rb").read()
+            rt_n = rt_raw[0] | (rt_raw[1] << 8)
+            rt_ent = rt_raw[2:]
+            assert len(rt_ent) == rt_n * 3, (len(rt_ent), rt_n)
+            anchor = (lv.get("frames_base", LC1_FRAMES_BASE)
+                      if lv["has_elev"] else LC1_PARAMS_BASE)
+            table_off = _align8(0x5000 + len(m_data))
+            avail = anchor - table_off
+            assert len(rt_raw) <= avail, (
+                "%s: restore %d B no cap a C1 (forat %d B a 0x%04X)"
+                % (tag, len(rt_raw), avail, table_off))
+            m_data += bytes(table_off - (0x5000 + len(m_data))) + rt_raw
+            if lv["has_elev"]:
+                fb = lv.get("frames_base", LC1_FRAMES_BASE)
+                assert len(m_data) <= (fb - 0x5000), (len(m_data), hex(fb))
+                m_data += bytes(fb - 0x5000 - len(m_data))
+                m_data += open(elev_src, "rb").read()
+            else:
+                # Sense frames de mecanismes: el codi pot arribar fins als
+                # parametres (p. ex. L3, Theme2 + codi a 0x6BA0).
+                assert len(m_data) <= (LC1_PARAMS_BASE - 0x5000), len(m_data)
             # Parametres sempre a C1:0x7680 (blindat < 0x7800 per no tocar FDC mestre a C0:0x7800)
             m_data += bytes(LC1_PARAMS_BASE - 0x5000 - len(m_data))
             parm = bytearray(open(parm_src, "rb").read())
@@ -1981,6 +1988,10 @@ def build_level_packages(force=False):
             m_data += bytes(LC1_DATA_BASE - 0x5000 - len(m_data))
             if lv["has_code"]:
                 m_data += open(code_data_src, "rb").read()
+            # Descriptor de la taula de restore (zona lliure C1:0x76E0..0x76FF,
+            # DESPRES del bloc LEVELPARM de 93 B: 77 struct + 16 paleta).
+            m_data[0x76E0 - 0x5000:0x76E2 - 0x5000] = struct.pack(
+                "<H", table_off)
             m_data = bytes(m_data)
             # Assegurar que MAI toca 0x7800!
             assert len(m_data) <= (0x7800 - 0x5000), "C1 (len=%d, limit=0x%04X) trepitja C0:0x7800 FDC!" % (len(m_data), 0x5000 + len(m_data))

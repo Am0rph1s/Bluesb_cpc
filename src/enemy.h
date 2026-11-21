@@ -14,8 +14,8 @@
 #define ENEMY_WB 8
 #define ENEMY_FRAME_SIZE 512
 #define ENEMY_FRAMES_BASE ((const u8*)0x4000)
-// Taula de restauracio de tiles en reinici per mort (generada pel packer; dins C6)
-#define ENEMY_RESTORE_TABLE ((const u8*)0x4C20)
+// M1 v7: la taula de restauracio de tiles viu a C1 (descriptor a 0x76D8);
+// ja no ocupa 0x4C20.. de C6.
 
 void enemy_init(void);
 void enemy_update(void);

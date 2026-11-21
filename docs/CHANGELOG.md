@@ -4,6 +4,29 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 21/11/2026 - Cache d'enemics de 6 slots (M1 v7)
+
+**El problema**: un shooter sol omple la cache de 4 slots (2 walk + aim + projectil);
+amb un altre enemic visible (5-6 claus) la FIFO fallava ~6 cops per cicle. Cada
+fallada d'una cela girada feia ZX0 + flip de 512 B (8-10 ms), que es veu com les
+cames del policia lentes i pot fer perdre un vsync. Un 5e slot sol no ajuda: amb
+6 claus segueixen 6 fallades/cicle; calen 6 slots.
+
+**Solucio**: cache de 6 slots a C6:0x4C00..0x57FF. Per alliberar 0x4C00..0x4FB4,
+la taula de restore de tiles del nivell passa a C1 (forat abans dels frames/params;
+descriptor a C1:0x76E0, fora del LevelParams de 93 B) i `s_spawn` baixa a 0x4B14. VILLE mou SCAFFOLD a 0x6B80 i
+els BG a 0x6E00 perque la seva taula de 638 B hi cap sencera (el split de dos
+punters no cabia al resident: 23 B de mes). C6: blocs 0x4000, spawn 0x4B00,
+cache 0x4C00..0x57FF, dades 0x5800, codi 0x5A00, pool 0x7A00.
+
+**Build**: resident 13.513 B (marge 55 B), C6 8.156 B (0x79DC, 36 B fins al
+pool de fons), L1WORLD 13.377 B (27 sectors), L1ENEMI 7.474 B (15 sectors),
+L5C1 3.758 B. L1 arrenca net (magic B0, mapa i paleta correctes) i el comptador
+`g_enemy_decomp_cnt` baixa de **10/80** a **4/80** frames en el cas policia+iaia
+(teleport, 80 frames). L5 (VILLE) tambe arrenca net (magic B0, level 4, pantalla
+correcta): SCAFFOLD a 0x6B80 i BG a 0x6E00; el test de joc ha de cobrir les zones
+de bastides.
+
 ### 21/11/2026 - Guard del projectil sobre Jake + layout ENEMI de 20 sectors
 
 **L'artefacte de la bala**: el guard de col·lisio nomes mirava enemics. Quan la bala

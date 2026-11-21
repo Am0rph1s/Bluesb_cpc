@@ -109,23 +109,31 @@ extern void en2_flip_cell(const u8* src, u8* dst);
 extern void zx0_decompress(const void* src, void* dst);
 
 // ============================================================
-// CelÂ·les d'enemic COMPRIMIDES amb ZX0 + cache de 4 slots (C6).
+// Cel·les d'enemic COMPRIMIDES amb ZX0 + cache de 6 slots (C6).
 // Layout generat per tools/build.py (build_enemybank):
 //   0x4000  taula de 16 punters absoluts (2 B per cela; 14 usades)
-//   0x4040  blocs ZX0, un flux INDEPENDENT per cela (permte salt directe)
-//   0x5000  cache: 4 slots de 512 B (scratch)
+//   0x4040  blocs ZX0, un flux INDEPENDENT per cela (permet salt directe)
+//   0x4B14  s_spawn (234 B) fins 0x4BFD
+//   0x4C00  cache: 6 slots de 512 B (scratch) fins 0x5800
 //   0x5800  estat: cela dins cada slot (0xFF = buit), next i comptador
 // El codi i les dades de C6 no es mouen; s'alliberen ~2,5 KB de frames.
 // Cost: ~3,5 ms per cela descomprimida (ldir 21 T/byte a 4 MHz), pero
-// nomes en fallada de cache (comptador a 0x5818 per mesurar-ho a l'emu).
+// nomes en fallada de cache (comptador a 0x39D9 per mesurar-ho a l'emu).
 // ============================================================
 #define ENEMY_CELLS        16
 #define ENEMY_CELL_SIZE    512
 #define SHOOT_CYCLE_FRAMES 24   // cicle complet 1:1 DOS (48 bucles DOS = 24 frames CPC @ 25 Hz)
 #define AIM_FRAMES         12   // duracio de la pose de tret (~0,5 s a 25 Hz)
 #define ENEMY_CELL_TABLE   ((const u8*)0x4000)
-#define ENEMY_CACHE_BASE   ((u8*)0x5000)
-#define ENEMY_CACHE_SLOTS  4
+// M1 v7: 6 slots (0x4C00..0x57FF). Un shooter sol ja usa 4 claus
+// (2 walk + aim + projectil); amb un altre enemic visible son 5-6 i la
+// cache de 4 no donava cap hit (6 fallades/cicle, amb gir de 512 B).
+// La taula de restore del nivell s'ha mogut a C1 per alliberar 0x4C00..0x5000.
+#define ENEMY_CACHE_BASE   ((u8*)0x4C00)
+#define ENEMY_CACHE_SLOTS  6
+// Modul 6 sense `%` (car): inc + cp 6 + jr nz + xor a, com a sentencia
+// (evita la doble avaluacio del ternari, que feia créixer 64 B el C6).
+#define EN2_NEXT(v) do { (v)++; if ((v) == ENEMY_CACHE_SLOTS) (v) = 0; } while (0)
 static u8 s_cache_who[ENEMY_CACHE_SLOTS];
 static u8 s_cache_next;
 // Retorna la cela 'cell', girada horitzontalment si flip != 0. Les celes
@@ -145,16 +153,18 @@ static const u8* en2_cell(u8 cell, u8 flip) {
         if (s_cache_who[s] == (u8)(key ^ 0x80)) opp = s;
     }
     s = s_cache_next;
-    if (s == opp) s = (u8)((s + 1) & (ENEMY_CACHE_SLOTS - 1));
-    s_cache_next = (u8)((s + 1) & (ENEMY_CACHE_SLOTS - 1));
+    if (s == opp) EN2_NEXT(s);
+    EN2_NEXT(s);
+    s_cache_next = s;
     if (opp != 0xFF) {
         // L'orientacio oposada ja es a la cache: nomes cal girar-la.
         en2_flip_cell(ENEMY_CACHE_BASE + ((u16)opp << 9),
                       ENEMY_CACHE_BASE + ((u16)s << 9));
     } else if (flip) {
         u8 t = s_cache_next;
-        if (t == s) t = (u8)((t + 1) & (ENEMY_CACHE_SLOTS - 1));
-        s_cache_next = (u8)((t + 1) & (ENEMY_CACHE_SLOTS - 1));
+        if (t == s) EN2_NEXT(t);
+        EN2_NEXT(t);
+        s_cache_next = t;
         zx0_decompress((const void*)(*(const u16*)
                        (ENEMY_CELL_TABLE + ((u16)cell << 1))),
                        ENEMY_CACHE_BASE + ((u16)t << 9));
@@ -180,7 +190,9 @@ found:
 // "slot DOS" del comentario es l'index de staticres.c del qual surt.
 // Aterratge validat amb `py -3 tools/sim_enemies.py` (MAP0/TRIG0 reals).
 // 3 iaies, 5 policies, 2 peixos, 3 ocells, 2 grangers, 1 cambrera, 4 rockers.
-#define s_spawn ((const Spawn*)0x4B20)
+// M1 v7: 0x4B14 (abans 0x4B20) per deixar 0x4C00..0x57FF als 6 slots.
+// Els blocs mes grans (VILLE) acaben a 0x4B11; el spawn 0x4B14..0x4BFD.
+#define s_spawn ((const Spawn*)0x4B14)
 
 
 

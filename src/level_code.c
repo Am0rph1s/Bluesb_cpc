@@ -17,8 +17,8 @@
 
 // --- Dades del mateix Banc 1 --------------------------------------------
 #if LEVEL_ID == 4
-#define LC_FRAMES_BASE  ((const u8*)0x6B00)   // SCAFFOLD.BIN a C1:0x6B00
-#define LC_BG_BASE      ((u8*)0x6D20)         // buffers de fons
+#define LC_FRAMES_BASE  ((const u8*)0x6B80)   // SCAFFOLD.BIN a C1:0x6B80
+#define LC_BG_BASE      ((u8*)0x6E00)         // buffers de fons
 #elif LEVEL_ID == 5
 #define LC_FRAMES_BASE  ((const u8*)0x7000)   // LIFT6.BIN a C1:0x7000
 #define LC_BG_BASE      ((u8*)0x7100)         // buffers de fons (224 B)

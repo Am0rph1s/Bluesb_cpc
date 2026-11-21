@@ -88,7 +88,8 @@ real: `key Space` (ZRCP) per menús; matriu `0x3601` + patch `0x177=C9` per cond
 |    - 0x4000..0x4C00: Player AKG (INTOCABLE)                                     |
 |    - 0x4C01..0x4FE1: HUD blitter ASM (src/hud_bank.c) + _DATA                   |
 |    - 0x5000..      : Cançó + HUD + GAMEOVER + portes + restore + codi excepció  |
-|    - 0x7680..0x76CC: LevelParams v3 (77 B)                                      |
+|    - 0x7680..0x76DC: LevelParams v3 (93 B: 77 struct + 16 paleta)               |
+|    - 0x76E0..0x76E1: punter de la taula de restore de tiles (C1) [M1 v7]         |
 |    - 0x7700..      : _DATA del codi d'excepcions (si n'hi ha)                   |
 |    - 0x7800..0x7BFF: Còpia mestra de FDC.BIN (PROHIBIT trepitjar)               |
 |    - 0x7C00..0x7F5E: Taula LVLCHS (sectors dels 6 nivells)                      |
@@ -100,17 +101,19 @@ real: `key Space` (ZRCP) per menús; matriu `0x3601` + patch `0x177=C9` per cond
 |    - 0x7FE8..0x7FFF: Taula de salts fixa BC_* (8 slots × 3 B = 24 B)            |
 |  Banc C6 (RAM 6): Enemics                                                       |
 |    - 0x4000..0x4Axx: blocs ZX0 de cel·les (14-16 usades)                       |
-|    - 0x4B20..0x4C0A: s_spawn (234 B); 0x4C20..0x4FB5: taula restore del nivell |
-|    - 0x4FC0..0x4FFF: bbox F3 (lliure; l'F3 no es va activar)                   |
-|    - 0x5000..0x59FF: Cache de 4 cel·les + estat + _DATA d'enemics               |
-|    - 0x5A00..0x7932: Codi compartit d'enemics (inclou _hud_copy + dispatcher)   |
-|    - 0x7932..0x79FF: lliure; 0x7A00..0x7FFF: pool de fons (6 x 256 B)          |
+|    - 0x4B14..0x4BFD: s_spawn (234 B)                                            |
+|    - 0x4C00..0x57FF: cache de 6 cel·les (6 x 512 B) [M1 v7]                     |
+|    - 0x5800..0x59FF: estat de la cache + _DATA d'enemics                       |
+|    - 0x5A00..0x79D2: codi compartit d'enemics (inclou _hud_copy + dispatcher)   |
+|    - 0x79D2..0x79FF: lliure; 0x7A00..0x7FFF: pool de fons (6 x 256 B)          |
 |  Banc C7 (RAM 7): Frames Jake/Elwood + buffers + restore jugador 0x7E80 (75 B)  |
 |    + LUT de hflip a 0x7F00                                                      |
 +---------------------------------------------------------------------------------+
 | VRAM (0x8000..0xFFFF): Doble buffer hardware (pàgina 0: 0xC000 / pàgina 1: 0x8000)
 +---------------------------------------------------------------------------------+
 ```
+
+**M1 v7 (cache d'enemics de 6 slots)**: la taula de restore de tiles del nivell ja no viu a C6; s'incrusta a C1 al forat abans dels frames (o abans dels params als nivells sense mecanismes) i C1:0x76E0 en guarda el punter (fora del bloc LevelParams de 93 B). C6: `s_spawn` a 0x4B14, cache de 6 x 512 B a 0x4C00..0x57FF, dades a 0x5800 i codi a 0x5A00. VILLE mou SCAFFOLD a 0x6B80 i els BG a 0x6E00 per encabir-hi la taula de 638 B sencera.
 
 ### 3.1 `LevelParams` v3 (77 bytes a `C1:0x7680` → `s_lv` resident)
 Definit a `src/level_params.h`, generat per `tools/pack_level.py` i carregat per `level_params_load()`. Camps principals:

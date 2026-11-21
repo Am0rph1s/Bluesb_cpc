@@ -902,12 +902,14 @@ static void load_level_packages(void) {
 // 1:1 DOS (game.c:344 -> load_level_data a cada reinici): al morir, el mapa
 // torna a l'estat inicial i discos, cors, ulleres i interrogants reapareixen.
 // El DOS ho fa rellegint el mapa del disc; aqui n'hi ha prou de tornar a
-// escriure els tiles que poden canviar (taula generada per tools/pack_level.py
-// i incrustada a la imatge del banc C6). L'item secret NO es restaura: el seu
-// estat persisteix entre morts (com al DOS).
+// escriure els tiles que poden canviar (taula generada per tools/pack_level.py).
+// M1 v7: la taula viu a C1 (forat abans dels frames) i el descriptor de dos
+// punters a C1:0x76D8; aixi C6:0x4C00..0x4FB4 queda lliure per als 6 slots
+// de cache d'enemics. L'item secret NO es restaura: el seu estat persisteix
+// entre morts (com al DOS).
 static void restore_level_tiles(void) {
-    u8 prev = bank_set(0xC6);
-    const u8* e = ENEMY_RESTORE_TABLE;
+    u8 prev = bank_set(0xC1);
+    const u8* e = (const u8*)(*(const u16*)0x76E0u);
     u16 n = *(const u16*)e;
     e += 2;
     while (n--) {
@@ -917,10 +919,9 @@ static void restore_level_tiles(void) {
         e += 3;
         bank_set(0xC5);
         ((u8*)0x4000)[((u16)row << 7) + col] = tile;
-        bank_set(0xC6);
+        bank_set(0xC1);
     }
 
-    bank_set(0xC1);
     e = (const u8*)(u16)s_lv.restore_off;
     n = *(const u16*)e;
     e += 2;

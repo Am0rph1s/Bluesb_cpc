@@ -216,6 +216,7 @@ sk_flip$:
     .globl _g_vram_start
     .globl _s_mn_move, _s_mn_jump, _s_mn_page_dx, _s_mn_page_dy, _s_back_page
     .globl _s_carry_kind
+    .globl _g_en_overlap
     .globl _s_mn_dsx, _s_mn_dsy, _g_face
     .globl _s_spr_last_k0, _s_spr_last_k1, _s_spr_clean
 
@@ -249,6 +250,14 @@ _spr_key_ops::
     ;; heal captura la caixa -> remanents (vist en test real: 9 B al lloc de
     ;; l'throw). Amb carry actiu: flux original (dirty).
     ld      a, (_s_carry_kind)
+    or      a
+    ret     nz
+    ;; M1 v6: guard d'enemics sobre Jake. en2_update marca _g_en_overlap si un
+    ;; enemic trepitja la caixa del Jake; llavors cal el flux original
+    ;; (restore+blit) o el save/restore creuat deixa l'error persistent al
+    ;; lloc de la colisio (vist en test real 21/11). Cost: 1 byte, no un
+    ;; recorregut de 26 enemics al frame quiet.
+    ld      a, (_g_en_overlap)
     or      a
     ret     nz
     ;; pagina -> DE = page*2

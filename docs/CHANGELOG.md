@@ -4,6 +4,33 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 21/11/2026 - Guard de col·lisio enemic x Jake: artefacte persistent tancat
+
+**El bug**: amb el dirty-flag actiu i el Jake quiet (o estabilitzat despres d'una
+col·lisio), l'enemic es dibuixa ABANS del Jake; si l'enemic el trepitja, el Jake es
+saltava el restore+blit i el save/restore creuat deixava un error grafic persistent
+al lloc de la colisio (test real d'usuari 21/11).
+
+**El guard**: `en2_update` (que ja recorre els enemics actius) marca `g_en_overlap`
+si la caixa 16x32 d'un enemic interseca la 16x30 del Jake, i `_spr_key_ops` el
+llegeix (1 byte): si es 1, flux original (restore+blit). Cost ~0,05 ms al frame
+(dins del bucle existent) i ~90 B al C6.
+
+**El primer intent fallava**: comparava el `y8>>3` de MON de l'enemic amb la
+`s_mn_dsy` de PANTALLA del Jake; el check Y no coincidia mai (flag 0 i el bloc
+corrupte al test artificial). Arreglat amb `g_en_jake_x/y` (les coordenades de mon
+que en2_update ja calcula abans del bucle).
+
+**Validacio controlada**: spawn 0 (iaia kind 15) teleportat a la caixa del Jake;
+`g_en_overlap = 01`, slots 00/FF, imatge NETA (Jake sencer, sense bloc ni fantasma).
+Build: C6 8073 B (0x7989), L1ENEMI 8043/8064 (21 B de marge).
+
+**Pendent**: la ralentitzacio amb la bala del poli. La causa probable es la cache de
+4 cel·les: la pose de tret del policia i la cela del projectil afegeixen claus i
+provoquen descompressio ZX0 (~3,5 ms) durant el cicle de tir. El remei real seria
+mes cache/RAM2 (arquitectura single-buffer), no un pedac a la doble buffer.
+
+
 ### 21/11/2026 - Restore del jugador mogut a C7:0x7E80: marge resident 5 -> 42 B
 
 **Canvi**: el bucle de 30 linies de `sprite_restore_player` (resident) passa a

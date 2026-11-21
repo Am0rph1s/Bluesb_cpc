@@ -77,6 +77,14 @@ static Enemy s_enemies[ENEMY_N];
 static Projectile s_proj;
 static u8 s_proj_bg[2][56];
 
+// M1 v6: 1 si un enemic trepitja la caixa 16x30 del Jake. L'omple en2_update
+// (que ja recorre els enemics actius) amb la posicio de pantalla del frame
+// anterior (el marge de 15 px cobreix el lag) i el guard del dirty-flag el
+// llegeix abans de saltar-se el restore+blit. Aixi evitem l'error persistent
+// al lloc de la colisio (enemic dibuixat abans del Jake + save/restore creuat)
+// amb ~0,05 ms en lloc de recórrer 26 enemics al frame quiet.
+u8 g_en_overlap;
+
 // Pool de fons a BANC C6 0x7A00 (6x256 = 1536 B, 0x7A00..0x7FFF).
 #define BG_BASE ((u16)0x7A00)
 #define BG_SLOT(s) (BG_BASE + (((u16)((u8)(s))) << 8))
@@ -259,6 +267,7 @@ void en2_update(void) {
     g_en_view_y = (i16)(g_cam_row << 3);
     g_en_jake_x = (i16)(s_px8 >> 3);
     g_en_jake_y = (i16)(s_py8 >> 3);
+    g_en_overlap = 0;
 
     Enemy* e = s_enemies;
     const Spawn* sp = s_spawn;
@@ -268,6 +277,15 @@ void en2_update(void) {
         if ((u16)(sp->x - g_en_act_xmin) > 300 ||
             (u16)(sp->y8 - g_en_act_ymin8) > (450 << 3))
             continue;
+
+        // M1 v6: marca si aquest enemic trepitja la caixa del Jake.
+        // Coordenades de MON pels dos (g_en_jake_x/y = s_px8>>3/s_py8>>3):
+        // barrejar pantalla (s_mn_dsy) amb mon (e->y8>>3) feia que el check
+        // Y no coincidis mai i el guard no s'activava (error persistent al
+        // lloc de la colisio, vist en test real 21/11).
+        if ((u16)(e->x - g_en_jake_x + 15) < 31u &&
+            (u16)((e->y8 >> 3) - g_en_jake_y + 31) < 61u)
+            g_en_overlap = 1;
 
         if (e->dead) {
             if (e->dead == 1) {

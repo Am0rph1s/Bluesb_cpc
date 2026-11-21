@@ -4,6 +4,34 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 22/11/2026 - Primera passada L4 (egou): animacions i spawns
+
+Auditoria comparativa DOS vs port del nivell 4 (`level_idx=3`, MAP3/TRIG3/
+ENEMI4/DOORS3). Canvis:
+
+- **Animacions**: el DOS te 20 sequencies animades al L4
+  (`level_tilesdata_1e8c`: b4 33,35-44,47-52,66,67,68,83). El port nomes
+  n'empacava 2 (les comportes 67/68). `tools/pack_level.py` ara extreu les
+  sequencies directament de la taula DOS (nomes per L4, per no fer petar el
+  Banc 5 de L1). Resultat: **165 spans animats** (abans 8) i 238 tiles.
+- **Enemics**: hi ha 31 objectes DOS; 30 dins el mapa i 1 a les sales
+  (slot 28, y=1168). El motor te `ENEMY_N=26`: abans es truncava per ordre
+  de slot i es perdien 4 enemics de joc (slots 26,27,29,30: 3 patrullers i
+  1 policia). Ara s'exclou l'enemic de sales i es prioritzen policies/
+  rates/walkers/aranyes; queden fora 4 peixos grans (slots 20,23,24,29)
+  pel limit d'estat.
+- **Cel.les aim/throw L4**: corregides (26/34 -> 4/5, 27 -> 6/7, 28 -> 2/3,
+  29 -> 8/9, 31 -> 10/11, 33 -> 14/15). Abans apuntaven a 8/10/12/16, fora
+  de les 16 cel.les d'ENEMI4 o a l'art d'un altre enemic.
+- **Portes/tuberies**: `check_doors` feia servir `+29` per calcular la fila
+  dels peus; el DOS compara `ypos >> 4` amb la base dels peus, que al port
+  es `top + PH` (30). Corregit a `+PH`.
+
+**Build**: resident 13.562 B (marge 6 B); L4WORLD **13.487 B** (tiles=4.354
+B, 165 spans), L4ENEMI 2.331 B; DSK generat. L4 arrenca (magic B0, level
+03). Pendent: ENEMY_N=26 per encabir els 4 peixos, comportaments op5/op12/
+op14/op15 (aranya vertical, velocitats DOS) i test manual de portes.
+
 ### 21/11/2026 - Tiles animades al scroll (M1 v9)
 
 `sync_backbuffer` pinta les columnes/files noves amb el tile BASE del mapa;

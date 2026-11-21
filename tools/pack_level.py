@@ -92,10 +92,40 @@ def parse_staticres_arrays(path):
     return arrays
 
 
+def load_dos_anim_seqs(staticres_path, arrays):
+    """Retorna {b4: [frames]} llegint level_tilesdata_1e8c/1fe8.
+
+    La taula DOS indexa les sequencies per b4 (0..85 i 0..16 per b4>=128).
+    Cada array es [pos_inicial, llargada, frame0, ...]. Substitueix la
+    llista manual DOS_ANIM_SEQS, que no cobria les 20 sequencies del L4.
+    """
+    txt = open(staticres_path, "r", encoding="utf-8", errors="replace").read()
+    seqs = {}
+    for base, list_name in ((0, "level_tilesdata_1e8c"),
+                            (128, "level_tilesdata_1fe8")):
+        m = re.search(list_name + r"\[\]\s*=\s*\{(.*?)\};", txt, re.S)
+        if not m:
+            continue
+        names = [x.strip() for x in m.group(1).split(",") if x.strip()]
+        for i, name in enumerate(names):
+            vals = arrays.get(name)
+            if not vals or len(vals) < 2:
+                continue
+            n = vals[1]
+            if n and 2 + n <= len(vals):
+                seqs[base + i] = vals[2:2 + n]
+    return seqs
+
+
 def build_level_pkg(level_idx=0, out_dir=None):
     measure_only = "--measure" in sys.argv
     staticres_path = os.path.join(HERE, "blues_dos", "bb", "staticres.c")
     arrays = parse_staticres_arrays(staticres_path)
+    anim_seqs = dict(DOS_ANIM_SEQS)
+    # Nomes L4: la resta de nivells ja tenen les sequencies que caben al
+    # seu Banc 5 (afegir-les totes feia petar L1 a 0x805A).
+    if level_idx == 3:
+        anim_seqs.update(load_dos_anim_seqs(staticres_path, arrays))
     lname = LEVEL_NAMES[level_idx]
 
     map_w = arrays["level_dim"][level_idx * 2]
@@ -207,7 +237,7 @@ def build_level_pkg(level_idx=0, out_dir=None):
     # Només les seqs realment presents al mapa (1:1 DOS: op_table2 per tile).
     # Abans s'empaquetaven totes (12) a tots els nivells i el C5 d'L2
     # desbordava (marge 0 -> FATAL 0x80A2). Ara L1=7, L2=àcid.
-    present_b4 = sorted({trig_bin[t * 10 + 4] for t in set(map_bin) | set(rooms_bin)} & set(DOS_ANIM_SEQS.keys()))
+    present_b4 = sorted({trig_bin[t * 10 + 4] for t in set(map_bin) | set(rooms_bin)} & set(anim_seqs.keys()))
     used_b4 = present_b4
     b4_to_seq = {b4: i for i, b4 in enumerate(used_b4)}
 
@@ -270,7 +300,7 @@ def build_level_pkg(level_idx=0, out_dir=None):
     # Els IDs compactes son els que veu el runtime (tileset + TRIG + mapa).
     used = set(map_bin) | set(rooms_bin)
     for b4 in present_b4:
-        used |= set(DOS_ANIM_SEQS[b4])
+        used |= set(anim_seqs[b4])
     for entry in trig_entries:
         used.add(entry[1])
     switch_targets = set()
@@ -423,12 +453,12 @@ def build_level_pkg(level_idx=0, out_dir=None):
         "// Índex: tile = s_anim_data[s_anim_off[seq] + s_anim_phase[seq]].",
         "// s_anim_len porta sentinella 0 (bucle sense comptador).",
         f"#define LEVEL_ANIM_SEQ_COUNT {len(used_b4)}",
-        f"#define LEVEL_ANIM_DATA_LEN {sum(len(DOS_ANIM_SEQS[b4]) for b4 in used_b4)}",
+        f"#define LEVEL_ANIM_DATA_LEN {sum(len(anim_seqs[b4]) for b4 in used_b4)}",
     ]
     assert len(used_b4) <= 64, "massa seqs (span.seq és u8)"
     flat, offs, lens = [], [], []
     for b4 in used_b4:
-        seq = [remap[t] for t in DOS_ANIM_SEQS[b4]]
+        seq = [remap[t] for t in anim_seqs[b4]]
         offs.append(len(flat))
         lens.append(len(seq))
         flat.extend(seq)

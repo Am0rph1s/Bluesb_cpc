@@ -65,17 +65,18 @@ SPAWN_TYPES_L3 = {
 }
 
 # L4 EGOU (vegeu tools/gen_enemy4_frames.py per a les celes)
+# Les celes aim/throw han de caure dins de les 16 celes d'ENEMI4.BIN.
 SPAWN_TYPES_L4 = {
-    25: (18, 24, 0, 2, 2),    # policia L4 (op2: patrulla walk 0/1)
-    26: (9,  24, 4, 6, 6),    # peix gran / monstre marí L4 (op6: neda 4/5, fa mal, class 2)
-    27: (18, 32, 6, 8, 8),    # rata gran L4 (op13: walker rapid walk 6/7)
-    28: (18, 24, 2, 4, 4),    # patruller L4 (op1: walk 2/3)
-    29: (24, 32, 8, 10, 10),  # rata petita L4 (op13: walker rapid walk 8/9, hitbox h=10/16)
-    30: (22, 0,  13, 13, 13), # estatic L4 (op14: cela 13)
-    31: (18, 32, 10, 12, 12), # walker mitja L4 (op13: walker rapid walk 10/11)
-    32: (22, 0,  12, 12, 12), # aranya L4 (op15: aranya de sostre)
-    33: (8,  24, 14, 16, 16), # peix petit decoratiu d'aigua L4 (op16, swim 14/15, class 0, no fa mal)
-    34: (9,  24, 4, 6, 6),    # peix gran d'aigua L4 (op16, swim 4/5, class 2, fa mal)
+    25: (18, 24, 0, 1, 1),    # policia L4 (objtype 2 -> op1: patrulla walk 0/1)
+    26: (9,  24, 4, 5, 5),    # peix gran / monstre mari L4 (op5: neda 4/5)
+    27: (18, 32, 6, 7, 7),    # rata gran L4 (op12: walker rapid walk 6/7)
+    28: (18, 24, 2, 3, 3),    # patruller L4 (op0: walk 2/3)
+    29: (24, 32, 8, 9, 9),    # rata petita L4 (op12: walker rapid walk 8/9)
+    30: (22, 0,  13, 13, 13), # estatic L4 (op13: cela 13)
+    31: (18, 32, 10, 11, 11), # walker mitja L4 (op12: walker rapid walk 10/11)
+    32: (22, 0,  12, 12, 12), # aranya L4 (op14: cela 12)
+    33: (8,  24, 14, 15, 15), # peix petit decoratiu d'aigua L4 (op15, swim 14/15, class 0)
+    34: (9,  24, 4, 5, 5),    # peix gran d'aigua L4 (op15, swim 4/5, class 2)
 }
 
 # L5 VILLE (vegeu tools/gen_enemy5_frames.py)
@@ -181,6 +182,27 @@ def generate(level_idx, out_path):
         PRIO = {23: 0, 5: 1, 4: 2, 6: 3, 3: 4}
         rows = [r for r in rows if not (r[1] == 23 and r[3] >= 72 * 16)]
         rows.sort(key=lambda r: (PRIO.get(r[1], 9), r[0]))
+    if level_idx == 3:
+        # L4 te 31 objectes i ENEMY_N=26. Els slots 38..40 son jugadors/
+        # buits, pero els 31 enemics superen el limit d'estat del motor.
+        # 1) fora els enemics de les SALES (y >= map_h*16): el motor no els
+        #    pot fer servir al mapa principal.
+        # 2) prioritzem policies/rates/walkers/aranyes; els peixos grans
+        #    (kind 9) queden al final per no perdre enemics de joc.
+        map_h = arrays["level_dim"][3 * 2 + 1] >> 4
+        all_rows = list(rows)
+        rows = [r for r in rows if r[3] + 32 < map_h * 16]
+        rows.sort(key=lambda r: (r[4] in (8, 9), r[0]))
+        dropped = [r for r in all_rows if r not in rows]
+        print("  L4: %d enemics DOS, %d dins el mapa; ENEMY_N=%d" %
+              (len(all_rows), len(rows), max_enemies))
+        if len(rows) > max_enemies:
+            print("  L4: queden fora per limit d'estat: %s" %
+                  ", ".join("slot %d tipus %d" % (r[0], r[1])
+                            for r in rows[max_enemies:]))
+        if dropped:
+            print("  L4: descartats per sales: %s" %
+                  ", ".join("slot %d tipus %d" % (r[0], r[1]) for r in dropped))
     if len(rows) > max_enemies:
         rows = rows[:max_enemies]
     n = len(rows)

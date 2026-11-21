@@ -66,7 +66,7 @@ real: `key Space` (ZRCP) per menús; matriu `0x3601` + patch `0x177=C9` per cond
    - El codi bancat no pot commutar bancs directament ni rebre paràmetres C normals: fer servir `bc_a..bc_r`.
 5. **MUSBANK, LVLCHS i FDC (Crític)**:
    - `MUSBANK.BIN` (`C1:0x4000..0x4C00`) allotja `player_akg.bin` (`_akg_init = 0x4009`, `_akg_play = 0x40CE`, `_akg_stop = 0x40BC`). **Mai** escriure-hi taules ni ampliar-ne els blocs AMSDOS reservats.
-   - `LVLCHS` (814 B) resideix a `C1:0x5D00` i es copia a `C1:0x7C00..0x7F2D` en carregar el primer nivell (única zona lliure permanent per sobre de la còpia mestra de `FDC.BIN` a `0x7800..0x7BFF`).
+   - `LVLCHS` (862 B) resideix a `C1:0x5D00` i es copia a `C1:0x7C00..0x7F5E` en carregar el primer nivell (única zona lliure permanent per sobre de la còpia mestra de `FDC.BIN` a `0x7800..0x7BFF`).
 6. **Límit de paquet `.PAK`**:
    - Màxim **28 sectors AMSDOS** = 14.336 B en disc (14.208 B de payload). El FDC llegeix a l'scratch `0x8320..0xBBFF` (14.560 B); passar-se desborda l'scratch.
 
@@ -91,7 +91,7 @@ real: `key Space` (ZRCP) per menús; matriu `0x3601` + patch `0x177=C9` per cond
 |    - 0x7680..0x76CC: LevelParams v3 (77 B)                                      |
 |    - 0x7700..      : _DATA del codi d'excepcions (si n'hi ha)                   |
 |    - 0x7800..0x7BFF: Còpia mestra de FDC.BIN (PROHIBIT trepitjar)               |
-|    - 0x7C00..0x7F2D: Taula LVLCHS (sectors dels 6 nivells)                      |
+|    - 0x7C00..0x7F5E: Taula LVLCHS (sectors dels 6 nivells)                      |
 |                                                                                 |
 |  Banc C4 (RAM 4): Tileset compactat del nivell (o FRONT.BIN al menú)            |
 |  Banc C5 (RAM 5): Món del nivell                                                |

@@ -4,6 +4,33 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 21/11/2026 - Guard del projectil sobre Jake + layout ENEMI de 20 sectors
+
+**L'artefacte de la bala**: el guard de col·lisio nomes mirava enemics. Quan la bala
+(ou/plat) passava sobre el Jake quiet, el dirty-flag saltava el restore+blit i el
+save/restore creuat deixava l'error de restauracio (test real 21/11). S'ha afegit el
+check del projectil al `_spr_key_ops` en ASM compacte (caixa 8x13 contra 16x30, en
+coordenades de mon).
+
+**Espai**: el C6 no tenia lloc per la versio C (190 B; desbordava el pool) i el pak
+L1ENEMI de 16 sectors no arribava. Solucio: el pool de sectors ENEMI passa de 16 a
+**20 sectors** (`LVLCHS` 814 -> **862 B**; ENEMI 32 -> 40 B; stride 120 -> 128;
+typ_stride 88 -> 96). Actualitzats build.py, main.c, check_dsk_banks.py, smoke_test.py,
+AGENTS.md i HANDOFF.md. La zona 0x7C00..0x7FFF (1.024 B) encara sobra (LVLCHS acaba a
+0x7F5E) i MUSBANK queda a 8.286 B / 9 blocs.
+
+**Build**: C6 8.146 B (0x79D2), L1ENEMI 8.094 B (**18 sectors**), MUSBANK 8.286 B,
+resident 13.519 B (marge 49 B).
+
+**Ralentitzacio amb la bala / cames del policia**: diagnosticada com la cache de 4
+cel·les. Les cames del policia del primer pis son el seu sprite GIRAT; quan la cache
+ha d'expulsar la cela girada, `en2_flip_cell` refa el gir de 512 B cada frame (~4-6 ms).
+Amb el policia de planta 0 disparant, la pose de tret + el projectil afegeixen claus i
+empitjoren el thrash. Al doble buffer no hi ha espai per a mes cache ni LUT de flip
+(C6 lliure 46 B); el remei de fons es la RAM2/single-buffer (descartada per estabilitat).
+El guard del projectil nomes afegeix dirty frames mentre la bala es sobre el Jake.
+
+
 ### 21/11/2026 - Guard de col·lisio enemic x Jake: artefacte persistent tancat
 
 **El bug**: amb el dirty-flag actiu i el Jake quiet (o estabilitzat despres d'una

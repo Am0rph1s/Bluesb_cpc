@@ -54,7 +54,7 @@ for lvl in range(n_lvl):
         ondisk, sec, crc = struct.unpack("<HBH", lv[off:off + 5])
         if sec == 0:
             continue
-        pool = 4 + n_lvl * 3 * 5 + lvl * (56 + 32 + 32) + (0 if typ == 0 else (56 if typ == 1 else 88))
+        pool = 4 + n_lvl * 3 * 5 + lvl * (56 + 40 + 32) + (0 if typ == 0 else (56 if typ == 1 else 96))
         chs = list(zip(lv[pool:pool + sec * 2][0::2], lv[pool:pool + sec * 2][1::2]))
         data = bytearray()
         for t, sid in chs:

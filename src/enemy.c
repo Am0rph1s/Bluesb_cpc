@@ -74,7 +74,7 @@ typedef struct {
 // Estat a ZERO (sense init: veure capcalera) i en2_init (slot 3)
 // omple l'spawn a runtime.
 static Enemy s_enemies[ENEMY_N];
-static Projectile s_proj;
+Projectile s_proj;
 static u8 s_proj_bg[2][56];
 
 // M1 v6: 1 si un enemic trepitja la caixa 16x30 del Jake. L'omple en2_update
@@ -273,6 +273,7 @@ void en2_update(void) {
     const Spawn* sp = s_spawn;
     g_en_act_xmin = (i16)(g_en_view_x - 78);
     g_en_act_ymin8 = (i16)((g_en_view_y - 132) << 3);
+
     for (i = 0; i < ENEMY_N; i++, e++, sp++) {
         if ((u16)(sp->x - g_en_act_xmin) > 300 ||
             (u16)(sp->y8 - g_en_act_ymin8) > (450 << 3))

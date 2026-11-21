@@ -1337,9 +1337,9 @@ def build_music(force):
     if not os.path.exists(ext_hud) or open(ext_hud).read() != ext_hud_txt:
         open(ext_hud, "w").write(ext_hud_txt)
 
-    # MUSBANK = player + HUD/GAMEOVER + pad fins slot + intro + pad fins 0x1D00 + LVLCHS (814 B).
+    # MUSBANK = player + HUD/GAMEOVER + pad fins slot + intro + pad fins 0x1D00 + LVLCHS (862 B).
     LVLCHS_MB_OFF = 0x1D00
-    LVLCHS_LEN = 814
+    LVLCHS_LEN = 862
     mbin = os.path.join(obj, "MUSBANK.BIN")
     pdata = open(pbin, "rb").read()
     idata = open(songs["intro"][0], "rb").read()
@@ -2024,7 +2024,7 @@ def build_level_packages(force=False):
 def package(starter_path, starter_start, game_path):
     dsk_path = os.path.join(PROJ, PROGNAME + ".dsk")
     # Escrivim a un temporal i renombrem al final: si un assert de pressupost
-    # (p. ex. L1ENEMI > 16 sectors) salta, NO deixem un bluesb.dsk corrupte
+    # (p. ex. L1ENEMI > 20 sectors) salta, NO deixem un bluesb.dsk corrupte
     # que l'emulador carregaria i es quedaria penjat.
     tmp_path = dsk_path + ".tmp"
     create_empty_cpc_dsk(tmp_path, 40)
@@ -2066,27 +2066,27 @@ def package(starter_path, starter_start, game_path):
 
     # Taula de disc dels nivells (C1:0x4000 de MUSBANK). 6 nivells x (WORLD, ENEMI, C1).
     # Format: "LV", 1, 6 + 18 x <u16 ondisk, u8 sectors, u16 crc> (94 B)
-    # + pool [6 nivells][WORLD 56 B (28 sec)][ENEMI 32 B (16 sec)][C1 32 B (16 sec)] = 720 B
-    # Total = 814 B incrustats a C1:0x4000 dins MUSBANK.BIN abans de la canco intro (0x5000).
+    # + pool [6 nivells][WORLD 56 B (28 sec)][ENEMI 40 B (20 sec)][C1 32 B (16 sec)] = 768 B
+    # Total = 862 B incrustats a C1:0x4000 dins MUSBANK.BIN abans de la canco intro (0x5000).
     lvl_payload = bytearray(b"LV\x01\x06")
-    lvl_pool = bytearray(6 * (56 + 32 + 32))
+    lvl_pool = bytearray(6 * (56 + 40 + 32))
     for lvl in range(6):
-        for typ, suffix, max_sec, stride in ((0, "WORLD", 28, 56), (1, "ENEMI", 16, 32), (2, "C1", 16, 32)):
+        for typ, suffix, max_sec, stride in ((0, "WORLD", 28, 56), (1, "ENEMI", 20, 40), (2, "C1", 16, 32)):
             name = "L%d%s" % (lvl + 1, suffix)
             if name in chs_map:
                 obytes, scount, chs, lcrc = chs_map[name]
                 assert scount <= max_sec, (name, scount, max_sec)
                 lvl_payload += struct.pack("<HBH", obytes, scount, lcrc)
-                off = lvl * (56 + 32 + 32) + (0 if typ == 0 else (56 if typ == 1 else 88))
+                off = lvl * (56 + 40 + 32) + (0 if typ == 0 else (56 if typ == 1 else 96))
                 lvl_pool[off:off + len(chs)] = bytes(chs)
             else:
                 lvl_payload += struct.pack("<HBH", 0, 0, 0)
     lvl_payload += lvl_pool
-    assert len(lvl_payload) == 814, len(lvl_payload)
+    assert len(lvl_payload) == 862, len(lvl_payload)
 
     # Incrustar LVLCHS a MUSBANK.BIN a offset 0x1D00 (C1:0x5D00, despres de song_intro)
     # sense trepitjar player_akg (0x4000..0x4C00), hud_bank (0x4C10..0x4FA0) ni song_intro (0x5000..0x5C12).
-    # En arrencar el primer nivell, load_level_file el copia a C1:0x7C00..0x7F2D (zona permanent lliure).
+    # En arrencar el primer nivell, load_level_file el copia a C1:0x7C00..0x7F5E (zona permanent lliure).
     LVLCHS_MB_OFF = 0x1D00
     obj_dir = os.path.join(PROJ, "obj")
     mbin_path = os.path.join(obj_dir, "MUSBANK.BIN")

@@ -217,6 +217,7 @@ sk_flip$:
     .globl _s_mn_move, _s_mn_jump, _s_mn_page_dx, _s_mn_page_dy, _s_back_page
     .globl _s_carry_kind
     .globl _g_en_overlap
+    .globl _s_proj, _g_en_jake_x, _g_en_jake_y
     .globl _s_mn_dsx, _s_mn_dsy, _g_face
     .globl _s_spr_last_k0, _s_spr_last_k1, _s_spr_clean
 
@@ -260,6 +261,50 @@ _spr_key_ops::
     ld      a, (_g_en_overlap)
     or      a
     ret     nz
+    ;; M1 v6b: el projectil (bala/ou/plat) tambe pot tapar el Jake i el
+    ;; save/restore creuat deixa l'error de restauracio (test real 21/11).
+    ;; Caixa 8x13 (maxima) contra la 16x30, en coordenades de mon.
+    ld      a, (_s_proj + 9)        ;; kind (0 = inactiu)
+    or      a
+    jr      z, spk_proj_ok$
+    ld      hl, (_s_proj)           ;; x
+    ld      de, (_g_en_jake_x)
+    or      a
+    sbc     hl, de
+    ld      de, #7
+    add     hl, de
+    ld      de, #23
+    ld      a, h
+    cp      d
+    jr      c, spk_proj_x_ok$
+    jr      nz, spk_proj_ok$
+    ld      a, l
+    cp      e
+    jr      nc, spk_proj_ok$
+spk_proj_x_ok$:
+    ld      hl, (_s_proj + 2)       ;; y8 >> 3
+    srl     h
+    rr      l
+    srl     h
+    rr      l
+    srl     h
+    rr      l
+    ld      de, (_g_en_jake_y)
+    or      a
+    sbc     hl, de
+    ld      de, #12
+    add     hl, de
+    ld      de, #42
+    ld      a, h
+    cp      d
+    jr      c, spk_proj_hit$
+    jr      nz, spk_proj_ok$
+    ld      a, l
+    cp      e
+    jr      nc, spk_proj_ok$
+spk_proj_hit$:
+    ret                             ;; s_spr_clean = 0 -> flux original
+spk_proj_ok$:
     ;; pagina -> DE = page*2
     ld      a, (_s_back_page)
     add     a, a

@@ -777,11 +777,11 @@ static u8 load_package(const DiskFileDesc* f, u16 crc) {
 // ============================================================
 // Taula de disc dels nivells incrustada a C1:0x4000 (MUSBANK permanent).
 // Format (build.py): "LV", 1, 6 + 18 x <ondisk u16, sectors u8, crc u16>
-// + pool [6][WORLD 56 B][ENEMI 32 B][C1 32 B]. Cap CHS de nivell al resident.
+// + pool [6][WORLD 56 B][ENEMI 40 B][C1 32 B]. Cap CHS de nivell al resident.
 #define LVLCHS_N            6
 #define LVLCHS_POOL_OFF     (4 + LVLCHS_N * 3 * 5)
-#define LVLCHS_LEVEL_STRIDE (56 + 32 + 32)
-#define LVLCHS_LEN          814
+#define LVLCHS_LEVEL_STRIDE (56 + 40 + 32)
+#define LVLCHS_LEN          862
 
 static u8 s_chs_buf[56];
 static DiskFileDesc s_lvl_desc;
@@ -793,7 +793,7 @@ static u8 load_level_file(u8 lvl, u8 typ) {
     u8 prev, n;
     u16 typ_stride;
     if (lvl >= LVLCHS_N) lvl = LVLCHS_N - 1;
-    typ_stride = (typ == 0) ? 0 : ((typ == 1) ? 56 : 88);
+    typ_stride = (typ == 0) ? 0 : ((typ == 1) ? 56 : 96);
     prev = bank_set(0xC1);
     if (*(const u8*)0x7C00u != 'L') {
         cpct_memcpy((void*)0x7C00u, (const void*)0x5D00u, LVLCHS_LEN);

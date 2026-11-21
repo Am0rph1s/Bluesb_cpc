@@ -13,10 +13,30 @@ despres l'animat: els discos/retols que parpellejaven. Ara, si `dx`/`dy`,
 s'invalida `s_page_conveyor_phase[s_back_page]` (+0x80) i
 `moving_draw_conveyor_tiles` les redibuixa en el mateix frame.
 
-**Bateria**: el detector de frames consecutius sobre una finestra estàtica de
-20 frames al magatzem dona **0 píxels** d'alternança de 2 colors; tot el
-moviment detectat és al scroll (fila superior sencera), que és exactament la
-zona on apareixien els discs/retols. Build: resident 13.565 B (marge 3 B, JUST), C6 8.156 B (0x79DC), paks iguals; L1/VILLE arrenquen.
+**Nota**: la primera bateria estàtica es va fer amb coordenades fora del mapa
+(`cam_x4=317`, `px=1350`) i les seves conclusions no són vàlides. L'evidència
+bona és l'A/B de VRAM de sota.
+
+**A/B controlat (fase d'animació congelada, mateix escenari)**:
+- Worktree `C:\Projects\bluesb_cpc_v8` al commit pre-fix `8a4d0bc` (inclou v8,
+  sense v9): build `WT4_EXIT=0`, resident 13.529 B.
+- Escenari: L1, prestatge de la fila 36 (cols 84-86), inserció per scroll
+  `cam_row` 78→72 amb `cam_x4=139`, `px=676`, `py=608`; breakpoint dins
+  `moving_bank_conveyor` (C5:0x7B01) al frame d'inserció.
+- **Pre-fix**: `s_page_conveyor_phase` queda `40/40` i la passada **no escriu
+  cap byte** a la pàgina (0 B): la fila nova conserva el tile BASE.
+- **Fix del scroll**: `sync_backbuffer` invalida la pàgina a `0xC0`; la
+  mateixa passada escriu **42 B** (i **1.219 B** en la passada completa amb
+  tots els spans visibles) a `0xC000`; les captures del mateix frame difereixen
+  en **296 píxels** a l'element animat.
+- Nota de coordenades: el mapa L1 fa 128×8 px = **1.024 px** d'ample
+  (`cam_max_x4=236`). Els teleports previs (`cam_x4=317`, `px=1350`) queien
+  **fora del mapa** i invalidaven el test; les coordenades correctes són
+  `cam_x4=139`, `px=676`, `cam_row=72`.
+
+**Build**: resident 13.562 B (marge 6 B), C6 8.156 B (0x79DC), paks iguals;
+L1/VILLE arrenquen. Retall del marge: `if (dx || dy)` -> `if (dx | dy)`
+(mateixa semantica, OR de registres).
 
 ### 21/11/2026 - Repaint de tiles animades (M1 v8)
 

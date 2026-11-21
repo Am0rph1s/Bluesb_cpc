@@ -117,7 +117,7 @@ real: `key Space` (ZRCP) per menús; matriu `0x3601` + patch `0x177=C9` per cond
 
 **M1 v8**: `repaint_both_buffers` invalida `s_page_conveyor_phase[0/1]` (+0x80) perque les tiles animades (`s_anim` spans: retols/vinils) es redibuixin a les dues pagines despres d'un repaint (inici de nivell, sala, respawn); sense aixo quedaven amb el tile BASE fins al seguent canvi de fase i els discs/retols parpellejaven o desapareixien.
 
-**M1 v9**: `sync_backbuffer` tambe invalida `s_page_conveyor_phase[s_back_page]` (+0x80) quan hi ha scroll (`dx`/`dy`), perque les columnes/files noves no quedin amb el tile BASE de les animades fins al seguent canvi de fase (discs/retols al caire dret/superior).
+**M1 v9**: `sync_backbuffer` tambe invalida `s_page_conveyor_phase[s_back_page]` (+0x80) quan hi ha scroll (`dx`/`dy`), perque les columnes/files noves no quedin amb el tile BASE de les animades fins al seguent canvi de fase (discs/retols al caire dret/superior). Verificat A/B contra el worktree pre-fix `8a4d0bc`: a la insercio de la fila 36 (`cam_row` 78→72, `cam_x4=139`, `px=676`), el pre-fix redibuixa **0 B** i el fix **42 B** (1.219 B en la passada completa); captures del mateix frame amb 296 px de diferencia a l'element animat. Atencio: el mapa L1 fa 1.024 px d'ample (`cam_max_x4=236`); `cam_x4=317`/`px=1350` queden fora del mapa i invalidaven els tests antics.
 
 ### 3.1 `LevelParams` v3 (77 bytes a `C1:0x7680` → `s_lv` resident)
 Definit a `src/level_params.h`, generat per `tools/pack_level.py` i carregat per `level_params_load()`. Camps principals:

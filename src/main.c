@@ -315,7 +315,7 @@ static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
     // superior es veu el base i despres l'animat (parpelleig). Invalidem la
     // fase de la pagina perque moving_draw_conveyor_tiles les redibuixi en
     // aquest mateix frame, sobre les columnes/files acabades de pintar.
-    if (dx || dy) {
+    if (dx | dy) {
         s_page_conveyor_phase[s_back_page] = (u8)(s_conveyor_phase + 0x80);
     }
     if (dx > 0) {

@@ -309,6 +309,15 @@ static void check_doors(void) {
 
 
 static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
+    // M1 v9: en fer scroll, les columnes/files noves es renderitzen amb el
+    // tile BASE del mapa; les animades (s_anim spans: retols/vinils) nomes
+    // es redibuixen quan canvia la fase (fins a 4 frames). Al caire dret o
+    // superior es veu el base i despres l'animat (parpelleig). Invalidem la
+    // fase de la pagina perque moving_draw_conveyor_tiles les redibuixi en
+    // aquest mateix frame, sobre les columnes/files acabades de pintar.
+    if (dx || dy) {
+        s_page_conveyor_phase[s_back_page] = (u8)(s_conveyor_phase + 0x80);
+    }
     if (dx > 0) {
         if (dx > 1) render_column(target_x4, target_row, 38);
         render_column(target_x4, target_row, 39);

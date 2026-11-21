@@ -117,6 +117,8 @@ real: `key Space` (ZRCP) per menús; matriu `0x3601` + patch `0x177=C9` per cond
 
 **M1 v8**: `repaint_both_buffers` invalida `s_page_conveyor_phase[0/1]` (+0x80) perque les tiles animades (`s_anim` spans: retols/vinils) es redibuixin a les dues pagines despres d'un repaint (inici de nivell, sala, respawn); sense aixo quedaven amb el tile BASE fins al seguent canvi de fase i els discs/retols parpellejaven o desapareixien.
 
+**M1 v9**: `sync_backbuffer` tambe invalida `s_page_conveyor_phase[s_back_page]` (+0x80) quan hi ha scroll (`dx`/`dy`), perque les columnes/files noves no quedin amb el tile BASE de les animades fins al seguent canvi de fase (discs/retols al caire dret/superior).
+
 ### 3.1 `LevelParams` v3 (77 bytes a `C1:0x7680` → `s_lv` resident)
 Definit a `src/level_params.h`, generat per `tools/pack_level.py` i carregat per `level_params_load()`. Camps principals:
 - `room_count` (+2), `room_rows` (+4), `room_row0` (+5)

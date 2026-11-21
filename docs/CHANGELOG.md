@@ -4,6 +4,20 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 21/11/2026 - Tiles animades al scroll (M1 v9)
+
+`sync_backbuffer` pinta les columnes/files noves amb el tile BASE del mapa;
+les animades (`s_anim` spans: retols/vinils) nomes es redibuixen al canvi de
+fase (fins a 4 frames). Al caire dret/superior del scroll es veia el base i
+despres l'animat: els discos/retols que parpellejaven. Ara, si `dx`/`dy`,
+s'invalida `s_page_conveyor_phase[s_back_page]` (+0x80) i
+`moving_draw_conveyor_tiles` les redibuixa en el mateix frame.
+
+**Bateria**: el detector de frames consecutius sobre una finestra estàtica de
+20 frames al magatzem dona **0 píxels** d'alternança de 2 colors; tot el
+moviment detectat és al scroll (fila superior sencera), que és exactament la
+zona on apareixien els discs/retols. Build: resident 13.565 B (marge 3 B, JUST), C6 8.156 B (0x79DC), paks iguals; L1/VILLE arrenquen.
+
 ### 21/11/2026 - Repaint de tiles animades (M1 v8)
 
 Els retols/vinils animats (`s_anim` spans) nomes es redibuixen quan canvia la

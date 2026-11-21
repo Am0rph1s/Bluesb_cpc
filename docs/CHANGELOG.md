@@ -4,6 +4,20 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 21/11/2026 - Repaint de tiles animades (M1 v8)
+
+Els retols/vinils animats (`s_anim` spans) nomes es redibuixen quan canvia la
+fase (`s_page_conveyor_phase[page] != s_conveyor_phase`). Despres d'un repaint
+(inici de nivell, entrada de sala, respawn) les dues pagines quedaven amb el
+tile BASE i les animades no tornaven fins al seguent canvi de fase (fins a 4
+frames): discs/retols que parpellegen o desapareixen. `repaint_both_buffers`
+ara invalida `s_page_conveyor_phase[0/1]` amb `+0x80` perque el proper
+`moving_draw_conveyor_tiles` de cada pagina les redibuixi.
+
+**Build**: resident 13.529 B (marge 39 B), C6 8.156 B (0x79DC), L1WORLD
+13.377 B, L1ENEMI 7.474 B. L1 i VILLE arrenquen nets; comptador policia+iaia
+5/80 (la cache de 6 slots, intacta).
+
 ### 21/11/2026 - Cache d'enemics de 6 slots (M1 v7)
 
 **El problema**: un shooter sol omple la cache de 4 slots (2 walk + aim + projectil);

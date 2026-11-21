@@ -115,6 +115,8 @@ real: `key Space` (ZRCP) per menús; matriu `0x3601` + patch `0x177=C9` per cond
 
 **M1 v7 (cache d'enemics de 6 slots)**: la taula de restore de tiles del nivell ja no viu a C6; s'incrusta a C1 al forat abans dels frames (o abans dels params als nivells sense mecanismes) i C1:0x76E0 en guarda el punter (fora del bloc LevelParams de 93 B). C6: `s_spawn` a 0x4B14, cache de 6 x 512 B a 0x4C00..0x57FF, dades a 0x5800 i codi a 0x5A00. VILLE mou SCAFFOLD a 0x6B80 i els BG a 0x6E00 per encabir-hi la taula de 638 B sencera.
 
+**M1 v8**: `repaint_both_buffers` invalida `s_page_conveyor_phase[0/1]` (+0x80) perque les tiles animades (`s_anim` spans: retols/vinils) es redibuixin a les dues pagines despres d'un repaint (inici de nivell, sala, respawn); sense aixo quedaven amb el tile BASE fins al seguent canvi de fase i els discs/retols parpellejaven o desapareixien.
+
 ### 3.1 `LevelParams` v3 (77 bytes a `C1:0x7680` → `s_lv` resident)
 Definit a `src/level_params.h`, generat per `tools/pack_level.py` i carregat per `level_params_load()`. Camps principals:
 - `room_count` (+2), `room_rows` (+4), `room_row0` (+5)

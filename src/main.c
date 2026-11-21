@@ -213,6 +213,15 @@ static void repaint_both_buffers(void) {
     g_vram_start = camera_ma(g_cam_x4, g_cam_row);
     s_pending_x = 0;
     s_pending_y = 0;
+    // M1 v8: les tiles animades (retols/vinils) nomes es redibuixen quan
+    // canvia la fase. Despres d'un repaint (nivell/sala/respawn) les dues
+    // pagines queden amb el tile BASE i les animades no tornen fins al
+    // seguent canvi de fase (discs/retols que parpellegen o desapareixen).
+    // Forcem el redibuix a la propera passada de cada pagina. +0x80: un
+    // valor llunyà de la fase actual (no pot coincidir amb el proper
+    // increment abans que la pagina es torni a dibuixar).
+    s_page_conveyor_phase[0] = (u8)(s_conveyor_phase + 0x80);
+    s_page_conveyor_phase[1] = (u8)(s_conveyor_phase + 0x80);
     for (p = 0; p < 2; p++) {
         g_vram_base_hi = p ? 0x80 : 0xC0;
         if (s_in_room) render_room(0);

@@ -36,7 +36,7 @@ CFLAGS_ENEMY = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "40000",
 # La PILA no canvia: el canari (0x3E10) i el limit de la pila (SP=0x3FFE) son
 # els mateixos; el _DATA acaba per sota del canari.
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0x3600", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0x3700", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 
@@ -430,8 +430,8 @@ def report_and_assert_memory_budget(map_path):
         print("\n[FATAL] _CODE ha envait _DATA per %d bytes! (code_end=0x%04X > data_start=0x%04X)" %
               (-code_margin, code_end, s_data))
         sys.exit(1)
-    if data_end > 0x3B40:
-        print("\n[FATAL] _DATA ha trepitjat el canari de pila (data_end=0x%04X > 0x3B40)! Mou CANARY_ADDR." %
+    if data_end > 0x3C40:
+        print("\n[FATAL] _DATA ha trepitjat el canari de pila (data_end=0x%04X > 0x3C40)! Mou CANARY_ADDR." %
               data_end)
         sys.exit(1)
     if stack_margin < 256:

@@ -31,6 +31,7 @@ extern void render_column(u16 cam_col, u16 cam_row, u16 sx);
 extern void render_row(u16 cam_col, u16 cam_row, u16 sy);
 extern void render_tile_world(u8 tile_index, u16 col, u16 row,
                               u16 cam_x4, u16 cam_row);
+extern void render_span_world(u16 col_row, u16 tile_cnt);
 extern void hud_init(void);
 extern void hud_render(u8 page, u8 force);
 extern void crtc_set_display_start(u16 ma);
@@ -311,15 +312,6 @@ static void check_doors(void) {
 
 
 static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
-    // M1 v9: en fer scroll, les columnes/files noves es renderitzen amb el
-    // tile BASE del mapa; les animades (s_anim spans: retols/vinils) nomes
-    // es redibuixen quan canvia la fase (fins a 4 frames). Al caire dret o
-    // superior es veu el base i despres l'animat (parpelleig). Invalidem la
-    // fase de la pagina perque moving_draw_conveyor_tiles les redibuixi en
-    // aquest mateix frame, sobre les columnes/files acabades de pintar.
-    if (dx | dy) {
-        s_page_conveyor_phase[s_back_page] = (u8)(s_conveyor_phase + 0x80);
-    }
     if (dx > 0) {
         if (dx > 1) render_column(target_x4, target_row, 38);
         render_column(target_x4, target_row, 39);
@@ -340,63 +332,313 @@ static void sync_backbuffer(i8 dx, i8 dy, u16 target_x4, u16 target_row) {
     }
 }
 
-static void carry_restore(u8 page) {
-    u8 prev;
-    if (!s_carry_drawn[page]) return;
-    prev = bank_set(0xC7);
-    g_moving_dst = s_carry_dst[page];
-    g_moving_background = CRATE_BG_PAGE(page);
-    g_moving_span = s_carry_drawn_span[page];
-    g_moving_rows = s_carry_drawn_rows[page];
-    moving_restore_box();
-    bank_restore(prev);
-    s_carry_drawn[page] = 0;
+static void carry_restore(u8 page) __naked {
+    (void)page;
+    __asm
+        ld   e, a                   ;; E = page (0 or 1)
+        ld   d, #0
+        ld   hl, #_s_carry_drawn
+        add  hl, de
+        ld   a, (hl)
+        or   a
+        ret  z
+        ld   (hl), #0
+        ld   hl, #_s_carry_dst
+        add  hl, de
+        add  hl, de
+        ld   c, (hl)
+        inc  hl
+        ld   b, (hl)
+        ld   (_g_moving_dst), bc
+        ld   hl, #0x7E00
+        bit  0, e
+        jr   z, cr_bg$
+        ld   hl, #0x7E40
+    cr_bg$:
+        ld   (_g_moving_background), hl
+        ld   hl, #_s_carry_drawn_span
+        add  hl, de
+        ld   a, (hl)
+        ld   (_g_moving_span), a
+        ld   hl, #_s_carry_drawn_rows
+        add  hl, de
+        ld   a, (hl)
+        ld   (_g_moving_rows), a
+        ld   a, #0xC7
+        call _bank_set
+        push af
+        call _moving_restore_box
+        pop  af
+        jp   _bank_restore
+    __endasm;
 }
 
-static u8 s_cd_prev, s_cd_start_byte, s_cd_byte_count, s_cd_start_row, s_cd_row_count;
-static i16 s_cd_cx, s_cd_cy, s_cd_view_x, s_cd_view_y, s_cd_clip_x0, s_cd_clip_x1, s_cd_clip_y0, s_cd_clip_y1;
+static u8 s_cd_page;
 
-static void carry_draw(u8 page) {
-    if (s_carry_kind != 1) return;
-    if (s_carry_state == 0) {
-        if (s_invuln_timer & 2) return; // Parpelleig amb en Jake
-        // 1:1 DOS: centrat sobre el cap (px + 4) i recolzat a les mans (py - 15)
-        // Snapping horitzontal parell (& ~1) per alinear amb el byte de Mode 0 (2 px/byte)
-        s_cd_cx = (i16)(((s_px8 >> 3) + 4) & ~1);
-        s_cd_cy = (i16)((s_py8 >> 3) - 15);
-    } else {
-        s_cd_cx = (i16)((s_carry_x >> 3) & ~1);
-        s_cd_cy = (i16)(s_carry_y >> 3);
-    }
+static void carry_draw(u8 page) __naked {
+    (void)page;
+    __asm
+        ld   (_s_cd_page), a
+        ld   a, (_s_carry_kind)
+        dec  a
+        ret  nz
 
-    s_cd_view_x = (i16)(g_cam_x4 << 2);
-    s_cd_view_y = (i16)(g_cam_row << 3);
-    s_cd_clip_x0 = s_cd_cx > s_cd_view_x ? s_cd_cx : s_cd_view_x;
-    s_cd_clip_x1 = (i16)(s_cd_cx + 8) < (i16)(s_cd_view_x + 160) ? (i16)(s_cd_cx + 8) : (i16)(s_cd_view_x + 160);
-    s_cd_clip_y0 = s_cd_cy > s_cd_view_y ? s_cd_cy : s_cd_view_y;
-    s_cd_clip_y1 = (i16)(s_cd_cy + 16) < (i16)(s_cd_view_y + 160) ? (i16)(s_cd_cy + 16) : (i16)(s_cd_view_y + 160);
+        ld   a, (_s_carry_state)
+        or   a
+        jr   nz, cd_thrown$
+        ld   a, (_s_invuln_timer)
+        bit  1, a
+        ret  nz
+        ld   hl, (_s_px8)
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        ld   de, #4
+        add  hl, de
+        res  0, l
+        push hl                     ;; (SP) = cx
+        ld   hl, (_s_py8)
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        ld   de, #-15
+        add  hl, de                 ;; HL = cy
+        jr   cd_coords_ok$
 
-    if (s_cd_clip_x0 >= s_cd_clip_x1 || s_cd_clip_y0 >= s_cd_clip_y1) return;
+    cd_thrown$:
+        ld   hl, (_s_carry_x)
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        res  0, l
+        push hl                     ;; (SP) = cx
+        ld   hl, (_s_carry_y)
+        sra  h
+        rr   l
+        sra  h
+        rr   l
+        sra  h
+        rr   l                      ;; HL = cy
 
-    s_cd_start_byte = (u8)((s_cd_clip_x0 - s_cd_cx) >> 1);
-    s_cd_byte_count = (u8)((s_cd_clip_x1 - s_cd_clip_x0) >> 1);
-    s_cd_start_row = (u8)(s_cd_clip_y0 - s_cd_cy);
-    s_cd_row_count = (u8)(s_cd_clip_y1 - s_cd_clip_y0);
-    if (!s_cd_byte_count || !s_cd_row_count) return;
+    cd_coords_ok$:
+        ;; Y clipping: view_y = g_cam_row << 3
+        ex   de, hl                 ;; DE = cy
+        ld   hl, (_g_cam_row)
+        add  hl, hl
+        add  hl, hl
+        add  hl, hl                 ;; HL = view_y
+        ld   b, h
+        ld   c, l                   ;; BC = view_y
+        ld   h, d
+        ld   l, e                   ;; HL = cy
+        or   a
+        sbc  hl, bc                 ;; HL = dy = cy - view_y
+        push hl                     ;; save dy
+        ld   de, #15
+        add  hl, de
+        ld   de, #175
+        or   a
+        sbc  hl, de
+        pop  hl                     ;; HL = dy
+        jr   c, cd_y_vis$
+        pop  hl                     ;; discard cx
+        ret
 
-    s_cd_prev = bank_set(0xC7);
-    g_moving_dst = (u16)ring_address(page, s_cd_clip_x0, s_cd_clip_y0);
-    s_carry_dst[page] = g_moving_dst;
-    s_carry_drawn_span[page] = s_cd_byte_count;
-    s_carry_drawn_rows[page] = s_cd_row_count;
-    g_moving_background = CRATE_BG_PAGE(page);
-    g_moving_sprite = (u16)(CRATE_FLY_FRAME + ((u16)s_cd_start_row << 3) + (s_cd_start_byte << 1));
-    g_moving_span = s_cd_byte_count;
-    g_moving_rows = s_cd_row_count;
-    g_moving_spr_skip = (u8)(8 - (s_cd_byte_count << 1));
-    moving_blit_box();
-    bank_restore(s_cd_prev);
-    s_carry_drawn[page] = 1;
+    cd_y_vis$:
+        bit  7, h
+        jr   z, cd_y_nonneg$
+        xor  a
+        sub  l
+        ld   d, a                   ;; D = start_row
+        ld   a, #16
+        add  a, l
+        ld   e, a                   ;; E = row_count
+        push bc                     ;; stack: cx, clip_y0
+        jr   cd_y_done$
+
+    cd_y_nonneg$:
+        push hl
+        add  hl, bc                 ;; HL = clip_y0
+        ex   (sp), hl               ;; HL = dy, (SP) = clip_y0
+        ld   d, #0                  ;; D = start_row = 0
+        ld   a, l
+        cp   #145
+        jr   c, cd_y_full$
+        ld   a, #160
+        sub  l
+        ld   e, a                   ;; E = 160 - dy
+        jr   cd_y_done$
+    cd_y_full$:
+        ld   e, #16                 ;; E = row_count = 16
+
+    cd_y_done$:
+        ;; stack: cx, clip_y0; D = start_row, E = row_count
+        pop  bc                     ;; BC = clip_y0
+        pop  hl                     ;; HL = cx
+        push de                     ;; stack: row_pair
+        push bc                     ;; stack: row_pair, clip_y0
+        push hl                     ;; stack: row_pair, clip_y0, cx
+
+        ;; X clipping: view_x = g_cam_x4 << 2
+        ld   de, (_g_cam_x4)
+        ex   de, hl
+        add  hl, hl
+        add  hl, hl                 ;; HL = view_x
+        ld   b, h
+        ld   c, l                   ;; BC = view_x
+        pop  hl                     ;; HL = cx
+        push hl                     ;; stack: row_pair, clip_y0, cx
+        or   a
+        sbc  hl, bc                 ;; HL = dx = cx - view_x
+        push hl
+        ld   de, #7
+        add  hl, de
+        ld   de, #167
+        or   a
+        sbc  hl, de
+        pop  hl                     ;; HL = dx
+        jr   c, cd_x_vis$
+        pop  hl
+        pop  hl
+        pop  hl
+        ret
+
+    cd_x_vis$:
+        bit  7, h
+        jr   z, cd_x_nonneg$
+        xor  a
+        sub  l
+        srl  a
+        ld   h, a                   ;; H = start_byte
+        ld   a, #4
+        sub  h
+        ld   l, a                   ;; L = byte_count
+        pop  de                     ;; discard cx
+        ld   d, b
+        ld   e, c                   ;; DE = clip_x0 = view_x
+        jr   cd_x_done$
+
+    cd_x_nonneg$:
+        ld   a, l
+        cp   #154
+        jr   c, cd_x_full$
+        ld   a, #160
+        sub  l
+        srl  a
+        ld   l, a                   ;; L = byte_count
+        jr   cd_x_set$
+    cd_x_full$:
+        ld   l, #4
+    cd_x_set$:
+        ld   h, #0                  ;; H = start_byte = 0
+        pop  de                     ;; DE = clip_x0 = cx
+
+    cd_x_done$:
+        ld   a, l
+        or   a
+        jr   nz, cd_x_nz$
+        pop  bc
+        pop  hl
+        ret
+    cd_x_nz$:
+        ;; stack: row_pair, clip_y0; DE = clip_x0, H = start_byte, L = byte_count
+        pop  bc                     ;; BC = clip_y0
+        ex   (sp), hl               ;; (SP) = H:start_byte, L:byte_count; HL = row_pair
+        push hl                     ;; stack: byte_pair, row_pair
+
+        push bc                     ;; arg y = clip_y0
+        ld   a, (_s_cd_page)
+        call _ring_address          ;; DE = dst
+        ld   (_g_moving_dst), de
+
+        ld   a, (_s_cd_page)
+        ld   c, a
+        ld   b, #0
+        ld   hl, #_s_carry_dst
+        add  hl, bc
+        add  hl, bc
+        ld   (hl), e
+        inc  hl
+        ld   (hl), d
+
+        ld   hl, #_s_carry_drawn
+        add  hl, bc
+        ld   (hl), #1
+
+        ld   hl, #0x7E00
+        bit  0, c
+        jr   z, cd_bg_ok$
+        ld   hl, #0x7E40
+    cd_bg_ok$:
+        ld   (_g_moving_background), hl
+
+        pop  bc                     ;; B = start_row, C = row_count
+        pop  de                     ;; D = start_byte, E = byte_count
+        push bc                     ;; save start_row/row_count
+        push de                     ;; save start_byte/byte_count
+
+        ld   a, (_s_cd_page)
+        ld   c, a
+        ld   b, #0
+        ld   hl, #_s_carry_drawn_span
+        add  hl, bc
+        ld   (hl), e
+        ld   a, e
+        ld   (_g_moving_span), a
+
+        pop  de                     ;; D = start_byte, E = byte_count
+        pop  bc                     ;; B = start_row, C = row_count
+        push bc
+        push de
+        ld   a, (_s_cd_page)
+        ld   e, a
+        ld   d, #0
+        ld   hl, #_s_carry_drawn_rows
+        add  hl, de
+        ld   (hl), c
+        ld   a, c
+        ld   (_g_moving_rows), a
+
+        pop  de                     ;; D = start_byte, E = byte_count
+        pop  bc                     ;; B = start_row, C = row_count
+
+        ld   a, e
+        add  a, a
+        ld   c, a
+        ld   a, #8
+        sub  c
+        ld   (_g_moving_spr_skip), a
+
+        ;; sprite = 0x7A20 + (start_row << 3) + (start_byte << 1)
+        ld   l, b
+        ld   h, #0
+        add  hl, hl
+        add  hl, hl
+        add  hl, hl
+        sla  d
+        ld   e, d
+        ld   d, #0
+        add  hl, de
+        ld   de, #0x7A20
+        add  hl, de
+        ld   (_g_moving_sprite), hl
+
+        ld   a, #0xC7
+        call _bank_set
+        push af
+        call _moving_blit_box
+        pop  af
+        jp   _bank_restore
+    __endasm;
 }
 
 void carry_abort(void) {
@@ -584,7 +826,10 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
             u8 fl;
             s_ps_col = (u16)((next_px + 11) >> 3);
             fl = tile_flags(s_ps_col, s_ps_feet_row);
-            if (!s_ps_crouch) fl |= (tile_flags(s_ps_col, s_ps_head_row) | tile_flags(s_ps_col, s_ps_top_row));
+            if (!s_ps_crouch) {
+                if (s_ps_head_row != s_ps_feet_row) fl |= tile_flags(s_ps_col, s_ps_head_row);
+                fl |= tile_flags(s_ps_col, s_ps_top_row);
+            }
             if (fl & 1) {
                 s_vx = 0;
             } else {
@@ -595,7 +840,10 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
             u8 fl;
             s_ps_col = (u16)((next_px + 4) >> 3);
             fl = tile_flags(s_ps_col, s_ps_feet_row);
-            if (!s_ps_crouch) fl |= (tile_flags(s_ps_col, s_ps_head_row) | tile_flags(s_ps_col, s_ps_top_row));
+            if (!s_ps_crouch) {
+                if (s_ps_head_row != s_ps_feet_row) fl |= tile_flags(s_ps_col, s_ps_head_row);
+                fl |= tile_flags(s_ps_col, s_ps_top_row);
+            }
             if (fl & 2) {
                 s_vx = 0;
             } else {
@@ -679,8 +927,10 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                     if (!s_ps_landed && s_ps_feet_row < max_r) {
                         i16 surf = (i16)(s_ps_feet_row << 4);
                         if (s_ps_prev_feet <= surf && s_ps_curr_feet >= surf) {
-                            u8 s = is_floor_solid(s_ps_c_mid1, s_ps_feet_row, s_vy, s_ps_crouch) |
-                                   is_floor_solid(s_ps_c_mid2, s_ps_feet_row, s_vy, s_ps_crouch);
+                            u8 s = is_floor_solid(s_ps_c_mid1, s_ps_feet_row, s_vy, s_ps_crouch);
+                            if (s_ps_c_mid2 != s_ps_c_mid1) {
+                                s |= is_floor_solid(s_ps_c_mid2, s_ps_feet_row, s_vy, s_ps_crouch);
+                            }
                             if (s) {
                                 s_ps_py = (i16)(surf - PH);
                                 s_py8 = (i16)(s_ps_py * SUB);
@@ -1063,16 +1313,13 @@ void main(void) {
         s_mn_jump = 0; s_mn_crouch = 0; s_mn_grab = 0;
 
         cpct_scanKeyboard_f();
-        if (cpct_isKeyPressed(Key_CursorLeft) || cpct_isKeyPressed(Key_Q) ||
-            cpct_isKeyPressed(Joy0_Left))  { s_mn_move = -1; g_face = 1; }
-        if (cpct_isKeyPressed(Key_CursorRight) || cpct_isKeyPressed(Key_S) ||
-            cpct_isKeyPressed(Joy0_Right)) { s_mn_move = +1; g_face = 0; }
-        if (cpct_isKeyPressed(Key_Space) || cpct_isKeyPressed(Key_X) ||
-            cpct_isKeyPressed(Joy0_Fire1) || cpct_isKeyPressed(Joy0_Fire2)) { s_mn_grab = 1; }
-        if (cpct_isKeyPressed(Key_CursorDown) || cpct_isKeyPressed(Key_Z) ||
-            cpct_isKeyPressed(Joy0_Down))  { s_mn_crouch = 1; }
+#define KEY_DOWN(k) ((u8)(~cpct_keyboardStatusBuffer[(u8)(k)] & (u8)((u16)(k) >> 8)))
+        if (KEY_DOWN(Key_CursorLeft) || KEY_DOWN(Key_Q) || KEY_DOWN(Joy0_Left))  { s_mn_move = -1; g_face = 1; }
+        if (KEY_DOWN(Key_CursorRight) || KEY_DOWN(Key_S) || KEY_DOWN(Joy0_Right)) { s_mn_move = +1; g_face = 0; }
+        if (KEY_DOWN(Key_Space) || KEY_DOWN(Key_X) || KEY_DOWN(Joy0_Fire1) || KEY_DOWN(Joy0_Fire2)) { s_mn_grab = 1; }
+        if (KEY_DOWN(Key_CursorDown) || KEY_DOWN(Key_Z) || KEY_DOWN(Joy0_Down))  { s_mn_crouch = 1; }
         {
-            s_mn_up_key = (cpct_isKeyPressed(Key_CursorUp) || cpct_isKeyPressed(Joy0_Up));
+            s_mn_up_key = (u8)(KEY_DOWN(Key_CursorUp) || KEY_DOWN(Joy0_Up));
             if (s_mn_up_key && !s_mn_grab) { s_mn_jump = 1; }
 
             // 1:1 DOS Door Trigger: SPACE + UP (level.c:1210)
@@ -1081,6 +1328,7 @@ void main(void) {
             }
             s_up_prev = s_mn_up_key;
         }
+#undef KEY_DOWN
 
         if (s_dazed_timer || s_dance_timer || s_dying_timer) {
             if (s_dazed_timer) s_dazed_timer--;
@@ -1272,7 +1520,6 @@ void main(void) {
                                  (u16)(g_cam_row - s_mn_page_dy));
 
         dbg_border(0x4C);
-        sprite_restore_umbrella();
         sprite_restore_balloon();
         if (s_have_drawn[s_back_page]) {
             // M1 dirty-flag (ASM al pak C6, slot 7): si aquesta passada no

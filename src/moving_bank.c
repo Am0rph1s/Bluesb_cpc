@@ -27,6 +27,7 @@
 
 extern void render_tile_world(u8 tile_index, u16 col, u16 row,
                               u16 cam_x4, u16 cam_row);
+extern void render_span_world(u16 col_row, u16 tile_cnt);
 
 extern const u8* b5_trig_ptr(u8 col, u8 row);
 extern u8 b5_tile_type(u8 col, u8 row);
@@ -56,6 +57,13 @@ void moving_bank_respawn(void) {
     s_conveyor_phase = 0;
     s_conveyor_tick = 0;
     s_page_conveyor_phase[0] = s_page_conveyor_phase[1] = 0xFF;
+
+    bc_a = (u16)s_level_anim_spans;
+    bc_b = LEVEL_ANIM_SPAN_COUNT;
+    bc_c = (u16)s_anim_data;
+    bc_d = (u16)s_anim_off;
+    bc_e = (u16)s_anim_len;
+    anim_init_c5();
 
     __asm
     ld hl, #_g_mag_elevators
@@ -863,9 +871,9 @@ void moving_bank_conveyor(void) {
                             g_spr_tile_stomp = 1;
                         }
                     }
-                    while (c <= c1) {
-                        render_tile_world(tile, c, r, g_cam_x4, g_cam_row);
-                        c++;
+                    if (c <= c1) {
+                        render_span_world((u16)(((u16)r << 8) | c),
+                                          (u16)(((u16)(u8)(c1 - c + 1) << 8) | tile));
                     }
                 }
             }

@@ -100,32 +100,45 @@ _moving_blit_box::
     ld      a, (_g_moving_rows)
     or      a
     ret     z
-    ld      (s_mov_rows), a
+    ld      h, a                ;; H = rows
     ld      a, (_g_moving_span)
     or      a
     ret     z
+    cp      #13
+    ret     nc
+    ld      a, (_g_moving_spr_skip)
+    ld      l, a                ;; L = spr_skip
+    push    ix
+    push    hl
+    pop     ix                  ;; IXH = rows, IXL = spr_skip
+    ld      a, (_g_moving_span)
+    neg
+    add     a, #12              ;; A = 12 - span (0..11)
+    ld      e, a
+    add     a, a                ;; *2
+    add     a, a                ;; *4
+    add     a, a                ;; *8
+    add     a, e                ;; *9 (9 B per bloc dins .rept 12)
+    ld      e, a
+    ld      d, #0
+    ld      iy, #blit_fast_12$
+    add     iy, de
     ld      hl, (_g_moving_sprite)
     ld      de, (_g_moving_dst)
     ld      bc, (_g_moving_background)
 
 blit_box_row$:
     push    de                  ;; desa DE = inici de fila a VRAM
-
-    ;; Comprovar si estem prop del límit circular 0x07FF ((D & 7) == 7 i E >= 0xF8)
+    ld      a, e
+    cp      #0xF4
+    jr      c, blit_fast_row$
     ld      a, d
     and     #0x07
     cp      #0x07
-    jr      nz, blit_try_fast$
-    ld      a, e
-    cp      #0xF8
-    jr      nc, blit_wrap_row$
+    jr      z, blit_wrap_row$
 
-blit_try_fast$:
-    ld      a, (_g_moving_span)
-    cp      #8
-    jr      z, blit_fast_8$
-    cp      #4
-    jr      z, blit_fast_4$
+blit_fast_row$:
+    jp      (iy)
 
 blit_wrap_row$:
     ld      a, (_g_moving_span)
@@ -154,20 +167,8 @@ blit_wrap_row$:
     jr      nz, 1$
     jr      blit_row_done$
 
-blit_fast_8$:
-    .rept 4
-    ld      a, (de)
-    ld      (bc), a
-    inc     bc
-    and     (hl)
-    inc     hl
-    or      (hl)
-    inc     hl
-    ld      (de), a
-    inc     de
-    .endm
-blit_fast_4$:
-    .rept 4
+blit_fast_12$:
+    .rept 12
     ld      a, (de)
     ld      (bc), a
     inc     bc
@@ -180,7 +181,7 @@ blit_fast_4$:
     .endm
 
 blit_row_done$:
-    ld      a, (_g_moving_spr_skip)
+    .db     0xDD, 0x7D          ;; ld a, ixl (spr_skip)
     or      a
     jr      z, 3$
     add     a, l
@@ -189,7 +190,7 @@ blit_row_done$:
     inc     h
 3$:
     pop     de                  ;; recupera DE = inici de fila a VRAM
-    ;; Avançar DE 1 scanline avall en el ring CRTC:
+    ;; Avançar DE 1 scanline avall en el ring CRTC (0xC000 o 0x8000):
     ld      a, d
     add     a, #0x08
     ld      d, a
@@ -207,49 +208,61 @@ blit_row_done$:
     and     #0xC7
     ld      d, a
 4$:
-    ld      a, (s_mov_rows)
-    dec     a
-    ld      (s_mov_rows), a
+    .db     0xDD, 0x25          ;; dec ixh
     jp      nz, blit_box_row$
+    pop     ix
     ret
 
 ;; ============================================================
 ;; void moving_restore_box(void)
 ;; Restaura _g_moving_rows línies de _g_moving_span bytes des de
-;; _g_moving_background cap a _g_moving_dst usant LDIR en el cas ràpid.
+;; _g_moving_background cap a _g_moving_dst usant LDI desenrotllat.
 ;; ============================================================
 _moving_restore_box::
     ld      a, (_g_moving_rows)
     or      a
     ret     z
-    ld      b, a                ;; B = row_count
+    ld      h, a                ;; H = row_count
     ld      a, (_g_moving_span)
     or      a
     ret     z
+    cp      #13
+    ret     nc
+    push    ix
+    push    hl
+    pop     ix                  ;; IXH = row_count
+    neg
+    add     a, #12
+    add     a, a                ;; A = (12 - span) * 2
+    ld      e, a
+    ld      d, #0
+    ld      iy, #rst_fast_12$
+    add     iy, de              ;; IY = rst_fast_(span)$
     ld      hl, (_g_moving_background)
     ld      de, (_g_moving_dst)
 
 rst_box_row$:
-    push    bc                  ;; desa B = row_count
     push    de                  ;; desa DE = inici de fila a VRAM
-    ld      a, (_g_moving_span)
-    ld      c, a
-
+    ld      a, e
+    cp      #0xF4
+    jr      c, rst_fast_row$
     ld      a, d
     and     #0x07
     cp      #0x07
-    jr      nz, rst_fast_row$
-    ld      a, e
-    cp      #0xF8
-    jr      nc, rst_wrap_row$
+    jr      z, rst_wrap_row$
 
 rst_fast_row$:
-    ld      b, #0               ;; BC = span (1..8)
-    ldir                        ;; restauració directa en bloc!
+    jp      (iy)                ;; executa (span) x LDI -> cau a rst_row_done$!
+
+rst_fast_12$:
+    .rept 12
+    ldi
+    .endm
     jr      rst_row_done$
 
 rst_wrap_row$:
-    ld      b, c
+    ld      a, (_g_moving_span)
+    ld      b, a
 1$:
     ld      a, (hl)
     ld      (de), a
@@ -284,8 +297,9 @@ rst_row_done$:
     and     #0xC7
     ld      d, a
 3$:
-    pop     bc
-    djnz    rst_box_row$
+    .db     0xDD, 0x25          ;; dec ixh
+    jp      nz, rst_box_row$
+    pop     ix
     ret
 
 

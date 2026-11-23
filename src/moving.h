@@ -104,6 +104,7 @@ typedef struct {
     u8 seq;
 } AnimSpan;
 // Tick d'anims: actualitza MAP_MUT amb C5 mapejat (cridat des del Banc 5).
+void anim_init_c5(void);
 void anim_tick_c5(void);
 
 void carry_abort(void);

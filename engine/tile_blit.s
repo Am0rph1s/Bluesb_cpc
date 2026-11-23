@@ -9,13 +9,16 @@
     .globl _render_column
     .globl _render_row
     .globl _render_tile_world
+    .globl _render_span_world
     .globl _render_all
     .globl _render_room
     .globl _get_trig_byte
     .globl _tile_type
     .globl _tile_flags
     .globl _is_floor_solid
+    .globl _tile_wall_probe
     .globl _anim_tick_c5
+    .globl _anim_init_c5
     .globl _fdc_crc16
     .globl _enemy_room_exit
     .globl _g_render_tile_offset
@@ -27,6 +30,7 @@
     .globl _call_banked
     .globl _s_lv
     .globl _g_cam_x4
+    .globl _g_cam_row
     .globl _s_conveyor_tick
     .globl _s_conveyor_phase
     .globl _s_anim_pos
@@ -382,77 +386,103 @@ _render_tile_world::
     or      a
     sbc     hl, de              ;; HL = sy = cy - cam_row
     ld      (s_rtw_sy), hl
+    ld      a, #1
+    ld      (s_at_n), a
+    jr      rsw_draw$
 
+;; ============================================================
+;; void render_span_world(u16 col_row, u16 tile_cnt)
+;; __sdcccall(1): HL = (row<<8)|col, DE = (count<<8)|tile
+;; ============================================================
+_render_span_world::
+    ld      a, e
+    ld      (s_rtw_tile), a
+    ld      a, d
+    ld      (s_at_n), a
+    ld      e, l
+    ld      l, h
+    ld      h, #0
+    add     hl, hl
+    ld      (s_rtw_cy), hl
+    ld      d, #0
+    ex      de, hl              ;; HL = col
+    add     hl, hl
+    ld      (s_rtw_cx), hl
+    ld      de, (_g_cam_x4)
+    or      a
+    sbc     hl, de
+    ld      (s_rtw_sx), hl
+    ld      hl, (s_rtw_cy)
+    ld      de, (_g_cam_row)
+    or      a
+    sbc     hl, de
+    ld      (s_rtw_sy), hl
+
+rsw_draw$:
     ld      a, #0xC4
     call    _bank_set
     ld      (s_rtw_prev_b), a
 
-    ld      c, #0x00            ;; sub = 0 -> C = (0 << 5) = 0x00
-    call    rtw_subrow$
+    ld      c, #0x00
+    call    rsw_subrow$
     ld      hl, (s_rtw_sy)
     inc     hl
     ld      (s_rtw_sy), hl
     ld      hl, (s_rtw_cy)
     inc     hl
     ld      (s_rtw_cy), hl
-    ld      c, #0x20            ;; sub = 1 -> C = (1 << 5) = 0x20
-    call    rtw_subrow$
+    ld      c, #0x20
+    call    rsw_subrow$
 
     ld      a, (s_rtw_prev_b)
     jp      _bank_restore
 
-rtw_subrow$:
+rsw_subrow$:
     ld      hl, (s_rtw_sy)
     bit     7, h
-    ret     nz                  ;; sy < 0
+    ret     nz
     ld      a, h
     or      a
-    ret     nz                  ;; sy >= 256
+    ret     nz
     ld      a, l
     cp      #20
-    ret     nc                  ;; sy >= 20
+    ret     nc
 
     ld      hl, (s_rtw_cy)
     ld      de, (s_rtw_cx)
     push    bc
-    call    calc_vram_de        ;; DE = adreça física VRAM per (cx, cy)
+    call    calc_vram_de        ;; DE = dest VRAM
     pop     bc
 
-    ;; Comprova sx >= 0 && sx < 40
-    ld      hl, (s_rtw_sx)
+    ld      a, (s_at_n)
+    add     a, a
+    ret     z
+    ld      b, a                ;; B = count * 2 (chars)
+    ld      hl, (s_rtw_sx)      ;; HL = sx
+rsw_loop$:
     bit     7, h
-    jr      nz, rtw_check_sx1$
+    jr      nz, rsw_skip$
     ld      a, h
     or      a
-    jr      nz, rtw_check_sx1$
+    jr      nz, rsw_skip$
     ld      a, l
     cp      #40
-    jr      nc, rtw_check_sx1$
-
-    ld      a, (s_rtw_tile)
-    call    calc_tile_hl        ;; preserva BC i DE
-    call    _render_tile_fast_de ;; preserva BC i DE
-
-rtw_check_sx1$:
-    ld      hl, (s_rtw_sx)
-    inc     hl                  ;; HL = sx + 1
-    bit     7, h
-    ret     nz
-    ld      a, h
-    or      a
-    ret     nz
-    ld      a, l
-    cp      #40
-    ret     nc
-
-    inc     de
-    inc     de                  ;; (ma + 1) & 0x03FF -> +2 bytes al ring de 2KB
-    res     3, d
-    inc     c
-    inc     c                   ;; tile_half_x = 1 (+2)
+    jr      nc, rsw_skip$
+    push    hl
     ld      a, (s_rtw_tile)
     call    calc_tile_hl
-    jp      _render_tile_fast_de
+    call    _render_tile_fast_de
+    pop     hl
+rsw_skip$:
+    inc     hl
+    ld      a, c
+    xor     #0x02
+    ld      c, a
+    inc     de
+    inc     de
+    res     3, d
+    djnz    rsw_loop$
+    ret
 
 ;; ============================================================
 ;; void render_room(u8 room_idx)
@@ -696,6 +726,96 @@ _tile_flags::
     ret
 
 ;; ============================================================
+;; u8 tile_wall_probe(u16 col, u16 row)
+;; __sdcccall(1): HL = col, DE = row
+;; Retorna A = bit7(ceil_solid = is_floor_solid(col,row,-1,0)) | (tile_flags & 3)
+;; ============================================================
+_tile_wall_probe::
+    ld      a, h
+    or      d
+    jr      nz, twp_ret0$
+    ld      a, (_s_lv + 52)     ;; map_w
+    cp      l
+    jr      c, twp_ret0$
+    jr      z, twp_ret0$
+    ld      a, (_s_lv + 53)     ;; map_h
+    cp      e
+    jr      c, twp_ret0$
+    jr      z, twp_ret0$
+    push    de                  ;; E = row
+    push    hl                  ;; L = col
+    ld      a, #0xC5
+    call    _bank_set
+    ld      d, a                ;; D = prev_bank
+    pop     hl                  ;; L = col
+    pop     bc                  ;; C = row (was E)
+    ld      a, c
+    push    af                  ;; save row
+    push    de                  ;; save D = prev_bank
+    srl     a
+    ld      h, a
+    ld      a, #0
+    rra
+    or      l
+    ld      l, a
+    set     6, h                ;; HL = 0x4000 + (row<<7) + col
+    ld      e, (hl)             ;; E = tile_id
+    ld      a, e
+    cp      #0xFF
+    jr      z, twp_none$
+    ld      l, e
+    ld      h, #0
+    ld      d, h
+    add     hl, hl
+    add     hl, hl
+    add     hl, de              ;; tile * 5
+    ld      de, (_s_lv + 69)    ;; s_lv.trig_off
+    add     hl, de
+    inc     hl
+    ld      a, (hl)             ;; trig[1] = flags
+    and     #0x03
+    ld      c, a                ;; C = flags & 3
+    inc     hl
+    ld      b, (hl)             ;; B = op
+    pop     de                  ;; D = prev_bank
+    pop     af                  ;; A = row
+    push    af
+    ld      hl, #(_s_lv + 53)   ;; map_h
+    inc     a
+    cp      (hl)                ;; row + 1 >= map_h => not ceil solid
+    jr      nc, twp_done$
+    ld      a, b
+    cp      #4
+    jr      c, twp_ceil$
+    cp      #20
+    jr      z, twp_ceil$
+    cp      #21
+    jr      z, twp_ceil$
+    cp      #40
+    jr      z, twp_ceil$
+    sub     #27
+    cp      #3
+    jr      nc, twp_done$
+twp_ceil$:
+    set     7, c
+twp_done$:
+    pop     af
+    ld      a, d
+    push    bc
+    call    _bank_restore
+    pop     bc
+    ld      a, c
+    ret
+twp_none$:
+    pop     de
+    pop     af
+    ld      a, d
+    call    _bank_restore
+twp_ret0$:
+    xor     a
+    ret
+
+;; ============================================================
 ;; u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch)
 ;; __sdcccall(1): HL = col, DE = row, (SP+2..3) = vy, (SP+4) = crouch
 ;; Callee neteja 3 B de la pila! Retorna A.
@@ -797,10 +917,28 @@ ifs_ret_vy_ge0$:
     ret
 
 ;; ============================================================
+;; void anim_init_c5(void)
+;; Inicialitza seqüències a 0 i escriu els tiles animats a MAP_MUT (C5).
+;; bc_a=sp, bc_b=n, bc_c=data, bc_d=offs, bc_e=lens.
+;; ============================================================
+_anim_init_c5::
+    ld      hl, #_s_anim_pos
+    ld      b, #16
+    xor     a
+ai_clr$:
+    ld      (hl), a
+    inc     hl
+    djnz    ai_clr$
+    ld      (_s_conveyor_tick), a
+    inc     a
+    ld      (_s_conveyor_phase), a
+    jr      at_seq_done$
+
+;; ============================================================
 ;; void anim_tick_c5(void)
 ;; Avança les seqüències d'animació de tiles del Banc 5 cada 4 ticks.
-;; bc_a=sp, bc_b=n, bc_c=data, bc_d=offs, bc_e=lens.
-;; 0 bytes d'IX stack frame!
+;; Només incrementa s_conveyor_phase si algun span dins la finestra
+;; visible de càmera ha canviat.
 ;; ============================================================
 _anim_tick_c5::
     ld      hl, #_s_conveyor_tick
@@ -809,8 +947,6 @@ _anim_tick_c5::
     cp      #4
     ret     c
     ld      (hl), #0
-    ld      hl, #_s_conveyor_phase
-    inc     (hl)
 
     ;; 1. Avançar 1 pas cada seqüència (lens té sentinella 0)
     ld      hl, (_bc_e)         ;; HL = lens
@@ -878,6 +1014,17 @@ at_fill_loop$:
     inc     hl
     djnz    at_fill_loop$
 
+    ;; Només marca canvi de fase si sp->row toca la càmera visible (0..19)
+    ld      a, 0(iy)
+    add     a, a
+    ld      hl, #_g_cam_row
+    sub     (hl)
+    inc     a
+    cp      #21
+    jr      nc, at_span_next$
+    ld      hl, #_s_conveyor_tick
+    set     7, (hl)
+
 at_span_next$:
     ld      hl, (s_at_sp)
     ld      de, #4
@@ -886,6 +1033,12 @@ at_span_next$:
     ld      hl, #s_at_n
     dec     (hl)
     jr      nz, at_span_loop$
+    ld      hl, #_s_conveyor_tick
+    bit     7, (hl)
+    ld      (hl), #0
+    ret     z
+    ld      hl, #_s_conveyor_phase
+    inc     (hl)
     ret
 
 ;; ============================================================

@@ -287,8 +287,6 @@ _sprite_blit_player::
     ld      a, (_g_grate_base_y)
     ld      (s_grate_cur_y), a
 3$:
-    ld      a, #30              ;; 30 linies
-    ld      (s_line_cnt), a
     push    bc
     ld      a, (_g_spr_x)
     ld      (s_cur_y), a
@@ -296,24 +294,25 @@ _sprite_blit_player::
     call    sprite_calc_de      ;; DE = adreça física VRAM de la 1a línia
     pop     bc
 
-blit_line:
-    push    de                  ;; Desa DE d'inici de línia
-    ld      hl, (s_spr_ptr)     ;; HL = sprite [inv_mask, img_masked]
-
-    ;; Comprovar si cal aplicar la reixa per sobre d'en Jake
     ld      a, (_g_grate_enable)
     or      a
-    jr      nz, blit_grate_line
+    jp      nz, blit_grate_enter
 
-    ;; Camí normal (sense reixa)
+    ld      hl, (s_spr_ptr)     ;; HL = sprite [inv_mask, img_masked]
     ld      a, d
     and     #0x07
-    cp      #0x07
-    jr      nz, blit_fast_line
+    cp      #0x06
+    jr      c, blit_ultra_enter
+    jr      nz, blit_slow_enter
     ld      a, e
-    cp      #0xF8
-    jp      nc, blit_wrap_line
-blit_fast_line:
+    cp      #0xB8
+    jr      nc, blit_slow_enter
+
+blit_ultra_enter:
+    push    ix
+    .db     0xDD, 0x26, 30      ;; ld ixh, #30
+blit_ultra_loop:
+    push    de
     .rept 8
     ld      a, (de)             ;; Llegir pantalla original
     ld      (bc), a             ;; Desar al buffer de fons
@@ -325,9 +324,36 @@ blit_fast_line:
     ld      (de), a             ;; Escriure a VRAM!
     inc     de
     .endm
-    jp      blit_line_done
+    pop     de
+    ld      a, d
+    add     a, #0x08
+    ld      d, a
+    and     #0x38
+    jr      nz, blit_u_next$
+    ld      a, d
+    sub     #0x40
+    ld      d, a
+    ld      a, e
+    add     a, #0x50
+    ld      e, a
+    jr      nc, blit_u_next$
+    ld      a, d
+    inc     a
+    and     #0xC7
+    ld      d, a
+blit_u_next$:
+    .db     0xDD, 0x25          ;; dec ixh
+    jp      nz, blit_ultra_loop
+    pop     ix
+    ret
 
-blit_wrap_line:
+blit_slow_enter:
+    ld      (s_spr_ptr), hl
+    ld      a, #30
+    ld      (s_line_cnt), a
+blit_slow_line:
+    push    de
+    ld      hl, (s_spr_ptr)
     ld      a, #8
     ld      (s_byte_cnt), a
 blit_wrap_loop:
@@ -346,11 +372,12 @@ blit_wrap_loop:
     jr      nz, blit_wrap_loop
     jp      blit_line_done
 
-;; ------------------------------------------------------------
-;; Línia amb reixa: dibuixa en Jake i aplica la reixa estrictament
-;; a sobre dels píxels d'en Jake dins del mateix rectangle!
-;; ------------------------------------------------------------
+blit_grate_enter:
+    ld      a, #30
+    ld      (s_line_cnt), a
 blit_grate_line:
+    push    de
+    ld      hl, (s_spr_ptr)
     push    de
     ld      a, (s_grate_cur_y)
     and     #0x07
@@ -476,7 +503,12 @@ blit_grate_line_done:
     ld      (s_spr_ptr), hl
     ld      hl, #s_grate_cur_y
     inc     (hl)
-    jr      blit_next_line
+    pop     de
+    call    sprite_step_de
+    ld      hl, #s_line_cnt
+    dec     (hl)
+    jp      nz, blit_grate_line
+    ret
 
 blit_line_done:
     ld      (s_spr_ptr), hl
@@ -487,7 +519,7 @@ blit_next_line:
 
     ld      hl, #s_line_cnt
     dec     (hl)
-    jp      nz, blit_line
+    jp      nz, blit_slow_line
     ret
 
 ;; ============================================================

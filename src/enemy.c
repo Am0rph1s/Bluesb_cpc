@@ -101,6 +101,7 @@ static u8 s_slot_rows[BG_SLOTS];
 extern u8 tile_type(u16 col, u16 row);
 extern u8 tile_flags(u16 col, u16 row);
 extern u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
+extern u8 tile_wall_probe(u16 col, u16 row);
 
 // Rutines rapides en ASM per flipejar una cela dins la cache (engine/enemy_table.s):
 extern void en2_flip_cell(const u8* src, u8* dst);
@@ -472,12 +473,12 @@ void en2_update(void) {
                 u8 turn = (u8)(tt_pf == 1 || tt_pb == 1);
                 if (sp->kind == 21 && (tt_pf == 12 || tt_pb == 12)) turn = 1;
                 if (!turn) {
-                    u8 hrow = (u8)((g_en_y + 8) >> 4);
-                    turn = is_floor_solid(acol, brow, -1, 0);
-                    if (!turn && c2row != brow) turn = is_floor_solid(acol, c2row, -1, 0);
-                    if (!turn) turn = is_floor_solid(acol, hrow, -1, 0);
-                    if (!turn) turn = (u8)((tile_flags(acol, brow) & bit) != 0);
-                    if (!turn && c2row != brow) turn = (u8)((tile_flags(acol, c2row) & bit) != 0);
+                    u8 p = tile_wall_probe(acol, brow);
+                    if ((p & (u8)(0x80 | bit)) ||
+                        (c2row != brow && (tile_wall_probe(acol, c2row) & (u8)(0x80 | bit))) ||
+                        (tile_wall_probe(acol, (u8)((g_en_y + 8) >> 4)) & 0x80)) {
+                        turn = 1;
+                    }
                 }
                 if (!e->shoot_timer && !in_range) {
                     if (turn) {
@@ -655,12 +656,9 @@ void en2_draw(void) {
             g_en_row_count = (u8)(g_en_clip_y1 - g_en_clip_y0);
             if (g_en_byte_count && g_en_row_count) {
                 // Cela 13: base + offset files projectil + 4 (centrat horitzontal 8 px Mode 0)
-                const u8* frame;
-                if (s_proj.vx < 0) {
-                    frame = en2_cell(s_proj.cell, 1) + (((u16)s_proj.row_offset + g_en_start_row) << 4) + 4 + (g_en_start_byte << 1);
-                } else {
-                    frame = en2_cell(s_proj.cell, 0) + (((u16)s_proj.row_offset + g_en_start_row) << 4) + 4 + (g_en_start_byte << 1);
-                }
+                const u8* frame = en2_cell(s_proj.cell, (u8)(s_proj.vx < 0))
+                    + (((u16)s_proj.row_offset + g_en_start_row) << 4)
+                    + 4 + (g_en_start_byte << 1);
 
                 g_moving_dst = (u16)ring_address(page, g_en_clip_x0, g_en_clip_y0);
                 s_proj.drawn_dst[page] = g_moving_dst;
@@ -678,10 +676,31 @@ void en2_draw(void) {
     }
 }
 
-void en2_check_player_hit(void) {
+static i8 en2_hit_box(i16 xmin, u8 xw, i16 ymin, i16 ymax, u8 use_he) {
     u8 i;
-    Enemy* e;
+    Enemy* e = s_enemies;
+    const Spawn* sp = s_spawn;
+    for (i = 0; i < ENEMY_N; i++, e++, sp++) {
+        u8 k, h;
+        i16 ey;
+        if (e->dead) continue;
+        if ((u16)(e->x - xmin) >= (u16)xw) continue;
+        k = sp->kind;
+        if (k == 8) continue; // peix (decoracio DOS op1)
+        if (use_he) {
+            h = (k == 24) ? 10 : ((k == 25) ? 18 : ((k == 19) ? 16 : ((k == 4) ? 28 : 30)));
+        } else {
+            h = 16;
+        }
+        ey = (i16)(e->y8 >> 3);
+        if (ey < ymax && (i16)(ey + h) >= ymin) {
+            return (i8)i;
+        }
+    }
+    return -1;
+}
 
+void en2_check_player_hit(void) {
     bc_r = 0;
 
     // 1. Projectil (bala, plat, ou):
@@ -700,39 +719,21 @@ void en2_check_player_hit(void) {
     }
 
     // 2. Walkers / Enemics (nomes els de classe 2: el peix es decoracio).
-    g_en_dx = (i16)((i16)bc_a - 9);
-    e = s_enemies;
-    for (i = 0; i < ENEMY_N; i++, e++) {
-        u8 k, he;
-        if ((u16)(e->x - g_en_dx) >= 19) continue;
-        if (e->dead) continue;
-        k = s_spawn[i].kind;
-        if (k == 8) continue; // peix (decoracio DOS op1)
-        he = (k == 24) ? 10 : ((k == 25) ? 18 : ((k == 8 || k == 19) ? 16 : ((k == 4) ? 28 : 30)));
-        if ((u16)((e->y8 >> 3) - (i16)bc_b + he - 4) < (u16)(26 + he)) {
-            bc_r = 1;
-            return;
-        }
+    if (en2_hit_box((i16)((i16)bc_a - 9), 19, (i16)((i16)bc_b + 4), (i16)((i16)bc_b + 30), 1) >= 0) {
+        bc_r = 1;
     }
 }
 
 void en2_check_crate_hit(void) {
-    u8 i;
-    Enemy* e = s_enemies;
-
+    i8 idx = en2_hit_box((i16)((i16)bc_a - 16), 32, (i16)bc_b, (i16)((i16)bc_b + 32), 0);
     bc_r = 0;
-    for (i = 0; i < ENEMY_N; i++, e++) {
-        if (e->dead) continue;
-        if (s_spawn[i].kind == 8) continue; // peix (decoracio DOS op1)
-        if ((u16)(e->x - (i16)bc_a + 16) < 32 &&
-            (u16)((e->y8 >> 3) - (i16)bc_b + 16) < 48) {
-            e->dead = 1;
-            e->dir = ((i16)bc_c > 0) ? 1 : -1;
-            e->vy = -48; // Impuls vertical amunt 1:1 DOS yfriction=12 (6 px/frame)
-            e->on_ground = 0;
-            bc_r = 1;
-            return;
-        }
+    if (idx >= 0) {
+        Enemy* e = &s_enemies[(u8)idx];
+        e->dead = 1;
+        e->dir = ((i16)bc_c > 0) ? 1 : -1;
+        e->vy = -48; // Impuls vertical amunt 1:1 DOS yfriction=12 (6 px/frame)
+        e->on_ground = 0;
+        bc_r = 1;
     }
 }
 

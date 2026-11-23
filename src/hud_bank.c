@@ -247,29 +247,79 @@ void hud_render_b(void) {
 }
 
 // Banner GAME OVER (1:1 DOS): 34 files de 40 bytes sobre el backbuffer.
-void gameover_banner_b(void) {
-    u8 page = (u8)bc_a;
-    u16 vram_base = (page == 0) ? 0xC000 : 0x8000;
-    const u8* src = (const u8*)(u16)s_lv.gameover_off;
-    u8 y;
-    for (y = 0; y < 34; y++) {
-        u8 r_char = (u8)(10 + (y >> 3));
-        u16 r_line_hi = (u16)((y & 7) << 11);
-        u16 ma_row = (u16)((g_vram_start + (u16)r_char * 40) & 0x03FF);
-        u16 ma_start = (u16)((ma_row + 10) & 0x03FF);
-        if (ma_start <= 1004) {
-            u8* dst = (u8*)(vram_base | r_line_hi | (ma_start << 1));
-            cpct_memcpy(dst, src, 40);
-        } else {
-            u16 chars1 = 1024 - ma_start;
-            u16 bytes1 = chars1 << 1;
-            u8* dst1 = (u8*)(vram_base | r_line_hi | (ma_start << 1));
-            u8* dst2 = (u8*)(vram_base | r_line_hi);
-            cpct_memcpy(dst1, src, bytes1);
-            cpct_memcpy(dst2, src + bytes1, (u16)(40 - bytes1));
-        }
-        src += 40;
-    }
+void gameover_banner_b(void) __naked {
+    __asm
+        ld   hl, (_g_vram_start)
+        ld   de, #410               ;; 10 * 40 + 10
+        add  hl, de
+        ld   a, h
+        and  #0x03
+        ld   h, a
+        add  hl, hl
+        ld   a, (_bc_a)
+        or   a
+        ld   a, #0xC0
+        jr   z, go_base$
+        ld   a, #0x80
+    go_base$:
+        add  a, h
+        ld   d, a
+        ld   e, l                   ;; DE = VRAM(y=0)
+        ld   hl, (_s_lv + 75)       ;; HL = s_lv.gameover_off
+        ld   b, #34
+    go_row$:
+        push bc
+        push de
+        ld   a, d
+        and  #0x07
+        cp   #0x07
+        jr   nz, go_fast$
+        ld   a, e
+        cp   #0xD9
+        jr   nc, go_wrap$
+    go_fast$:
+        ld   bc, #40
+        ldir
+        jr   go_step$
+    go_wrap$:
+        ld   b, #40
+    go_wloop$:
+        ld   a, (hl)
+        ld   (de), a
+        inc  hl
+        inc  de
+        ld   a, d
+        and  #0x07
+        or   e
+        jr   nz, go_wnext$
+        ld   a, d
+        sub  #0x08
+        ld   d, a
+    go_wnext$:
+        djnz go_wloop$
+    go_step$:
+        pop  de
+        ld   a, d
+        add  a, #0x08
+        ld   d, a
+        and  #0x38
+        jr   nz, go_next$
+        ld   a, d
+        sub  #0x40
+        ld   d, a
+        ld   a, e
+        add  a, #0x50
+        ld   e, a
+        jr   nc, go_next$
+        ld   a, d
+        inc  a
+        and  #0xC7
+        ld   d, a
+    go_next$:
+        pop  bc
+        djnz go_row$
+        ret
+    __endasm;
 }
 
 // Dany d'acid kind=10, b6=2/3/4 (1:1 DOS tiles.c:907-919: yfriction 14/10/5,

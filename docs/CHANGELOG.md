@@ -4,6 +4,17 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 
 ---
 
+### 26/11/2026 - Checkpoint i optimitzacions ASM de framerate
+
+- Punt de reinici: commit `f33482d`, etiqueta `checkpoint-2026-11-26-good`.
+- `52934a1`: `_DATA` passa a `0x3800` i el canari a `0x3D80`; el codi resident guanya 256 B de marge (282 B totals) i la pila útil queda en 622 B. Watermark L1: 75 B.
+- `12fe212`: broadphase ASM de 26 enemigos i llista compacta de candidats; 200/200 casos sintètics i 0,73 ms sense candidats.
+- `9515c00`: flip Mode 0 inline, sense CALL/RET per byte; 36/36 flips idèntics i 18,33 → 14,33 ms.
+- `00d3d15`: HUD wrap amb scratch lineal i LDIR segmentat; 7/7 configuracions de VRAM idèntiques, `hc_copy8` wrap 8,67 ms.
+- Ruta L1 `cam_x4=0..76`: 13,3 → **14,6 fps** (75,15 → 68,48 ms/frame).
+- Validat: build multipass, `smoke_test --dsk-only`, `smoke_test --boot-only`, ZEsarUX L1 i proves byte a byte en CPCSyntaxError.
+- Documentat que M1 v9 no és al codi actual; pendent el repintat edge-only.
+
 ### 22/11/2026 - Primera passada L4 (egou): animacions i spawns
 
 Auditoria comparativa DOS vs port del nivell 4 (`level_idx=3`, MAP3/TRIG3/

@@ -21,9 +21,17 @@ El joc complet (tots 6 nivells + selector de personatge/mapa `FRONT`) cap en **u
 | **L5** | `ville` (Ciutat / Teulades) | **Integrat** | `L5WORLD.PAK` + `L5C1.PAK`, bastides (`SCAFFOLD`), paleta Mode 0 ajustada. |
 | **L6** | `concert` (Escenari final) | **Integrat** | 2 ascensors d'escenari (`LIFT6.BIN`), spans de focus, seqüència endgame `trigger_func_op40` (ball i retorn al menú). |
 
-### 1.1 Rendiment actual (mesurat 21/11/2026, cpcse, doble buffer estable)
+### 1.1 Rendiment actual (actualitzat 26/11/2026, cpcse, doble buffer estable)
 
-**Sostre acceptat** (test real d'usuari + `g_ticks` 300 Hz):
+**Checkpoint de reinici**: `f33482d`, etiqueta `checkpoint-2026-11-26-good`.
+
+Després dels canvis de memòria, broadphase ASM, flip inline i HUD wrap segmentat:
+- L1 quiet en spawn: **23,4 fps** (42,7 ms/frame).
+- L1 caminant per la ruta `cam_x4=0..76`: **14,6 fps** (68,48 ms/frame), abans **13,3 fps** (75,15 ms).
+- Estalvi mitjà mesurat: **6,67 ms/frame**.
+- Microbenchmarks: broadphase sense candidats **0,73 ms**; flip **18,33 → 14,33 ms**; HUD `hc_copy8` fast **4,20 ms**, wrap **8,67 ms** (abans ~16 ms).
+
+**Sostre acceptat històric** (test real d'usuari + `g_ticks` 300 Hz, 21/11/2026):
 - **25 fps** (40 ms): quiet / 0-1 enemics sense scroll.
 - **16,7 fps** (60 ms): 1-2 enemics + scroll (cicle de treball 39/43/46 ms).
 - **12,5 fps** (80 ms): clústers de ~5 enemics (acceptat).
@@ -58,7 +66,8 @@ real: `key Space` (ZRCP) per menús; matriu `0x3601` + patch `0x177=C9` per cond
      `cpc_x = (dos_x - w_dos / 2) / 2 = dos_x / 2 - w_cpc / 2`, `cpc_y = dos_y - h_dos`.
    - Mai ajustar posicions a ull.
 3. **Pressupost de memòria resident (Bloc 0: `0x0000..0x3FFF`)**:
-   - Estat mesurat actual: `_CODE : 0x0100..0x359A` (**13.466 B**, **102 B** de marge fins a `0x3600`), `_DATA : 0x3600..0x3B21` (**1.305 B**), pila lliure (`SP`): **1.245 B**.
+   - Estat mesurat actual: `_CODE : 0x0100..0x36E6` (**13.798 B**, **282 B** de marge fins a `_DATA`), `_DATA : 0x3800..0x3D33` (**1.323 B**), canari a `0x3D80`, pila útil fins a `SP=0x3FFE`: **622 B**.
+   - Watermark L1 amb scroll+enemics: **75 B** de profunditat màxima; canari intacte.
    - Tota lògica específica de nivell o no trivial ha d'anar als bancs superiors (`C1`, `C5`, `C6`), **mai** inflar el resident de `main.c`.
 4. **Commutació de bancs de maquinari (`0x7F00`)**:
    - Per cridar codi bancat que escriu a VRAM s'utilitza **`0xC0`**, mai `0xC1` (`0xC1` mapeja RAM 7 a `0xC000..0xFFFF` i tapa la pantalla).
@@ -104,8 +113,8 @@ real: `key Space` (ZRCP) per menús; matriu `0x3601` + patch `0x177=C9` per cond
 |    - 0x4B14..0x4BFD: s_spawn (234 B)                                            |
 |    - 0x4C00..0x57FF: cache de 6 cel·les (6 x 512 B) [M1 v7]                     |
 |    - 0x5800..0x59FF: estat de la cache + _DATA d'enemics                       |
-|    - 0x5A00..0x79D2: codi compartit d'enemics (inclou _hud_copy + dispatcher)   |
-|    - 0x79D2..0x79FF: lliure; 0x7A00..0x7FFF: pool de fons (6 x 256 B)          |
+|    - 0x5A00..0x7928: codi compartit d'enemics (inclou _hud_copy + dispatcher)   |
+|    - 0x7928..0x79FF: lliure; 0x7A00..0x7FFF: pool de fons (6 x 256 B)          |
 |  Banc C7 (RAM 7): Frames Jake/Elwood + buffers + restore jugador 0x7E80 (75 B)  |
 |    + LUT de hflip a 0x7F00                                                      |
 +---------------------------------------------------------------------------------+
@@ -117,7 +126,7 @@ real: `key Space` (ZRCP) per menús; matriu `0x3601` + patch `0x177=C9` per cond
 
 **M1 v8**: `repaint_both_buffers` invalida `s_page_conveyor_phase[0/1]` (+0x80) perque les tiles animades (`s_anim` spans: retols/vinils) es redibuixin a les dues pagines despres d'un repaint (inici de nivell, sala, respawn); sense aixo quedaven amb el tile BASE fins al seguent canvi de fase i els discs/retols parpellejaven o desapareixien.
 
-**M1 v9**: `sync_backbuffer` tambe invalida `s_page_conveyor_phase[s_back_page]` (+0x80) quan hi ha scroll (`dx`/`dy`), perque les columnes/files noves no quedin amb el tile BASE de les animades fins al seguent canvi de fase (discs/retols al caire dret/superior). Verificat A/B contra el worktree pre-fix `8a4d0bc`: a la insercio de la fila 36 (`cam_row` 78→72, `cam_x4=139`, `px=676`), el pre-fix redibuixa **0 B** i el fix **42 B** (1.219 B en la passada completa); captures del mateix frame amb 296 px de diferencia a l'element animat. Atencio: el mapa L1 fa 1.024 px d'ample (`cam_max_x4=236`); `cam_x4=317`/`px=1350` queden fora del mapa i invalidaven els tests antics.
+**M1 v9**: **no està present al codi actual**. El commit `35cd846` va eliminar la invalidació de `sync_backbuffer`; les noves columnes/files poden quedar amb el tile BASE fins al següent canvi de fase. Pendient: repintat edge-only, només dels spans que intersecten la franja nova. L'A/B històric va demostrar 0 B vs 42 B a la inserció de la fila 36 (`cam_row` 78→72, `cam_x4=139`, `px=676`).
 
 ### 3.1 `LevelParams` v3 (77 bytes a `C1:0x7680` → `s_lv` resident)
 Definit a `src/level_params.h`, generat per `tools/pack_level.py` i carregat per `level_params_load()`. Camps principals:

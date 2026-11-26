@@ -27,6 +27,9 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
   guany per sota del quantum de VSYNC.
 - Build: resident 13.868 B, marge 212 B. `smoke_test --boot-only` corregit amb
   delay de tecles de 60 frames i validat a ZEsarUX.
+- Descartat el camí especialitzat `moving_blit_box(span=8)`: 18/18 VRAM i 190/190
+  del guard correctes, però A/B 13,739 fps sense cap guany i el marge baixava a 54 B.
+  Revertit al checkpoint `checkpoint-2026-11-26-guard`.
 
 ### 22/11/2026 - Primera passada L4 (egou): animacions i spawns
 

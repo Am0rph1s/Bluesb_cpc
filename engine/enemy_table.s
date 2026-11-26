@@ -147,33 +147,73 @@ hc_wrap$:
     ld      b, #8
 hc_w_row$:
     push    bc
-    push    hl
-    push    de
-    ld      b, #80
-hc_w_byte$:
-    ld      a, (hl)
-    ld      (de), a
-    inc     hl
+    ld      (s_hud_row_src), hl
+    ld      (s_hud_row_dst), de
+    ld      de, #s_hud_copy_buf
+
+    ;; Font -> scratch lineal. Si creua el wrap, fan falta 2 LDIR.
     ld      a, h
     and     #0x07
-    or      l
-    jr      nz, hc_w_noh$
+    cp      #0x07
+    jr      nz, hc_src_fast$
+    ld      a, l
+    cp      #0xB1
+    jr      c, hc_src_fast$
+    ld      a, l
+    neg                     ;; primera part = 256 - L
+    ld      c, a
+    ld      b, #0
+    push    bc
+    ldir
     ld      a, h
     sub     #8
     ld      h, a
-hc_w_noh$:
-    inc     de
+    pop     bc
+    ld      a, #80
+    sub     c
+    ld      c, a
+    ld      b, #0
+    ldir
+    jr      hc_src_done$
+hc_src_fast$:
+    ld      bc, #80
+    ldir
+hc_src_done$:
+    ld      hl, (s_hud_row_dst)
+    ex      de, hl
+    ld      hl, #s_hud_copy_buf
+
+    ;; Scratch -> desti. El desti també pot creuar el wrap.
     ld      a, d
     and     #0x07
-    or      e
-    jr      nz, hc_w_node$
+    cp      #0x07
+    jr      nz, hc_dst_fast$
+    ld      a, e
+    cp      #0xB1
+    jr      c, hc_dst_fast$
+    ld      a, e
+    neg
+    ld      c, a
+    ld      b, #0
+    push    bc
+    ldir
     ld      a, d
     sub     #8
     ld      d, a
-hc_w_node$:
-    djnz    hc_w_byte$
-    pop     de
-    pop     hl
+    pop     bc
+    ld      a, #80
+    sub     c
+    ld      c, a
+    ld      b, #0
+    ldir
+    jr      hc_dst_done$
+hc_dst_fast$:
+    ld      bc, #80
+    ldir
+hc_dst_done$:
+    ld      hl, (s_hud_row_dst)
+    ex      de, hl
+    ld      hl, (s_hud_row_src)
     ld      a, h
     add     a, #8
     ld      h, a
@@ -394,6 +434,15 @@ sk_save$:
 ;; ============================================================
 _s_en_visible:
     .ds     32
+
+;; Scratch lineal per a la copia HUD amb wrap: una fila de 80 B i els
+;; inici de font/desti per avançar exactament 0x800 a la seguent scanline.
+s_hud_copy_buf:
+    .ds     80
+s_hud_row_src:
+    .ds     2
+s_hud_row_dst:
+    .ds     2
 
 _en2_build_visible::
     push    ix

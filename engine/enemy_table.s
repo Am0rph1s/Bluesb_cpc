@@ -278,6 +278,8 @@ sk_flip$:
     .globl _s_proj, _g_en_jake_x, _g_en_jake_y
     .globl _s_mn_dsx, _s_mn_dsy, _g_face
     .globl _s_spr_last_k0, _s_spr_last_k1, _s_spr_clean
+    .globl _s_enemies, _g_en_view_x
+    .globl _s_en_visible, _en2_build_visible
 
 _spr_key_ops::
     ld      a, (_bc_a)
@@ -384,4 +386,67 @@ sk_save$:
     ld      (hl), a
     inc     hl
     ld      (hl), #0x00
+    ret
+
+;; ============================================================
+;; Broadphase ASM per a en2_draw. Mantem exactament el filtre C:
+;;   dead != 2, slot[page] < 0 i (u16)(x - view_x + 15) < 175.
+;; Sortida: A = nombre de candidats, indices a _s_en_visible.
+;; El scratch va dins l'area CODE perquè C6 te el DATA praticament ple.
+;; ============================================================
+_s_en_visible:
+    .ds     32
+
+_en2_build_visible::
+    push    ix
+    push    iy
+    ld      ix, #_s_enemies
+    ld      iy, #_s_en_visible
+    ld      b, #26
+    ld      c, #0
+    ld      d, #0
+ev_loop$:
+    ld      a, 10(ix)
+    cp      #2
+    jr      z, ev_next$
+    ld      a, (_bc_a)
+    bit     0, a
+    ld      a, 11(ix)
+    jr      z, ev_slot_ready$
+    ld      a, 12(ix)
+ev_slot_ready$:
+    bit     7, a
+    jr      z, ev_next$
+    ld      l, 0(ix)
+    ld      h, 1(ix)
+    push    de
+    ld      a, (_g_en_view_x)
+    ld      e, a
+    ld      a, (_g_en_view_x + 1)
+    ld      d, a
+    or      a
+    sbc     hl, de
+    ld      de, #15
+    add     hl, de
+    ld      de, #175
+    or      a
+    sbc     hl, de
+    pop     de
+    jr      nc, ev_next$
+    ld      a, c
+    ld      (iy), a
+    inc     iy
+    inc     d
+ev_next$:
+    .db     0xDD, 0x7D          ;; ld a, ixl
+    add     a, #13
+    .db     0xDD, 0x6F          ;; ld ixl, a
+    jr      nc, ev_advance$
+    .db     0xDD, 0x24          ;; inc ixh
+ev_advance$:
+    inc     c
+    djnz    ev_loop$
+    ld      a, d
+    pop     iy
+    pop     ix
     ret

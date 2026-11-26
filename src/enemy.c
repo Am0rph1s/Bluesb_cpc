@@ -73,7 +73,7 @@ typedef struct {
 
 // Estat a ZERO (sense init: veure capcalera) i en2_init (slot 3)
 // omple l'spawn a runtime.
-static Enemy s_enemies[ENEMY_N];
+Enemy s_enemies[ENEMY_N];
 Projectile s_proj;
 static u8 s_proj_bg[2][56];
 
@@ -103,8 +103,10 @@ extern u8 tile_flags(u16 col, u16 row);
 extern u8 is_floor_solid(u16 col, u16 row, i16 vy, u8 crouch);
 extern u8 tile_wall_probe(u16 col, u16 row);
 
-// Rutines rapides en ASM per flipejar una cela dins la cache (engine/enemy_table.s):
+// Rutines rapides en ASM (engine/enemy_table.s):
 extern void en2_flip_cell(const u8* src, u8* dst);
+extern u8 s_en_visible[32];
+extern u8 en2_build_visible(void);
 
 // Descompressor ZX0 resident (Bloc 0; sempre mapejat, es pot cridar des de C6).
 extern void zx0_decompress(const void* src, void* dst);
@@ -588,19 +590,22 @@ void en2_restore(void) {
 
 void en2_draw(void) {
     u8 page = (u8)bc_a;
-    u8 i;
+    u8 i, n, idx;
+    Enemy* e;
+    const Spawn* sp;
     g_en_view_x = (i16)(g_cam_x4 << 2);
     g_en_view_y = (i16)(g_cam_row << 3);
     if (page > 1) return;
 
-    // 1. Dibuixa walkers:
-    Enemy* e = s_enemies;
-    const Spawn* sp = s_spawn;
-    for (i = 0; i < ENEMY_N; i++, e++, sp++) {
+    // 1. Dibuixa walkers. El broadphase de 26 entrades viu en ASM i
+    // deixa nomes els candidats que superaven dead/slot/range-X en C.
+    n = en2_build_visible();
+    for (i = 0; i < n; i++) {
         const u8* frame;
         i8 s;
-        if (e->dead == 2 || e->slot[page] >= 0) continue; // eliminat o ja dibuixat
-        if ((u16)(e->x - g_en_view_x + 15) >= 175) continue;
+        idx = s_en_visible[i];
+        e = &s_enemies[idx];
+        sp = &s_spawn[idx];
         g_en_clip_x0 = e->x > g_en_view_x ? e->x : g_en_view_x;
         g_en_clip_x1 = e->x + ENEMY_W < g_en_view_x + 160 ?
                   (i16)(e->x + ENEMY_W) : (i16)(g_en_view_x + 160);
@@ -614,7 +619,7 @@ void en2_draw(void) {
         g_en_start_row = (u8)(g_en_clip_y0 - g_en_y);
         g_en_row_count = (u8)(g_en_clip_y1 - g_en_clip_y0);
         if (!g_en_byte_count || !g_en_row_count) continue;
-        s = en2_slot((i8)i, page);
+        s = en2_slot((i8)idx, page);
         if (s < 0) continue; // pool ple: segur
 
         // Seleccio de cela i flip dinamic amb cache de cela:

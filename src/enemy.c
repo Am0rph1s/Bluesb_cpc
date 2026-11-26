@@ -107,6 +107,7 @@ extern u8 tile_wall_probe(u16 col, u16 row);
 extern void en2_flip_cell(const u8* src, u8* dst);
 extern u8 s_en_visible[32];
 extern u8 en2_build_visible(void);
+extern i8 en2_hit_box_fast(void);
 
 // Descompressor ZX0 resident (Bloc 0; sempre mapejat, es pot cridar des de C6).
 extern void zx0_decompress(const void* src, void* dst);
@@ -681,28 +682,18 @@ void en2_draw(void) {
     }
 }
 
+// Parametres propis del hit-check: no poden clavar bc_* perque
+// en2_check_crate_hit necessita bc_c (cvx) després de la crida.
+extern u16 s_hit_xmin, s_hit_ymin, s_hit_ymax;
+extern u8 s_hit_xw, s_hit_use_he;
+
 static i8 en2_hit_box(i16 xmin, u8 xw, i16 ymin, i16 ymax, u8 use_he) {
-    u8 i;
-    Enemy* e = s_enemies;
-    const Spawn* sp = s_spawn;
-    for (i = 0; i < ENEMY_N; i++, e++, sp++) {
-        u8 k, h;
-        i16 ey;
-        if (e->dead) continue;
-        if ((u16)(e->x - xmin) >= (u16)xw) continue;
-        k = sp->kind;
-        if (k == 8) continue; // peix (decoracio DOS op1)
-        if (use_he) {
-            h = (k == 24) ? 10 : ((k == 25) ? 18 : ((k == 19) ? 16 : ((k == 4) ? 28 : 30)));
-        } else {
-            h = 16;
-        }
-        ey = (i16)(e->y8 >> 3);
-        if ((i16)(ey + (ENEMY_HT - h)) < ymax && (i16)(ey + ENEMY_HT) >= ymin) {
-            return (i8)i;
-        }
-    }
-    return -1;
+    s_hit_xmin = xmin;
+    s_hit_xw = xw;
+    s_hit_ymin = ymin;
+    s_hit_ymax = ymax;
+    s_hit_use_he = use_he;
+    return en2_hit_box_fast();
 }
 
 void en2_check_player_hit(void) {

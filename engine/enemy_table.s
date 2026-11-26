@@ -444,6 +444,18 @@ s_hud_row_src:
 s_hud_row_dst:
     .ds     2
 
+;; Parametres del hit-check a l'scratch de CODE (DATA de C6 esta ple).
+_s_hit_xmin::
+    .ds     2
+_s_hit_ymin::
+    .ds     2
+_s_hit_ymax::
+    .ds     2
+_s_hit_xw::
+    .ds     1
+_s_hit_use_he::
+    .ds     1
+
 _en2_build_visible::
     push    ix
     push    iy
@@ -496,4 +508,136 @@ ev_advance$:
     ld      a, d
     pop     iy
     pop     ix
+    ret
+
+;; ============================================================
+;; Hit-box ASM per a en2_hit_box. Entrades via s_hit_*:
+;;   xmin, xw, ymin, ymax, use_he. No toca bc_*.
+;; Sortida: A=index (0..25) o FF. Mante exactement el filtre C.
+;; ============================================================
+    .globl _en2_hit_box_fast
+    .globl _s_hit_xmin, _s_hit_xw, _s_hit_ymin, _s_hit_ymax, _s_hit_use_he
+    .globl _s_enemies
+_en2_hit_box_fast::
+    push    ix
+    push    iy
+    ld      ix, #_s_enemies
+    ld      iy, #0x4B14           ;; s_spawn
+    ld      c, #0                 ;; index
+
+hb_loop$:
+    ld      a, 10(ix)
+    or      a
+    jr      nz, hb_next$
+
+    ;; (u16)(e->x - xmin) < xw
+    ld      l, 0(ix)
+    ld      h, 1(ix)
+    ld      a, (_s_hit_xmin)
+    ld      e, a
+    ld      a, l
+    sub     e
+    ld      l, a
+    ld      a, (_s_hit_xmin + 1)
+    ld      e, a
+    ld      a, h
+    sbc     e
+    ld      h, a
+    jr      nz, hb_next$
+    ld      a, (_s_hit_xw)
+    ld      b, a
+    ld      a, l
+    cp      b                   ;; dx - xw: Carry=1 sii dx < xw (HIT)
+    jr      nc, hb_next$        ;; dx >= xw -> fora (igual que el C)
+
+    ;; kind 8 = peix decoratiu, mai no col·lisiona.
+    ld      a, 4(iy)
+    cp      #8
+    jr      z, hb_next$
+
+    ;; E = 32 - h. Valors del C original (use_he=0 -> h=16).
+    ld      e, #16
+    ld      a, (_s_hit_use_he)
+    or      a
+    jr      z, hb_have_top$
+    ld      a, 4(iy)
+    cp      #24
+    jr      z, hb_top22$
+    cp      #25
+    jr      z, hb_top14$
+    cp      #19
+    jr      z, hb_have_top$
+    cp      #4
+    jr      z, hb_top4$
+    ld      e, #2
+    jr      hb_have_top$
+hb_top22$:
+    ld      e, #22
+    jr      hb_have_top$
+hb_top14$:
+    ld      e, #14
+    jr      hb_have_top$
+hb_top4$:
+    ld      e, #4
+hb_have_top$:
+    ;; ey = e->y8 >> 3 (arithmetic)
+    ld      l, 2(ix)
+    ld      h, 3(ix)
+    sra     h
+    rr      l
+    sra     h
+    rr      l
+    sra     h
+    rr      l
+    push    hl                  ;; desa ey
+    ld      d, #0
+    add     hl, de              ;; ey + (32-h)
+    ld      de, (_s_hit_ymax)
+    call    hb_signed_lt
+    jr      nc, hb_y_fail$
+    pop     hl                  ;; ey
+    ld      de, #32
+    add     hl, de              ;; ey + 32
+    ld      de, (_s_hit_ymin)
+    call    hb_signed_lt
+    jr      c, hb_next$          ;; ey+32 < ymin -> no hit
+    ld      a, c
+    jr      hb_return$
+
+hb_y_fail$:
+    pop     hl
+hb_next$:
+    .db     0xDD, 0x7D          ;; ld a, ixl
+    add     a, #13
+    .db     0xDD, 0x6F          ;; ld ixl, a
+    jr      nc, hb_spawn_advance$
+    .db     0xDD, 0x24          ;; inc ixh
+hb_spawn_advance$:
+    .db     0xFD, 0x7D          ;; ld a, iyl
+    add     a, #9
+    .db     0xFD, 0x6F          ;; ld iyl, a
+    jr      nc, hb_index_advance$
+    .db     0xFD, 0x24          ;; inc iyh
+hb_index_advance$:
+    inc     c
+    ld      a, c
+    cp      #26
+    jp      c, hb_loop$
+    ld      a, #0xFF
+hb_return$:
+    pop     iy
+    pop     ix
+    ret
+
+;; HL < DE, signed 16. Sortida Carry=1 si HL<DE. Preserva C/IX/IY.
+hb_signed_lt:
+    ld      a, h
+    xor     d
+    and     #0x80
+    jr      nz, hb_sign_diff$
+    sbc     hl, de              ;; AND ha netejat Carry
+    ret
+hb_sign_diff$:
+    ld      a, h
+    rla                         ;; Carry = signe de HL
     ret

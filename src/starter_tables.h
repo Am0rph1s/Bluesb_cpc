@@ -11,7 +11,7 @@
 #define FRONT_LEN 2608
 #define CRC_FRONT 0xC07A
 #define MUS_LEN 8414
-#define CRC_MUS 0x3B12
+#define CRC_MUS 0x1FE3
 // HOLD musica ISR (_g_mus_hold del GAME): el starter el neteja a
 // s_start (reboot calent podria dur brossa = ISR muda per sempre).
 #define MUS_HOLD_ADDR 0x380E

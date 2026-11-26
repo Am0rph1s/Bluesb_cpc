@@ -234,7 +234,7 @@ _b5_world_reset_tile::
 b5_write_and_repaint$:
     ld      (hl), c             ;; MAP_MUT[...] o ROOMS[...] = new_tile
     ld      a, (_s_rep_n)
-    cp      #3
+    cp      #8
     ret     nc
     ld      l, a
     inc     a

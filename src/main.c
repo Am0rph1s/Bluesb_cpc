@@ -128,7 +128,7 @@ u8  g_spr_tile_stomp;
 static i8  s_pending_x, s_pending_y;
 
 u8  s_rep_n;
-u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
+u8  s_rep_col[8], s_rep_row[8], s_rep_tile[8], s_rep_pages[8];
 
 u8 s_back_page = 1;  // M1: sense static (_spr_key_ops el llegeix via EQU)
 static u8 s_complete_wait;
@@ -653,6 +653,7 @@ void carry_abort(void) {
 // sempre fa mal (-1 cor, invuln 75, rebot). Cos a hud_bank.c (C1 compartit,
 // amb marge); aquí només el wrapper (el resident també va just).
 extern void acid_hurt_o(void);
+extern void game_pause_o(void);
 void acid_hurt(i16 vy) {
     bc_a = (u16)vy;
     call_banked(0xC0, (void*)acid_hurt_o);
@@ -736,7 +737,7 @@ static u8 select_player_anim(u8 climbing, i8 move, u8 jump, u8 crouch, i16 bsy) 
     if (!s_on_ground || (u16)(bsy + 30) > 160) {
         return 4;
     }
-    if (crouch) {
+    if (crouch || s_crouch_hold) {
         if (move != 0) {
             s_anim_timer++;
             if (s_anim_timer >= 6) {
@@ -781,7 +782,7 @@ static void check_room_bonus(u8 col, u8 feet_row) {
         }
         ((u8*)(u16)s_lv.rooms_off)[s_crb_off] = s_lv.tile_empty;
         bank_restore(s_crb_prev);
-        if (s_rep_n < 3) {
+        if (s_rep_n < 8) {
             s_rep_col[s_rep_n] = col;
             s_rep_row[s_rep_n] = s_crb_r;
             s_rep_tile[s_rep_n] = s_lv.tile_empty;
@@ -818,7 +819,7 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
 
     // --- Moviment horitzontal i col·lisió de parets ---
     {
-        s_ps_feet_row = (u16)((s_ps_py + 28) >> 4);
+        s_ps_feet_row = (u16)((s_ps_py + 29) >> 4);
         s_ps_head_row = (u16)((s_ps_py + 16) >> 4);
         s_ps_top_row  = (u16)(s_ps_py >> 4);
         if (s_ps_evx > 0) {
@@ -878,11 +879,13 @@ static void player_physics_step(i16 belt_push, u8 climbing, u8 jump, u8 crouch) 
                     s_vy = 0;
                 }
                 if (s_ps_jump && !s_jump_prev && s_on_ground) {
-                    u8 di, si;
-                    s_ps_col = (u16)((s_ps_px + 5) >> 3);
-                    s_ps_feet_row = (u16)((s_ps_py + 28) >> 4);
-                    di = (s_ps_feet_row >= 2) ? tile_type(s_ps_col, (u16)(s_ps_feet_row - 2)) : 0;
-                    si = tile_type(s_ps_col, s_ps_feet_row);
+                    u8 di = 0, si = 0;
+                    if (!s_ps_crouch && s_ps_climbing != 2 && !s_invuln_timer) {
+                        s_ps_col = (u16)((s_ps_px + 5) >> 3);
+                        s_ps_feet_row = (u16)((s_ps_py + 29) >> 4);
+                        di = (s_ps_feet_row >= 2) ? tile_type(s_ps_col, (u16)(s_ps_feet_row - 2)) : 0;
+                        si = tile_type(s_ps_col, s_ps_feet_row);
+                    }
                     if (di == 10 && (si == 0 || si == 1)) {
                         s_dazed_timer = 24;
                         s_vy = 0;
@@ -1328,6 +1331,7 @@ void main(void) {
             }
             s_up_prev = s_mn_up_key;
         }
+        if (KEY_DOWN(Key_P)) call_banked(0xC0, (void*)game_pause_o);
 #undef KEY_DOWN
 
         if (s_dazed_timer || s_dance_timer || s_dying_timer) {
@@ -1343,7 +1347,7 @@ void main(void) {
         // g_on_ice: 0=normal (MOVE_ACC), 1=gel (acc=1), 2=rampa (acc=0, només unk2F)
         {
             i16 max_spd = s_on_ground ? SPEED_MAX : SPEED_AIR;
-            u8 acc = (!s_on_ground || !g_on_ice) ? MOVE_ACC : (u8)(2 - g_on_ice);
+            u8 acc = g_on_ice ? (u8)(2 - g_on_ice) : MOVE_ACC;
             if (s_mn_move > 0)      { s_vx = (i16)(s_vx + acc); if (s_vx >  max_spd) s_vx =  max_spd; }
             else if (s_mn_move < 0) { s_vx = (i16)(s_vx - acc); if (s_vx < -max_spd) s_vx = -max_spd; }
             else {
@@ -1357,7 +1361,11 @@ void main(void) {
         bc_c = s_mn_crouch;
         bc_d = s_mn_grab;
         dbg_border(0x40);
-        moving_update();
+        {
+            u16 prev_cam_row = g_cam_row;
+            moving_update();
+            s_mn_move_y = (i8)(g_cam_row - prev_cam_row);
+        }
         if (!s_in_room) {
             dbg_border(0x5E);
             enemy_update();
@@ -1521,6 +1529,7 @@ void main(void) {
 
         dbg_border(0x4C);
         sprite_restore_balloon();
+        s_spr_clean = 0;
         if (s_have_drawn[s_back_page]) {
             // M1 dirty-flag (ASM al pak C6, slot 7): si aquesta passada no
             // pintara res de nou (repos pur, cap anim ciclica), la pantalla
@@ -1528,7 +1537,7 @@ void main(void) {
             // blit tambe desa el fons: amb la pantalla sense restaurar
             // desaria el propi sprite al buffer C7 i enverinaria el restore
             // del proper moviment -> "clon"; vist en test real 20/11).
-            enemy_spr_key(0);
+            if (!s_rep_n && s_page_conveyor_phase[s_back_page] == s_conveyor_phase) enemy_spr_key(0);
             if (s_spr_clean) {
                 // idempotent: skip del restore
             } else {
@@ -1550,7 +1559,7 @@ void main(void) {
         g_vram_start = camera_ma(g_cam_x4, g_cam_row);
         dbg_border(0x47);
         hud_render(s_back_page, (s_mn_page_dx != 0 || s_mn_page_dy != 0));
-        s_mn_cur = select_player_anim(s_climb_prev, s_mn_move, s_mn_jump, (u8)(s_mn_crouch || s_crouch_hold), (i16)s_mn_dsy);
+        s_mn_cur = select_player_anim(s_climb_prev, s_mn_move, s_mn_jump, s_mn_crouch, (i16)s_mn_dsy);
 
         dbg_border(0x52);
         if (!s_in_room) {

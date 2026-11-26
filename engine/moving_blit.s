@@ -109,6 +109,7 @@ _moving_blit_box::
     ld      a, (_g_moving_spr_skip)
     ld      l, a                ;; L = spr_skip
     push    ix
+    push    iy
     push    hl
     pop     ix                  ;; IXH = rows, IXL = spr_skip
     ld      a, (_g_moving_span)
@@ -210,6 +211,7 @@ blit_row_done$:
 4$:
     .db     0xDD, 0x25          ;; dec ixh
     jp      nz, blit_box_row$
+    pop     iy
     pop     ix
     ret
 
@@ -229,6 +231,7 @@ _moving_restore_box::
     cp      #13
     ret     nc
     push    ix
+    push    iy
     push    hl
     pop     ix                  ;; IXH = row_count
     neg
@@ -299,6 +302,7 @@ rst_row_done$:
 3$:
     .db     0xDD, 0x25          ;; dec ixh
     jp      nz, rst_box_row$
+    pop     iy
     pop     ix
     ret
 

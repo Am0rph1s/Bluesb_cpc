@@ -24,6 +24,9 @@ extern u8 g_has_instrument;
 extern u8 s_invuln_timer;
 extern u8 s_dying_timer;
 extern u8 s_dazed_timer;
+extern volatile u8 g_mus_hold;
+extern volatile u8 g_mus_ready;
+extern void mus_stop(void);
 
 // Layout fix del HUD i signatures. S'inicialitzen a hud_init_b (la imatge
 // del banc 1 no te crt0 que copiï inicialitzadors de SDCC).
@@ -38,11 +41,10 @@ static u16 s_cur_off21;
 static u8  s_base_hi;
 
 static u16 hud_sig(void) {
-    return (u16)g_lives_count
-         | ((u16)(g_vinyls_count & 0x0F) << 4)
-         | ((u16)(g_vinyls_count >> 4) << 8)
-         | ((u16)(g_hearts_count & 0x07) << 11)
-         | ((u16)(g_has_instrument ? 1 : 0) << 14);
+    return (u16)(g_lives_count & 0x07)
+         | ((u16)(g_vinyls_count & 0x7F) << 3)
+         | ((u16)(g_hearts_count & 0x07) << 10)
+         | ((u16)(g_has_instrument & 0x07) << 13);
 }
 
 // Crida la copia del HUD al banc C6 (slot 6, dispatcher _bc_b=0xA5).
@@ -234,11 +236,11 @@ void hud_render_b(void) {
         *p++ = h0;
         *p++ = h0 ? 8 : 0;
     }
-    // Slots col.leccionables: slot i gris (19+4i,20+4i), color si es el del
-    // nivell i ja s'ha recollit (21+4i,22+4i).
+    // Slots col.leccionables: slot i gris (19+4i,20+4i), color si ja s'ha
+    // recollit fins a aquest nivell (i < g_has_instrument -> 21+4i,22+4i).
     p = &s_hud_layout[24];
     for (i = 0; i < 5; i++) {
-        u8 sb = (u8)(19 + (i << 2) + ((i == s_lv.level_id && g_has_instrument) ? 2 : 0));
+        u8 sb = (u8)(19 + (i << 2) + ((i < g_has_instrument) ? 2 : 0));
         *p++ = sb;
         *p++ = (u8)(sb + 1);
     }
@@ -322,21 +324,40 @@ void gameover_banner_b(void) __naked {
     __endasm;
 }
 
-// Dany d'acid kind=10, b6=2/3/4 (1:1 DOS tiles.c:907-919: yfriction 14/10/5,
-// xvelocity=-100, special_anim=22 + SOUND_11; level.c:1583-1593: -1 cor,
-// blinking_counter=75). vy = -yfric*4 (enemy.c:685: 12 -> -48).
+// Dany d'acid kind=10 (1:1 DOS tiles.c:907-919: yfriction 14/10/5 -> vy=-yfric*8)
+// i dany de premsa op11 (vy==0 -> special_anim=18, s_dazed_timer=20).
 void acid_hurt_b(void) {
     i16 vy = (i16)bc_a;
     if (s_invuln_timer || s_dying_timer) return;
     if (g_hearts_count > 0) g_hearts_count--;
     s_invuln_timer = 75;
-    s_vy = vy;
-    s_on_ground = 0;
+    if (vy) {
+        s_vy = vy;
+        s_on_ground = 0;
+    } else if (g_hearts_count > 0 && s_climb_prev != 2) {
+        s_dazed_timer = 20;
+    }
     if (g_hearts_count == 0) {
         s_dying_timer = 64;
         s_dazed_timer = 0;
         s_invuln_timer = 255;
-    } else {
-        s_dazed_timer = 20;
     }
+}
+
+void game_pause_b(void) {
+    u8 pst = 0;
+    u8 was_ready = g_mus_ready;
+    g_mus_hold = 1;
+    mus_stop();
+    for (;;) {
+        cpct_scanKeyboard_f();
+        if ((u8)(~cpct_keyboardStatusBuffer[(u8)(Key_P)] & (u8)((u16)(Key_P) >> 8))) {
+            if (pst == 1) pst = 2;
+        } else {
+            if (pst == 0) pst = 1;
+            else if (pst == 2) break;
+        }
+    }
+    g_mus_ready = was_ready;
+    g_mus_hold = 0;
 }

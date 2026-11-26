@@ -155,8 +155,8 @@ static const u8* en2_cell(u8 cell, u8 flip) {
     }
     s = s_cache_next;
     if (s == opp) EN2_NEXT(s);
-    EN2_NEXT(s);
     s_cache_next = s;
+    EN2_NEXT(s_cache_next);
     if (opp != 0xFF) {
         // L'orientacio oposada ja es a la cache: nomes cal girar-la.
         en2_flip_cell(ENEMY_CACHE_BASE + ((u16)opp << 9),
@@ -164,8 +164,8 @@ static const u8* en2_cell(u8 cell, u8 flip) {
     } else if (flip) {
         u8 t = s_cache_next;
         if (t == s) EN2_NEXT(t);
-        EN2_NEXT(t);
         s_cache_next = t;
+        EN2_NEXT(s_cache_next);
         zx0_decompress((const void*)(*(const u16*)
                        (ENEMY_CELL_TABLE + ((u16)cell << 1))),
                        ENEMY_CACHE_BASE + ((u16)t << 9));
@@ -215,7 +215,7 @@ void en2_init(void) {
         // Els estatics tambe han de CAURE al terra (DOS: tots els objectes
         // tenen yacc=2). El tipus 4 amb vx=0 (pistola de L3) naixia flotant
         // i podia quedar encastat dins un mur.
-        e->on_ground = (sp->kind == 8 || sp->kind == 19 || sp->kind == 17) ? 1 : 0;
+        e->on_ground = (sp->kind == 8 || sp->kind == 19) ? 1 : 0;
         e->tick = 0;
         e->shoot_timer = 0;
         e->dead = 0;
@@ -370,7 +370,7 @@ void en2_update(void) {
                         s_proj.kind = 26;
                         s_proj.ht = 9;
                         s_proj.row_offset = 13;
-                        s_proj.y8 = (i16)((g_en_y + 14) << 3);
+                        s_proj.y8 = (i16)((g_en_y + 6) << 3);
                     } else if (sp->throw_cell == 10) {
                         // 1:1 DOS object_func_op10: grab_type 12 -> bola amb
                         // cadena (frame SQV 22), arran de terra.
@@ -413,7 +413,7 @@ void en2_update(void) {
                         i16 pv = (sp->kind == 27) ? 32 : 64;
                         s_proj.vx = (e->dir > 0) ? pv : (i16)-pv;
                     }
-                    s_proj.vy = (sp->kind == 26) ? 64 : 0;
+                    s_proj.vy = 0;
                     s_proj.cooldown = (SHOOT_CYCLE_FRAMES - (AIM_FRAMES / 2));
                 }
             }
@@ -491,7 +491,7 @@ void en2_update(void) {
             g_en_y = en2_fall(e, g_en_y, sp->kind);
         }
 
-        if (sp->kind == 22 || sp->kind == 23 || (sp->kind == 4 && sp->vx == 0)) {
+        if (sp->vx == 0 && sp->kind != 8 && sp->kind != 19) {
             g_en_y = en2_fall(e, g_en_y, sp->kind);
         }
 
@@ -693,7 +693,7 @@ static i8 en2_hit_box(i16 xmin, u8 xw, i16 ymin, i16 ymax, u8 use_he) {
             h = 16;
         }
         ey = (i16)(e->y8 >> 3);
-        if (ey < ymax && (i16)(ey + h) >= ymin) {
+        if ((i16)(ey + (ENEMY_HT - h)) < ymax && (i16)(ey + ENEMY_HT) >= ymin) {
             return (i8)i;
         }
     }
@@ -725,7 +725,7 @@ void en2_check_player_hit(void) {
 }
 
 void en2_check_crate_hit(void) {
-    i8 idx = en2_hit_box((i16)((i16)bc_a - 16), 32, (i16)bc_b, (i16)((i16)bc_b + 32), 0);
+    i8 idx = en2_hit_box((i16)((i16)bc_a - 16), 32, (i16)bc_b, (i16)((i16)bc_b + 16), 1);
     bc_r = 0;
     if (idx >= 0) {
         Enemy* e = &s_enemies[(u8)idx];

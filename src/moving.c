@@ -37,7 +37,7 @@ u8 s_conveyor_tick;
 u8 s_page_conveyor_phase[2];
 // Posicio de cada sequencia animada (0..len-1). S'avanca 1 cop per tick i
 // per sequencia, en lloc de fer 'st mod len' per cada span (54 a L2).
-u8 s_anim_pos[16];
+u8 s_anim_pos[24];
 
 void moving_init(void) { call_banked(0xC5, BC_INIT); }
 

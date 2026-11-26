@@ -126,6 +126,15 @@ def build_level_pkg(level_idx=0, out_dir=None):
     # seu Banc 5 (afegir-les totes feia petar L1 a 0x805A).
     if level_idx == 3:
         anim_seqs.update(load_dos_anim_seqs(staticres_path, arrays))
+    elif level_idx == 2:
+        dos_seqs = load_dos_anim_seqs(staticres_path, arrays)
+        for k in (0, 1, 2, 3, 6, 9, 10, 15, 69):
+            if k in dos_seqs:
+                anim_seqs[k] = dos_seqs[k]
+    elif level_idx == 0:
+        dos_seqs = load_dos_anim_seqs(staticres_path, arrays)
+        if 53 in dos_seqs:
+            anim_seqs[53] = dos_seqs[53]
     lname = LEVEL_NAMES[level_idx]
 
     map_w = arrays["level_dim"][level_idx * 2]
@@ -305,6 +314,15 @@ def build_level_pkg(level_idx=0, out_dir=None):
         used.add(entry[1])
     switch_targets = set()
     switch_targets.add(15)
+    for b6 in switch_b6s:
+        p = list(arrays[names6[b6]])
+        ns, nc = p[0], p[1]
+        base = 2 + (ns - 1) * nc * 4
+        for k in range(nc):
+            t_sw = p[base + k * 4 + 2]
+            if t_sw in (241, 245, 246):
+                used.add(t_sw)
+                switch_targets.add(t_sw)
     if level_idx == 4:
         used |= {24, 65, 2}          # vinil, instrument, tile buit L5
     elif level_idx == 5:
@@ -364,6 +382,7 @@ def build_level_pkg(level_idx=0, out_dir=None):
             row = p[base + k * 4 + 1]
             tile = p[base + k * 4 + 2]
             if tile in (241, 245, 246):
+                changes.append((col, row, remap[tile]))
                 continue
             changes.append((col, row, remap[15]))
         if not changes:
@@ -455,7 +474,7 @@ def build_level_pkg(level_idx=0, out_dir=None):
         f"#define LEVEL_ANIM_SEQ_COUNT {len(used_b4)}",
         f"#define LEVEL_ANIM_DATA_LEN {sum(len(anim_seqs[b4]) for b4 in used_b4)}",
     ]
-    assert len(used_b4) <= 64, "massa seqs (span.seq és u8)"
+    assert len(used_b4) <= 24, "massa seqs (s_anim_pos és [24])"
     flat, offs, lens = [], [], []
     for b4 in used_b4:
         seq = [remap[t] for t in anim_seqs[b4]]

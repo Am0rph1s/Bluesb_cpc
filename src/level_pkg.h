@@ -49,23 +49,28 @@ static const u8 s_bank_press_map_col[LEVEL_PRESS_STORAGE] = { 0 };
 // el seu propi període (2/3/4/20 frames × tick de 4 game-frames).
 // Índex: tile = s_anim_data[s_anim_off[seq] + s_anim_phase[seq]].
 // s_anim_len porta sentinella 0 (bucle sense comptador).
-#define LEVEL_ANIM_SEQ_COUNT 7
-#define LEVEL_ANIM_DATA_LEN 18
-static const u8 s_anim_data[18] = { 229, 228, 227, 216, 217, 218, 224, 225, 226, 215, 214, 213, 130, 188, 148, 198, 163, 223 };
-static const u8 s_anim_off[7] = { 0, 3, 6, 9, 12, 14, 16 };
-static const u8 s_anim_len[8] = { 3, 3, 3, 3, 2, 2, 2, 0 };
+#define LEVEL_ANIM_SEQ_COUNT 8
+#define LEVEL_ANIM_DATA_LEN 34
+static const u8 s_anim_data[34] = { 229, 228, 227, 216, 217, 218, 224, 225, 226, 215, 214, 213, 176, 176, 176, 176, 177, 177, 177, 177, 178, 178, 178, 178, 177, 177, 177, 177, 130, 188, 148, 198, 163, 223 };
+static const u8 s_anim_off[8] = { 0, 3, 6, 9, 12, 28, 30, 32 };
+static const u8 s_anim_len[9] = { 3, 3, 3, 3, 16, 2, 2, 2, 0 };
 
 // Trams animats: (row, col_ini, col_fi, seq). Tipus AnimSpan de moving.h.
 
-#define LEVEL_ANIM_SPAN_COUNT 18
-#define LEVEL_ANIM_SPAN_STORAGE 18
+#define LEVEL_ANIM_SPAN_COUNT 28
+#define LEVEL_ANIM_SPAN_STORAGE 28
 static const AnimSpan s_level_anim_spans[LEVEL_ANIM_SPAN_STORAGE] = {
-    { 30,  46,  46, 6 }, // row 30, cols 46..46 (DOS b4=78)
-    { 30,  48,  56, 4 }, // row 30, cols 48..56 (DOS b4=76)
-    { 30,  58,  58, 5 }, // row 30, cols 58..58 (DOS b4=77)
-    { 30,  68,  68, 6 }, // row 30, cols 68..68 (DOS b4=78)
-    { 30,  70,  78, 4 }, // row 30, cols 70..78 (DOS b4=76)
-    { 30,  80,  80, 5 }, // row 30, cols 80..80 (DOS b4=77)
+    { 26,  45,  45, 4 }, // row 26, cols 45..45 (DOS b4=53)
+    { 26,  60,  60, 4 }, // row 26, cols 60..60 (DOS b4=53)
+    { 26,  72,  72, 4 }, // row 26, cols 72..72 (DOS b4=53)
+    { 26,  87,  87, 4 }, // row 26, cols 87..87 (DOS b4=53)
+    { 28,  29,  29, 4 }, // row 28, cols 29..29 (DOS b4=53)
+    { 30,  46,  46, 7 }, // row 30, cols 46..46 (DOS b4=78)
+    { 30,  48,  56, 5 }, // row 30, cols 48..56 (DOS b4=76)
+    { 30,  58,  58, 6 }, // row 30, cols 58..58 (DOS b4=77)
+    { 30,  68,  68, 7 }, // row 30, cols 68..68 (DOS b4=78)
+    { 30,  70,  78, 5 }, // row 30, cols 70..78 (DOS b4=76)
+    { 30,  80,  80, 6 }, // row 30, cols 80..80 (DOS b4=77)
     { 36,  84,  84, 0 }, // row 36, cols 84..84 (DOS b4=29)
     { 36,  85,  85, 2 }, // row 36, cols 85..85 (DOS b4=31)
     { 36,  86,  86, 0 }, // row 36, cols 86..86 (DOS b4=29)
@@ -75,9 +80,14 @@ static const AnimSpan s_level_anim_spans[LEVEL_ANIM_SPAN_STORAGE] = {
     { 42,  80,  80, 0 }, // row 42, cols 80..80 (DOS b4=29)
     { 42,  81,  85, 2 }, // row 42, cols 81..85 (DOS b4=31)
     { 42,  86,  86, 0 }, // row 42, cols 86..86 (DOS b4=29)
+    { 43,  65,  65, 4 }, // row 43, cols 65..65 (DOS b4=53)
     { 45,  84,  84, 1 }, // row 45, cols 84..84 (DOS b4=30)
     { 45,  85,  88, 3 }, // row 45, cols 85..88 (DOS b4=32)
     { 45,  89,  89, 1 }, // row 45, cols 89..89 (DOS b4=30)
+    { 55,  57,  57, 4 }, // row 55, cols 57..57 (DOS b4=53)
+    { 55,  94,  94, 4 }, // row 55, cols 94..94 (DOS b4=53)
+    { 64,  25,  25, 4 }, // row 64, cols 25..25 (DOS b4=53)
+    { 64,  85,  85, 4 }, // row 64, cols 85..85 (DOS b4=53)
 };
 
 // Taula de triggers d'ítems / bonus / malus (DOS level_triggersdata_2030)

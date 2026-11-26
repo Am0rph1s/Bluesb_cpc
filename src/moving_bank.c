@@ -261,67 +261,7 @@ mbf_elev_next$:
     __endasm;
 #endif
 
-#if LEVEL_PRESS_COUNT > 0
-    __asm
-    ld ix, #(_g_mag_elevators + 16 * MAG_ELEVATOR_COUNT)
-    ld b, #LEVEL_PRESS_COUNT
-    ld c, #MAG_ELEVATOR_COUNT
-mbf_press_loop$:
-    ; Check X: (u16)(center_x - bc_a + 8) < 33
-    ld l, 0 (ix)
-    ld h, 1 (ix)
-    ld de, (_bc_a)
-    or a
-    sbc hl, de
-    ld de, #8
-    add hl, de
-    ld de, #33
-    or a
-    sbc hl, de
-    jr nc, mbf_press_next$
-    ; surface = e->y - 30 (PRESS_OBJECT_H)
-    ld l, 2 (ix)
-    ld h, 3 (ix)
-    ld de, #-30
-    add hl, de
-    ; check bc_b <= surface + 8  <=>  (surface + 8) - bc_b >= 0
-    push hl
-    ld de, #8
-    add hl, de
-    ld de, (_bc_b)
-    or a
-    sbc hl, de
-    pop hl
-    jp m, mbf_press_next$
-    ; check bc_c >= surface  <=>  bc_c - surface >= 0
-    ld de, (_bc_c)
-    ex de, hl
-    or a
-    sbc hl, de
-    jp m, mbf_press_next$
-    ; Found! *(i16*)bc_e = surface - 30
-    ex de, hl
-    ld de, #-30
-    add hl, de
-    ld de, (_bc_e)
-    ld a, l
-    ld (de), a
-    inc de
-    ld a, h
-    ld (de), a
-    ; bc_r = c
-    ld l, c
-    ld h, #0
-    ld (_bc_r), hl
-    pop ix
-    ret
-mbf_press_next$:
-    ld de, #16
-    add ix, de
-    inc c
-    djnz mbf_press_loop$
-    __endasm;
-#endif
+    // Premses (op11, level_obj_type[22] == 2 al DOS): no son plataformes trepitjables.
 
     __asm
     pop ix
@@ -446,8 +386,16 @@ static void b5_check_bonus_triggers(u8 col, u8 row, u8 crouch) {
     }
 #if LEVEL_HAS_ACID
     if (b6 >= 2 && b6 <= 5) {
-        acid_hurt((b6 == 2) ? -56 : (b6 == 3) ? -40 : -20);
+        acid_hurt((b6 == 2) ? -112 : (b6 == 3) ? -80 : -40);
         return;
+    }
+    if (!crouch && !s_crouch_hold && row > 0) {
+        const u8* tp2 = b5_trig_ptr(col, (u8)(row - 1));
+        if (tp2 && tp2[TP_B6] >= 2 && tp2[TP_B6] <= 5) {
+            u8 ab6 = tp2[TP_B6];
+            acid_hurt((ab6 == 2) ? -112 : (ab6 == 3) ? -80 : -40);
+            return;
+        }
     }
 #endif
     if (b6 >= 64) return;
@@ -575,6 +523,25 @@ void moving_bank_update(void) {
 
     b5_check_bonus_triggers(col, row, crouch);
 
+#if LEVEL_PRESS_COUNT > 0
+    {
+        u8 pi;
+        i16 jx = (i16)(s_px8 >> 3);
+        i16 jy = (i16)(s_py8 >> 3);
+        i16 jtop = jy + ((crouch || s_crouch_hold) ? 18 : 4);
+        MovingElevator* pe = &g_mag_elevators[MAG_ELEVATOR_COUNT];
+        for (pi = 0; pi < LEVEL_PRESS_COUNT; pi++, pe++) {
+            if (jx + 13 >= pe->center_x - PRESS_HALF_W &&
+                jx + 3  <= pe->center_x + PRESS_HALF_W &&
+                jy + 30 >= pe->y - PRESS_OBJECT_H &&
+                jtop    <= pe->y) {
+                acid_hurt(0);
+                break;
+            }
+        }
+    }
+#endif
+
 #if LEVEL_SWITCH_COUNT > 0
     {
         u8 sw = 0, b6 = 255;
@@ -633,14 +600,23 @@ void moving_bank_update(void) {
                     u8 cr = (u8)(((s_py8 >> 3) + 10) >> 4);
                     if (b5_tile_type(col, cr) >= 11) {
                         s_vy = -16;
-                    } else {
+                    } else if (b5_tile_type(col, (u8)(cr + 1)) >= 11) {
                         s_vy = 0;
                         s_py8 = (i16)((((cr + 1) << 4) - 8) * SUB);
+                    } else if (!b5_solid_ceil(col, cr)) {
+                        s_vy = 8;
+                    } else {
+                        s_vy = 0;
                     }
                 } else if (crouch) {
                     s_vy = 16;
                 } else {
-                    s_vy = 0;
+                    u8 hr = (u8)(((s_py8 >> 3) + 8) >> 4);
+                    if (b5_tile_type(col, hr) < 11 && !b5_solid_ceil(col, hr)) {
+                        s_vy = 8;
+                    } else {
+                        s_vy = 0;
+                    }
                 }
                 s_ground_elevator = -1;
             }
@@ -720,13 +696,13 @@ void moving_bank_update(void) {
         bc_c = (u8)(((s_py8 >> 3) + PH) >> 4);
         moving_bank_push();
     } else {
-        g_on_ice = 0;
+        if (s_on_ground) g_on_ice = 0;
         bc_r = 0;
     }
     if (!s_on_ground) bc_r = 0;
     g_belt_push = bc_r;
 #else
-    if (!s_on_ground && s_vy <= 0) g_on_ice = 0;
+    g_on_ice = 0;
     g_belt_push = 0;
     bc_r = 0;
 #endif
@@ -783,6 +759,15 @@ void moving_bank_update(void) {
         i16 jy = s_py8 >> 3;
         u8 jcol = (u8)((jx + 4) >> 3);
         u8 jrow = (u8)((jy + PH) >> 4);
+        static u8 s_pipe_look = 0;
+        if (jx >= 680 && jx <= 740 && jy >= 896 && jy <= 924) {
+            s_pipe_look = 1;
+            s_scrolling_locked = 1;
+            if (g_cam_row > 98) g_cam_row -= 2;
+        } else if (s_pipe_look) {
+            s_pipe_look = 0;
+            s_scrolling_locked = 0;
+        }
         if (jx < 80 * 8) s_chimney_scroll = 0;
 
         if (s_chimney_scroll) {

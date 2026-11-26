@@ -1314,7 +1314,8 @@ def build_music(force):
             hb_syms[m.group(1)] = hb_base + int(m.group(2), 16)
     need_hud = {"_hud_init_o": "_hud_init_b", "_hud_render_o": "_hud_render_b",
                 "_gameover_o": "_gameover_banner_b",
-                "_acid_hurt_o": "_acid_hurt_b"}
+                "_acid_hurt_o": "_acid_hurt_b",
+                "_game_pause_o": "_game_pause_b"}
     if any(k not in hb_syms for k in need_hud.values()):
         print("\n[FATAL] HUD: simbols no trobats (%s)" % sorted(hb_syms))
         sys.exit(1)

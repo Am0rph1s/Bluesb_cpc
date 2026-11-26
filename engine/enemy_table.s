@@ -113,6 +113,22 @@ hc_dstbase$:
     ret
 
 hc_copy8$:
+    ld      a, h
+    and     #0x07
+    cp      #0x07
+    jr      nz, hc_chk_de$
+    ld      a, l
+    cp      #0xB1
+    jr      nc, hc_wrap$
+hc_chk_de$:
+    ld      a, d
+    and     #0x07
+    cp      #0x07
+    jr      nz, hc_fast$
+    ld      a, e
+    cp      #0xB1
+    jr      nc, hc_wrap$
+hc_fast$:
     ld      b, #8
 hc_c8_loop$:
     push    bc
@@ -125,6 +141,47 @@ hc_c8_loop$:
     ex      de, hl
     pop     bc
     djnz    hc_c8_loop$
+    ret
+
+hc_wrap$:
+    ld      b, #8
+hc_w_row$:
+    push    bc
+    push    hl
+    push    de
+    ld      b, #80
+hc_w_byte$:
+    ld      a, (hl)
+    ld      (de), a
+    inc     hl
+    ld      a, h
+    and     #0x07
+    or      l
+    jr      nz, hc_w_noh$
+    ld      a, h
+    sub     #8
+    ld      h, a
+hc_w_noh$:
+    inc     de
+    ld      a, d
+    and     #0x07
+    or      e
+    jr      nz, hc_w_node$
+    ld      a, d
+    sub     #8
+    ld      d, a
+hc_w_node$:
+    djnz    hc_w_byte$
+    pop     de
+    pop     hl
+    ld      a, h
+    add     a, #8
+    ld      h, a
+    ld      a, d
+    add     a, #8
+    ld      d, a
+    pop     bc
+    djnz    hc_w_row$
     ret
 
 
@@ -215,7 +272,8 @@ sk_flip$:
     .globl _bc_b
     .globl _g_vram_start
     .globl _s_mn_move, _s_mn_jump, _s_mn_page_dx, _s_mn_page_dy, _s_back_page
-    .globl _s_carry_kind
+    .globl _s_carry_kind, _s_carry_drawn
+    .globl _s_invuln_timer, _s_dazed_timer, _s_dying_timer, _s_dance_timer
     .globl _g_en_overlap
     .globl _s_proj, _g_en_jake_x, _g_en_jake_y
     .globl _s_mn_dsx, _s_mn_dsy, _g_face
@@ -245,13 +303,23 @@ _spr_key_ops::
     ld      a, (_s_mn_page_dy)
     or      a
     ret     nz
-    ;; M1 v5: guard de CARRY. Amb una caixa (o globus/paraigues) activa, el
-    ;; carry_draw desa el fons DESPRES del punt on Jake hauria d'haver estat
-    ;; restaurat (1237): amb l'skip, el seu save captura el propi Jake i el
-    ;; heal captura la caixa -> remanents (vist en test real: 9 B al lloc de
-    ;; l'throw). Amb carry actiu: flux original (dirty).
+    ;; M1 v5: guard de CARRY. Amb una caixa (o globus/paraigues) activa, o
+    ;; encara dibuixada a alguna pagina (carry_abort posa s_carry_kind=0 abans
+    ;; que una o totes dues pagines facin el restore LIFO), cal restaurar
+    ;; Jake abans de carry_restore o el _s_player_bg sobreescriu la linia inferior.
+    ld      hl, (_s_carry_drawn)
     ld      a, (_s_carry_kind)
-    or      a
+    or      l
+    or      h
+    ret     nz
+    ;; M1 v10: amb invulnerabilitat (parpalleig), mareig (estrelletes), mort o
+    ;; ball actius, cal flux complet perquè no quedi un segon Jake al fons.
+    ld      hl, (_s_dazed_timer)    ;; L = s_dazed_timer, H = s_dying_timer
+    ld      a, (_s_invuln_timer)
+    or      l
+    or      h
+    ld      hl, #_s_dance_timer
+    or      (hl)
     ret     nz
     ;; M1 v6: guard d'enemics sobre Jake. en2_update marca _g_en_overlap si un
     ;; enemic trepitja la caixa del Jake; llavors cal el flux original
@@ -261,49 +329,15 @@ _spr_key_ops::
     ld      a, (_g_en_overlap)
     or      a
     ret     nz
-    ;; M1 v6b: el projectil (bala/ou/plat) tambe pot tapar el Jake i el
-    ;; save/restore creuat deixa l'error de restauracio (test real 21/11).
-    ;; Caixa 8x13 (maxima) contra la 16x30, en coordenades de mon.
+    ;; M1 v10b: mentre hi hagi un projectil actiu (kind != 0) o encara
+    ;; dibuixat a qualsevol de les dues pagines (drawn_row_count[0..1] != 0
+    ;; fins que en2_restore el netegi), cal flux complet per evitar que
+    ;; _s_player_bg capturi una bala al passar sobre en Jake ajupit.
     ld      a, (_s_proj + 9)        ;; kind (0 = inactiu)
-    or      a
-    jr      z, spk_proj_ok$
-    ld      hl, (_s_proj)           ;; x
-    ld      de, (_g_en_jake_x)
-    or      a
-    sbc     hl, de
-    ld      de, #7
-    add     hl, de
-    ld      de, #23
-    ld      a, h
-    cp      d
-    jr      c, spk_proj_x_ok$
-    jr      nz, spk_proj_ok$
-    ld      a, l
-    cp      e
-    jr      nc, spk_proj_ok$
-spk_proj_x_ok$:
-    ld      hl, (_s_proj + 2)       ;; y8 >> 3
-    srl     h
-    rr      l
-    srl     h
-    rr      l
-    srl     h
-    rr      l
-    ld      de, (_g_en_jake_y)
-    or      a
-    sbc     hl, de
-    ld      de, #12
-    add     hl, de
-    ld      de, #42
-    ld      a, h
-    cp      d
-    jr      c, spk_proj_hit$
-    jr      nz, spk_proj_ok$
-    ld      a, l
-    cp      e
-    jr      nc, spk_proj_ok$
-spk_proj_hit$:
-    ret                             ;; s_spr_clean = 0 -> flux original
+    ld      hl, (_s_proj + 16)      ;; drawn_row_count[0..1]
+    or      l
+    or      h
+    ret     nz
 spk_proj_ok$:
     ;; pagina -> DE = page*2
     ld      a, (_s_back_page)

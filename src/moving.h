@@ -50,7 +50,7 @@ extern MovingElevator g_mag_elevators[MAG_MOVER_COUNT];
 
 // Estat compartit resident (llegit/escribible des del Banc 5):
 extern u8 s_conveyor_phase;
-extern u8 s_anim_pos[16];
+extern u8 s_anim_pos[24];
 extern u8 s_conveyor_tick;
 extern u8 s_page_conveyor_phase[2];
 
@@ -74,7 +74,7 @@ extern i8  s_ground_elevator;
 extern u8  g_face;
 extern u8  s_anim_idx, s_anim_timer;
 extern u8  s_rep_n;
-extern u8  s_rep_col[4], s_rep_row[4], s_rep_tile[4], s_rep_pages[4];
+extern u8  s_rep_col[8], s_rep_row[8], s_rep_tile[8], s_rep_pages[8];
 
 // Estat d'ítems, bonus i malus (actualitzat al Banc 5):
 extern u8  g_vinyls_count;
@@ -115,7 +115,8 @@ void moving_popup_restore(u8 page);
 extern u16 bc_a, bc_b, bc_c, bc_d, bc_e;
 extern i16 bc_r;
 extern i16 g_belt_push; // push de cinta del frame (propi: bc_r el trepitgen els enemics)
-extern u8  g_on_ice;    // 1 si el jugador es a terra sobre gel (op=30 o rampes 32..35)
+extern u8  g_on_ice;        // 1 si el jugador es a terra sobre gel (op=30 o rampes 32..35)
+extern u8  s_scrolling_locked;
 
 // Variables de treball residents compartides per evitar stack frames (IX) a C6
 extern i16 g_en_view_x, g_en_view_y;

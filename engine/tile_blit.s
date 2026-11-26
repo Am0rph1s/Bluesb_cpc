@@ -43,6 +43,7 @@
 
     .area _DATA
 s_tile_ids:     .ds 40
+s_ifs_col:      .dw 0
 s_rc_char_x:    .dw 0
 s_rc_subrow:    .dw 0
 s_rtw_tile:     .db 0
@@ -821,11 +822,13 @@ twp_ret0$:
 ;; Callee neteja 3 B de la pila! Retorna A.
 ;; ============================================================
 _is_floor_solid::
-    pop     iy                  ;; IY = adreça de retorn
+    ld      (s_ifs_col), hl
+    pop     hl                  ;; HL = adreça de retorn
     pop     bc                  ;; BC = vy (B = vy_hi)
     dec     sp
     pop     af                  ;; A = crouch
-    push    iy                  ;; Restaura adreça de retorn (3 B netejats!)
+    push    hl                  ;; Restaura adreça de retorn (3 B netejats!)
+    ld      hl, (s_ifs_col)
     ld      c, a                ;; C = crouch, B = vy_hi
 
     ;; Calcula B_pos = (vy >= 0) ? 1 : 0
@@ -971,6 +974,7 @@ at_seq_done$:
     ld      a, (_bc_b)
     or      a
     ret     z
+    push    iy
     ld      (s_at_n), a
     ld      hl, (_bc_a)
     ld      (s_at_sp), hl
@@ -1033,6 +1037,7 @@ at_span_next$:
     ld      hl, #s_at_n
     dec     (hl)
     jr      nz, at_span_loop$
+    pop     iy
     ld      hl, #_s_conveyor_tick
     bit     7, (hl)
     ld      (hl), #0

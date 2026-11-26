@@ -23,13 +23,16 @@ El joc complet (tots 6 nivells + selector de personatge/mapa `FRONT`) cap en **u
 
 ### 1.1 Rendiment actual (actualitzat 26/11/2026, cpcse, doble buffer estable)
 
-**Checkpoint de reinici**: `f33482d`, etiqueta `checkpoint-2026-11-26-good`.
+**Checkpoint de reinici**: `5bd253f`, etiqueta `stable-2026-11-26-14fps`.
+Anterior: `f33482d`, etiqueta `checkpoint-2026-11-26-good`.
 
 Després dels canvis de memòria, broadphase ASM, flip inline i HUD wrap segmentat:
 - L1 quiet en spawn: **23,4 fps** (42,7 ms/frame).
 - L1 caminant per la ruta `cam_x4=0..76`: **14,6 fps** (68,48 ms/frame), abans **13,3 fps** (75,15 ms).
 - Estalvi mitjà mesurat: **6,67 ms/frame**.
 - Microbenchmarks: broadphase sense candidats **0,73 ms**; flip **18,33 → 14,33 ms**; HUD `hc_copy8` fast **4,20 ms**, wrap **8,67 ms** (abans ~16 ms).
+- A/B controlat `MU→MU` (122 frames, `cam_x4=0..76`): checkpoint **13,739 fps** → guard ultra exacte + inline `calc_tile_hl` **13,754 fps**. Dins del soroll: cap regressió, guany ocult pel pacing VSYNC.
+- Guard del jugador validat amb **32.768 inicis reals** simulats i **190/190** proves byte a byte de VRAM/fons.
 
 **Sostre acceptat històric** (test real d'usuari + `g_ticks` 300 Hz, 21/11/2026):
 - **25 fps** (40 ms): quiet / 0-1 enemics sense scroll.
@@ -45,13 +48,14 @@ jugador a C7:0x7E80 (marge resident 5 → 42 B), dirty-flag del jugador, música
 ancorada al VSYNC. Experiments negatius documentats: còpia de columna (7,0 vs 5,3 ms),
 dedup de probes (sense canvi al frame), F3 bbox (no cap al paquet L1ENEMI).
 
-**Adreces**: el resident va desplaçar-se 37 B amb el C7 (MU=0x0FCD, VS=0x03C2,
-sprite_blit=0x03CF). El `obj/bluesb.sym` s'ha de **regenerar del mapa** (el vell queda
-mort); els anchors hardcodejats dels tests han d'usar el sym fresc.
+**Adreces**: el resident s'ha desplaçat amb les optimitzacions (MU=0x1196,
+VS=0x03C2, sprite_blit=0x03CF). El `obj/bluesb.sym` s'ha de **regenerar del mapa**
+(el vell queda mort); els anchors hardcodejats dels tests han d'usar el sym fresc.
 
 **Mesurament**: `tools/cpcse_dbg.py` + anchors de fase amb `g_ticks` 300 Hz. Entrada
-real: `key Space` (ZRCP) per menús; matriu `0x3601` + patch `0x177=C9` per conduir
-(restaurar `0x177=F3`). Detall i mètode: [`docs/CHANGELOG.md`](CHANGELOG.md) (21/11/2026).
+real: `key Space` (ZRCP) per menús; matriu **`0x3801`** (ha seguit `_DATA` a 0x3800) +
+patch `0x177=C9` per conduir (restaurar `0x177=F3`). Detall i mètode:
+[`docs/CHANGELOG.md`](CHANGELOG.md) (21/11/2026).
 
 - ⚠ Arrencada des de `obj/` buit: veure la recepta de llavors al CHANGELOG (19/11/2026). ⚠ `gen_enemy4_frames.py` NO reprodueix l'ENEMI4.BIN comes (casament de paletes del 12/11 no reflectit al generador): blindat via `mark_fresh`; corregir el generador abans de tornar a buidar `obj/`.
 
@@ -66,7 +70,7 @@ real: `key Space` (ZRCP) per menús; matriu `0x3601` + patch `0x177=C9` per cond
      `cpc_x = (dos_x - w_dos / 2) / 2 = dos_x / 2 - w_cpc / 2`, `cpc_y = dos_y - h_dos`.
    - Mai ajustar posicions a ull.
 3. **Pressupost de memòria resident (Bloc 0: `0x0000..0x3FFF`)**:
-   - Estat mesurat actual: `_CODE : 0x0100..0x36E6` (**13.798 B**, **282 B** de marge fins a `_DATA`), `_DATA : 0x3800..0x3D33` (**1.323 B**), canari a `0x3D80`, pila útil fins a `SP=0x3FFE`: **622 B**.
+   - Estat mesurat actual: `_CODE : 0x0100..0x372C` (**13.868 B**, **212 B** de marge fins a `_DATA`), `_DATA : 0x3800..0x3D33` (**1.323 B**), canari a `0x3D80`, pila útil fins a `SP=0x3FFE`: **622 B**.
    - Watermark L1 amb scroll+enemics: **75 B** de profunditat màxima; canari intacte.
    - Tota lògica específica de nivell o no trivial ha d'anar als bancs superiors (`C1`, `C5`, `C6`), **mai** inflar el resident de `main.c`.
 4. **Commutació de bancs de maquinari (`0x7F00`)**:

@@ -248,7 +248,7 @@ class Zrcp:
         self.cmd("send-keys-event %d 0" % key, wait=0.02)
 
     def keys(self, text):
-        self.cmd("send-keys-string 40 %s" % text, wait=0.15)
+        self.cmd("send-keys-string 60 %s" % text, wait=0.15)
 
     def shot(self, path):
         path = os.path.abspath(path)

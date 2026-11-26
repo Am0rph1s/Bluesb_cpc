@@ -226,7 +226,16 @@ rc_draw_loop$:
     ld      a, (hl)
     inc     hl
     push    hl
-    call    calc_tile_hl
+    rrca
+    rrca
+    ld      h, a
+    and     #0xC0
+    or      c
+    ld      l, a
+    ld      a, h
+    and     #0x3F
+    or      #0x40
+    ld      h, a
     call    _render_tile_fast_de
     pop     hl
     ld      a, c
@@ -323,7 +332,16 @@ rr_draw_loop$:
     ld      a, (hl)
     inc     hl
     push    hl
-    call    calc_tile_hl
+    rrca
+    rrca
+    ld      h, a
+    and     #0xC0
+    or      c
+    ld      l, a
+    ld      a, h
+    and     #0x3F
+    or      #0x40
+    ld      h, a
     call    _render_tile_fast_de
     pop     hl
     ld      a, c

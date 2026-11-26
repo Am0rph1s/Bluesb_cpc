@@ -15,6 +15,19 @@ Aquest fitxer recull el detall cronolÃ²gic de les sessions i fites del project
 - Validat: build multipass, `smoke_test --dsk-only`, `smoke_test --boot-only`, ZEsarUX L1 i proves byte a byte en CPCSyntaxError.
 - Documentat que M1 v9 no és al codi actual; pendent el repintat edge-only.
 
+### 26/11/2026 - Guard ultra exacte del jugador i inline de tiles
+
+- `engine/sprite.s`: guard exhaustiu per a 30 files x 8 bytes. Després de dues
+  revisions independents, el conjunt perillós exacte és `D&7=7` amb
+  `E=09..0F/59..5F/A9..AF/F9..FF`, més `D&7=6`, `E=B9..BF` i `RA>=3`.
+- Validació: 32.768 inicis reals simulats sense discrepàncies i 190/190 proves
+  reals de VRAM + fons (dues pàgines, casos perillosos i fronteres).
+- `engine/tile_blit.s`: `calc_tile_hl` inline dins `render_column` i `render_row`.
+- A/B `MU→MU` de 122 frames: checkpoint 13,739 fps → 13,754 fps; cap regressió,
+  guany per sota del quantum de VSYNC.
+- Build: resident 13.868 B, marge 212 B. `smoke_test --boot-only` corregit amb
+  delay de tecles de 60 frames i validat a ZEsarUX.
+
 ### 22/11/2026 - Primera passada L4 (egou): animacions i spawns
 
 Auditoria comparativa DOS vs port del nivell 4 (`level_idx=3`, MAP3/TRIG3/

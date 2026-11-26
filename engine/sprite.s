@@ -299,14 +299,44 @@ _sprite_blit_player::
     jp      nz, blit_grate_enter
 
     ld      hl, (s_spr_ptr)     ;; HL = sprite [inv_mask, img_masked]
+    ;; Guard ultra exhaustiu per a 30 files x 8 bytes. El cami rapid no
+    ;; aplica sprite_inc_de_ring dins la fila. Simulant tots els segments
+    ;; que produeix sprite_calc_de, els initials perillosos son:
+    ;;   D&7==7: E=09..0F, 59..5F, A9..AF, F9..FF
+    ;;   D&7==6: E=B9..BF, pero nomes amb RA=(D&38)>=3
     ld      a, d
     and     #0x07
     cp      #0x06
-    jr      c, blit_ultra_enter
-    jr      nz, blit_slow_enter
+    jr      z, blit_guard_block6$
+    cp      #0x07
+    jp      nz, blit_ultra_enter
     ld      a, e
-    cp      #0xB8
-    jr      nc, blit_slow_enter
+    and     #0x0F
+    cp      #0x09
+    jp      c, blit_ultra_enter
+    ld      a, e
+    and     #0xF0
+    or      a
+    jp      z, blit_slow_enter
+    cp      #0x50
+    jp      z, blit_slow_enter
+    cp      #0xA0
+    jp      z, blit_slow_enter
+    cp      #0xF0
+    jp      z, blit_slow_enter
+    jp      blit_ultra_enter
+
+blit_guard_block6$:
+    ld      a, e
+    cp      #0xB9
+    jr      c, blit_ultra_enter
+    cp      #0xC0
+    jr      nc, blit_ultra_enter
+    ld      a, d
+    and     #0x38
+    cp      #0x18
+    jr      c, blit_ultra_enter
+    jp      blit_slow_enter
 
 blit_ultra_enter:
     push    ix

@@ -4,11 +4,11 @@
 #include "cpctelera.h"
 
 // Canari de pila resident per detectar desbordaments de SP cap a _DATA.
-// S'ubica a 0x3E10: per sobre de _DATA (fi actual ~0x3DF6) i per sota de
-// la pila SP ~0x3FFE. NO fixar-lo mes avall: _DATA creix amb el projecte
-// i trepitjaria el canari (falsa alarma permanent + corrupcio de variables).
-// build.py avorta (FATAL) si _DATA arriba a 0x3C00.
-#define CANARY_ADDR   0x3C40
+// Amb _DATA a 0x3800, el canari es deixa a 0x3D80: hi ha ~80 B de separacio
+// i queden ~622 B de pila util fins a SP=0x3FFE. El watermark de L1 amb
+// scroll+enemics ha mesurat un maxim de 83 B; cal repetir la prova a tots
+// els nivells abans de tornar a apretar aquest valor.
+#define CANARY_ADDR   0x3D80
 #define CANARY_MAGIC  0xAA55
 #define CANARY_WORDS  8
 

@@ -31,12 +31,10 @@ CFLAGS    = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "15000",
 # Nomes s'aplica a enemy.c; la resta del projecte segueix amb CFLAGS.
 CFLAGS_ENEMY = ["-mz80", "--opt-code-size", "--max-allocs-per-node", "40000",
                 "--disable-warning", "110"]
-# El _DATA comença a 0x3880. El Bloc 0 esta ple; amb el codi dels ascensors
-# fora del resident (Banc 1) el marge de codi es de 836 B.
-# La PILA no canvia: el canari (0x3E10) i el limit de la pila (SP=0x3FFE) son
-# els mateixos; el _DATA acaba per sota del canari.
+# El _DATA es puja a 0x3800 per deixar mes marge de codi resident. El canari
+# de pila passa a 0x3D80 (engine/stack_canary.h); SP es manté a 0x3FFE.
 LINKARGS  = ["-mz80", "--no-std-crt0", "-Wl-u",
-             "--code-loc", "0x0100", "--data-loc", "0x3700", "-Wl-x"]
+             "--code-loc", "0x0100", "--data-loc", "0x3800", "-Wl-x"]
 INCLUDES  = ["-I" + os.path.join(PROJ, "engine"),
              "-I" + os.path.join(PROJ, "src")]
 
@@ -430,8 +428,8 @@ def report_and_assert_memory_budget(map_path):
         print("\n[FATAL] _CODE ha envait _DATA per %d bytes! (code_end=0x%04X > data_start=0x%04X)" %
               (-code_margin, code_end, s_data))
         sys.exit(1)
-    if data_end > 0x3C40:
-        print("\n[FATAL] _DATA ha trepitjat el canari de pila (data_end=0x%04X > 0x3C40)! Mou CANARY_ADDR." %
+    if data_end > 0x3D80:
+        print("\n[FATAL] _DATA ha trepitjat el canari de pila (data_end=0x%04X > 0x3D80)! Mou CANARY_ADDR." %
               data_end)
         sys.exit(1)
     if stack_margin < 256:

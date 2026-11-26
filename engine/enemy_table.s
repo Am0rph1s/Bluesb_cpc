@@ -189,9 +189,8 @@ hc_w_node$:
 ;; M1: la LUT de H-Flip ELIMINADA. El gir Mode 0 es un swap de pixels
 ;; interleaved: flip(b) = ((b & 0x55) << 1) | ((b & 0xAA) >> 1) —
 ;; EXACTAMENT la formula que en2_init_lut precomputava a la LUT. La
-;; dansa directa (sk_flip$, ~48 T/byte) viu al cami fred de la cache
-;; (nomes en fallada) i allibera els 256 B de la zona 0x7900..0x79FF:
-;; el sostre del codi C6 passa de 0x7900 al POOL DE FONS (0x7A00).
+;; formula s'inline dins el bucle per estalviar CALL/RET per byte sense
+;; reservar una LUT de 256 B; el codi C6 conserva el marge al pool.
 ;; ============================================================
 _en2_flip_cell::
     ld      bc, #14                 ;; offset al parell 7 (últim parell de la fila 0)
@@ -203,12 +202,26 @@ _en2_flip_cell::
     push    af                      ;; .rept 8: -75 B de pak; el flip omple la
 2$:                                 ;; cache (cami fred), no es cami calent
     ld      a, (hl)                 ;; màscara font
-    call    sk_flip$
+    ld      b, a
+    and     #0x55
+    add     a, a
+    ld      c, a
+    ld      a, b
+    and     #0xAA
+    rrca
+    or      c
     ld      (de), a
     inc     de
     inc     hl
     ld      a, (hl)                 ;; imatge font
-    call    sk_flip$
+    ld      b, a
+    and     #0x55
+    add     a, a
+    ld      c, a
+    ld      a, b
+    and     #0xAA
+    rrca
+    or      c
     ld      (de), a
     inc     de
     dec     hl
@@ -230,21 +243,6 @@ _en2_flip_cell::
     pop     af
     dec     a
     jr      nz, 1$
-    ret
-
-;; sk_flip$: A = ((A & 0x55) << 1) | ((A & 0xAA) >> 1)
-;; El swap de pixels interleaved del Mode 0 (la formula antiga de la
-;; LUT, calculada al moment). Temporals B/C (lliures: eren la pagina
-;; i l'index de la LUT).
-sk_flip$:
-    ld      b, a
-    and     #0x55
-    add     a, a
-    ld      c, a
-    ld      a, b
-    and     #0xAA
-    rrca
-    or      c
     ret
 
 ;; ============================================================
